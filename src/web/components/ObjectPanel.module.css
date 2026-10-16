@@ -17,6 +17,17 @@
   line-height: 20px;
 }
 
+.item > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item > span:last-child {
+  flex: 1;
+}
+
 .item:hover {
   background: var(--color-panel-muted);
 }

@@ -9,6 +9,8 @@
 .left {
   flex: 1 1 280px;
   max-width: 360px;
+  /* The width must not follow the content (such as long object names). */
+  min-width: 0;
   display: flex;
   min-height: 0;
   height: calc(100vh - var(--header-height) - 2 * var(--space-2));
@@ -16,6 +18,7 @@
 
 .left > * {
   flex: 1;
+  min-width: 0;
 }
 
 .right {
