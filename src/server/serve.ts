@@ -124,7 +124,7 @@ export async function serve(dev: boolean): Promise<void> {
 
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)
-  if (dev) process.stderr.write(`\nOpen ${DEV_WEB_URL} after starting \`npm run dev:web\`.\n\n`)
+  if (dev) process.stderr.write(`\nOpen ${DEV_WEB_URL} (started by \`npm run dev\`, or by \`npm run dev:web\` alongside \`npm run dev:server\`).\n\n`)
 
   // Load the org list in the background: it can take several seconds. Then
   // check each org's connection, which takes longer still.

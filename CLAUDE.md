@@ -9,8 +9,9 @@ lwc-soql-builder から引き継ぐ機能の一覧は [docs/parity.md](docs/pari
 
 | コマンド | 内容 |
 | --- | --- |
-| `npm run dev:server` | ローカルサーバーを開発用の設定（`--dev`）で起動する。ポートは 17717 |
-| `npm run dev:web` | 画面の開発サーバー（`localhost:5173`）を起動する。`/api` はローカルサーバーへ転送する |
+| `npm run dev` | 画面の開発サーバーとローカルサーバーを一緒に起動する。開発中の動作確認はこれで行う |
+| `npm run dev:server` | ローカルサーバーだけを開発用の設定（`--dev`）で起動する。ポートは 17717 |
+| `npm run dev:web` | 画面の開発サーバー（`localhost:5173`）だけを起動する。`/api` はローカルサーバーへ転送する |
 | `npm run typecheck` | 型チェック（サーバーは `dist/` へのコンパイルも行う） |
 | `npm run lint` | oxlint |
 | `npm test` | Vitest |
@@ -22,6 +23,8 @@ lwc-soql-builder から引き継ぐ機能の一覧は [docs/parity.md](docs/pari
 
 `dev:server` は、普段は `~/.sfbench/` に置く状態（`server.json`、設定、最近のクエリ、ログなど）を、リポジトリのルート直下の `.sfbench-dev/` に置く。手元で常駐している sfbench と混ざらないようにするためである。置き場所は環境変数 `SFBENCH_HOME` で変えられる。
 画面は `http://localhost:5173/launch/dev` で開く。
+画面とサーバーのコードは保存するだけで反映されるので、動作確認のために `npm run build` を実行する必要はない。
+`npm run build` と `node dist/server/cli.js` は、配布物そのものの確認にだけ使う（このサーバーは起動時のビルドを配信し続ける）。
 
 ## ディレクトリ
 
