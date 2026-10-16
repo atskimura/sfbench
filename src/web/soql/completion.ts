@@ -1,6 +1,6 @@
 // Completion candidates as in lwc-soql-builder: the FROM object's fields and
 // SOQL keywords. Context-aware candidates come in PR 2c (docs/web.md "補完").
-import type { FieldDescribe } from '../api/client.ts'
+import type { FieldDescribe } from '../apiClient.ts'
 import { soqlName } from './namespace.ts'
 import type { NameContext } from './selection.ts'
 

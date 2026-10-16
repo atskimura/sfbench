@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { ApiUsage, LaunchOptions, Org, OrgsResponse, OrgSummary } from '../../shared/api.ts'
-import { ApiRequestError, api } from '../api/client.ts'
+import { ApiRequestError, api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
 import { isProductionBySummary } from '../orgs/production.ts'
 import { useApp } from './AppContext.tsx'

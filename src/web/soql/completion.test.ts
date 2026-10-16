@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { FieldDescribe } from '../api/client.ts'
+import type { FieldDescribe } from '../apiClient.ts'
 import { fieldCandidates, fromObjectOf, keywordCandidates } from './completion.ts'
 
 const field = (name: string, label: string): FieldDescribe => ({

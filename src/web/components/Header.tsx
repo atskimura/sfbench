@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ApiRequestError, api } from '../api/client.ts'
+import { ApiRequestError, api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
 import { DOCUMENTATION_URL } from '../links.ts'
 import { useApp } from '../state/AppContext.tsx'

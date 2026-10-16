@@ -12,7 +12,7 @@ import type {
   Settings,
   WithApiUsage,
   WithFetchedAt,
-} from '../../shared/api.ts'
+} from '../shared/api.ts'
 
 const SESSION_KEY = 'sfbench.session'
 
