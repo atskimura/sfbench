@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { t } from '../i18n/i18n.ts'
 import { matches } from '../soql/completion.ts'
-import type { DescribeGlobal } from '../api/client.ts'
+import type { DescribeGlobal } from '../apiClient.ts'
 import { describeGlobal, findObject, useLoadable, type Loadable } from '../state/describeCache.ts'
 import { useReportOrgError } from '../state/OrgContext.tsx'
 import { useSoql } from '../state/SoqlContext.tsx'

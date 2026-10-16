@@ -22,7 +22,7 @@
     }
   },
   "scripts": {
-    "dev": "vite --mode with-server",
+    "dev": "node scripts/dev.mjs",
     "dev:web": "vite",
     "dev:server": "node --use-env-proxy --watch src/server/cli.ts --dev",
     "typecheck": "tsc -b",

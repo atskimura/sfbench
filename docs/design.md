@@ -272,8 +272,8 @@ describe の結果はサーバーのメモリに組織ごとに保持し、タ�
 
 サーバーは起動時に `http://localhost:5173/launch/dev` を表示する。
 Vite は `/launch/dev` には画面（`index.html`）を返し、`/api` だけをサーバー（`127.0.0.1:17717`）へ転送する。
-ただし `/api/` で終わりが `.ts` または `.tsx` の経路は転送しない。画面のモジュール `src/web/api/client.ts` が `/api/client.ts` で配信されるためである。
-`npm run dev` は、Vite の開発サーバーと `npm run dev:server` と同じサーバーを一緒に起動し、Vite と一緒に止める（`vite.config.ts` のプラグイン）。
+画面のモジュールは `src/web/api/` に置かない。置くと `/api/` で始まる URL で配信され、サーバーへ転送されてしまう。
+`npm run dev` は `npm run dev:server` と `npm run dev:web` を並べて起動し、どちらかが終わるか Ctrl+C を押すと両方を止める（`scripts/dev.mjs`）。
 画面のコードを保存すると Vite がその場で反映し、サーバーのコードを保存すると `node --watch` がサーバーを起動し直すので、`npm run build` は要らない。
 Vite の開発サーバーは `localhost:5173` に固定し、使用中なら起動に失敗する。
 `dev:server` は Node の型除去機能で TypeScript を直接実行する。

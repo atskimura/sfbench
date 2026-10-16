@@ -6,7 +6,7 @@ import {
   MIN_TIMEOUT_SECONDS as MIN_TIMEOUT,
   type Settings,
 } from '../../shared/api.ts'
-import { api } from '../api/client.ts'
+import { api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
 import { DOCUMENTATION_URL, GITHUB_URL } from '../links.ts'
 import { useApp } from '../state/AppContext.tsx'

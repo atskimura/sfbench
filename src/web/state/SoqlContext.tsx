@@ -2,7 +2,7 @@
 // Two contexts, so that typing in the editor does not re-render the results.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { HistoryEntry, QueryResponse } from '../../shared/api.ts'
-import { ApiRequestError, api } from '../api/client.ts'
+import { ApiRequestError, api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
 import { fromObjectOf } from '../soql/completion.ts'
 import {

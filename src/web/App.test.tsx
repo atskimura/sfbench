@@ -4,8 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Org, OrgSummary } from '../shared/api.ts'
 
-vi.mock('./api/client.ts', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./api/client.ts')>()
+vi.mock('./apiClient.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./apiClient.ts')>()
   return {
     ...actual,
     api: {
@@ -24,7 +24,7 @@ vi.mock('./api/client.ts', async (importOriginal) => {
   }
 })
 
-const { api, ApiRequestError } = await import('./api/client.ts')
+const { api, ApiRequestError } = await import('./apiClient.ts')
 const { App } = await import('./App.tsx')
 const mocked = vi.mocked(api)
 
