@@ -9,6 +9,7 @@ import { refKey } from '../soql/selection.ts'
 import { describeGlobal, describeSObject, useLoadable } from '../state/describeCache.ts'
 import { useReportOrgError } from '../state/OrgContext.tsx'
 import { useSoql } from '../state/SoqlContext.tsx'
+import { CollapseButton } from './CollapseButton.tsx'
 import styles from './FieldPanel.module.css'
 import { FilterInput } from './FilterInput.tsx'
 import panel from './Panel.module.css'
@@ -50,6 +51,7 @@ export function FieldPanel({ username, objectName }: { username: string; objectN
         <span className={panel.spacer} />
         <ReloadButton label={t.reloadFields} busy={describe.loading} onClick={describe.reload} />
         {d && <FieldMenu fields={d.fields} onSort={setSort} />}
+        <CollapseButton name="objects" label={t.hideObjects} side="left" />
       </div>
       <div className={styles.tabs} role="tablist">
         <button

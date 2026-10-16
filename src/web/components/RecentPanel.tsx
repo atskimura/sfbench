@@ -1,6 +1,7 @@
 // Recent queries of the selected org, newest first (docs/screens.md).
 import { t } from '../i18n/i18n.ts'
 import { useSoql } from '../state/SoqlContext.tsx'
+import { CollapseButton } from './CollapseButton.tsx'
 import panel from './Panel.module.css'
 import styles from './RecentPanel.module.css'
 
@@ -12,6 +13,8 @@ export function RecentPanel() {
     <section className={panel.panel} aria-label={t.recent}>
       <div className={panel.header}>
         <span className={panel.title}>{t.recent}</span>
+        <span className={panel.spacer} />
+        <CollapseButton name="recent" label={t.hideRecent} side="right" />
       </div>
       <div className={panel.body}>
         {soql.history.length === 0 && <p className={panel.empty}>{t.recentEmpty}</p>}

@@ -187,4 +187,17 @@ describe('SOQL workspace', () => {
     await userEvent.click(screen.getByRole('button', { name: t.cancel }))
     expect(screen.getByRole('button', { name: t.exportCsv })).toBeTruthy()
   })
+
+  it('closes and opens the panels, and remembers them', async () => {
+    localStorage.clear()
+    const { unmount } = render(<App launch={{ org: 'demo', query: 'SELECT Id FROM Account' }} />)
+    await userEvent.click(await screen.findByRole('button', { name: t.hideEditor }))
+    expect(screen.getByText('SELECT Id FROM Account', { selector: 'code' })).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: t.hideRecent, hidden: true }))
+    unmount()
+    render(<App launch={{ org: 'demo' }} />)
+    await userEvent.click(await screen.findByRole('button', { name: t.showEditor }))
+    expect(screen.getByRole('button', { name: t.showRecent })).toBeTruthy()
+    localStorage.clear()
+  })
 })

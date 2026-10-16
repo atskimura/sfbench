@@ -34,6 +34,8 @@ type SoqlState = {
   names: NameContext
   /** The parsed SOQL, or undefined while it cannot be parsed or is empty. */
   selection: Selection | undefined
+  /** The first line of the editor text as last parsed (shown while the editor is closed). */
+  firstLine: string
   /** The object shown in the left panel (as written in FROM), or undefined for the object list. */
   panelObject: string | undefined
   tooling: boolean
@@ -91,6 +93,7 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
   const { selected, selectedSummary, handleOrgError, reportOrgError, markAuthError, reportApiUsage, takeLaunchQuery } = useOrgs()
   const editor = useRef<EditorHandle | null>(null)
   const [selection, setSelection] = useState<Selection>()
+  const [firstLine, setFirstLine] = useState('')
   const [panelObject, setPanelObject] = useState<string>()
   const [tooling, setToolingState] = useState(false)
   const [queryAll, setQueryAllState] = useState(false)
@@ -111,6 +114,7 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
   /** Parses the text into the selection; with `switchPanel`, also shows the FROM object on the left. */
   const applyText = useCallback((text: string, switchPanel = true) => {
     const query = parseSoql(text)
+    setFirstLine(text.trimStart().split('\n', 1)[0])
     if (!text.trim()) {
       setSelection(undefined)
       if (switchPanel) setPanelObject(undefined)
@@ -241,6 +245,7 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
     () => ({
       names,
       selection,
+      firstLine,
       panelObject,
       tooling,
       queryAll,
@@ -272,7 +277,7 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
       },
       run,
     }),
-    [names, selection, panelObject, tooling, queryAll, history, applyText, setText, edit, run],
+    [names, selection, firstLine, panelObject, tooling, queryAll, history, applyText, setText, edit, run],
   )
   const loadNext = useCallback(() => {
     const current = result

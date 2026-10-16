@@ -7,19 +7,38 @@
   min-height: 0;
 }
 
-.left {
-  flex: 1 1 280px;
-  max-width: 360px;
-  /* The width must not follow the content (such as long object names). */
-  min-width: 0;
+.left,
+.leftClosed {
   display: flex;
   min-height: 0;
   height: calc(100vh - var(--header-height) - 2 * var(--space-2));
 }
 
-.left > * {
+.left {
+  flex: 1 1 280px;
+  max-width: 360px;
+  /* The width must not follow the content (such as long object names). */
+  min-width: 0;
+}
+
+.leftClosed {
+  flex: 0 0 36px;
+}
+
+.fill {
   flex: 1;
   min-width: 0;
+  display: flex;
+}
+
+.fill > * {
+  flex: 1;
+  min-width: 0;
+}
+
+.fill[hidden],
+.top[hidden] {
+  display: none;
 }
 
 .right {
@@ -33,16 +52,77 @@
 
 .top {
   display: flex;
-  flex-wrap: wrap;
   gap: var(--space-2);
   height: 300px;
   flex: none;
 }
 
 .top > :first-child {
-  flex: 999 1 420px;
+  flex: 1;
+  min-width: 0;
 }
 
-.top > :last-child {
-  flex: 1 1 240px;
+.top > section:last-child {
+  flex: 0 0 260px;
+  min-width: 0;
+}
+
+.closedEditor {
+  flex: none;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+
+.firstLine {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  color: var(--color-muted);
+}
+
+/* The open and close button sits on the border between the editor and the results. */
+.divider {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  height: 0;
+  position: relative;
+  z-index: 2;
+}
+
+.divider > button {
+  position: absolute;
+  top: calc(-1 * var(--space-2) / 2 - 13px);
+  background: var(--color-panel);
+  font-size: 11px;
+}
+
+.strip {
+  flex: 0 0 36px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: var(--space-3) 0;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: var(--color-panel);
+  color: var(--color-muted);
+  cursor: pointer;
+  writing-mode: vertical-rl;
+}
+
+.strip:hover {
+  color: var(--color-ink);
+  background: var(--color-panel-muted);
+}
+
+.stripText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
 }
