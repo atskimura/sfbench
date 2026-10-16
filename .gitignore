@@ -25,3 +25,4 @@ dist-ssr
 
 # Local state of `npm run dev:server`
 .sfbench-dev
+*.tsbuildinfo

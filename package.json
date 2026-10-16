@@ -12,20 +12,25 @@
     "dist"
   ],
   "engines": {
-    "node": ">=22.12"
+    "node": "^22.21.0 || >=24.5.0"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "^22.21.0 || >=24.5.0",
+      "onFail": "warn"
+    }
   },
   "scripts": {
     "dev:web": "vite",
-    "dev:server": "node --watch src/server/cli.ts --dev",
+    "dev:server": "node --use-env-proxy --watch src/server/cli.ts --dev",
     "typecheck": "tsc -b",
     "lint": "oxlint",
     "test": "vitest run --passWithNoTests",
-    "build:web": "vite build",
-    "build:server": "tsc -p tsconfig.server.json",
-    "build": "npm run typecheck && npm run build:web && npm run build:server"
+    "build": "tsc -b && vite build"
   },
   "devDependencies": {
-    "@types/node": "^24.13.3",
+    "@types/node": "^22.20.5",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
