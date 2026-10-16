@@ -88,6 +88,7 @@ export const en = {
   filterRows: 'Filter loaded rows',
   loadMore: (n: number) => `Load the next ${n.toLocaleString()}`,
   loadingMore: 'Loading more…',
+  loadMoreFailed: 'Could not load more records.',
   openChildRecords: 'Show these child records',
   childRecordsTitle: (relationship: string, row: number) => `${relationship} of row ${row}`,
   childFirstPageOnly: 'First page only',

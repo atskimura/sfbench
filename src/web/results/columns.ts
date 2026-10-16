@@ -5,8 +5,6 @@
 
 export type SObjectRecord = Record<string, unknown>
 
-/** One page of a query result holds up to 2000 records. */
-export const PAGE_SIZE = 2000
 
 /** A child relationship value: a subquery's records. */
 export type ChildRecords = { totalSize: number; done?: boolean; records: SObjectRecord[] }
@@ -42,8 +40,9 @@ function keysOf(record: SObjectRecord, prefix: string[], out: Column[]): void {
  * column that turns out to be a parent relationship (null on the earlier
  * pages, a record now) is replaced by the columns of that record.
  */
-export function addColumns(columns: readonly Column[], records: readonly SObjectRecord[]): Column[] {
+export function addColumns(columns: readonly Column[], records: readonly SObjectRecord[]): readonly Column[] {
   const result = [...columns]
+  let changed = false
   const keys = new Set(result.map((c) => c.key))
   for (const record of records) {
     const found: Column[] = []
@@ -52,13 +51,17 @@ export function addColumns(columns: readonly Column[], records: readonly SObject
       if (keys.has(column.key)) {
         if (column.kind === 'child') {
           const i = result.findIndex((c) => c.key === column.key)
-          if (result[i].kind !== 'child') result[i] = column
+          if (result[i].kind !== 'child') {
+            result[i] = column
+            changed = true
+          }
         }
         continue
       }
       // A null parent relationship whose fields are already columns.
       if (result.some((c) => c.key.startsWith(`${column.key}.`))) continue
       keys.add(column.key)
+      changed = true
       // A placeholder for this parent relationship (all null so far)?
       const parentIndex = column.path
         .slice(0, -1)
@@ -73,7 +76,8 @@ export function addColumns(columns: readonly Column[], records: readonly SObject
       result.splice(insertionIndex(result, column.path), 0, column)
     }
   }
-  return result
+  // The same array when nothing was added, so that callers can tell.
+  return changed ? result : columns
 }
 
 /** After the last column sharing the longest parent path with `path`, or at the end. */
@@ -110,10 +114,15 @@ const SAMPLE_ROWS = 200
 const MIN_WIDTH = 4
 const MAX_WIDTH = 48
 
-/** How wide text looks in `ch`: East Asian wide characters count as two. */
-function textWidth(text: string): number {
+const WIDE = /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]/u
+
+/** How wide text looks in `ch` (East Asian wide characters count as two), counted up to `limit`. */
+function textWidth(text: string, limit: number): number {
   let width = 0
-  for (const c of text) width += /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/u.test(c) ? 2 : 1
+  for (const c of text) {
+    width += WIDE.test(c) ? 2 : 1
+    if (width >= limit) return limit
+  }
   return width
 }
 
@@ -122,8 +131,11 @@ function textWidth(text: string): number {
  * fixed once decided, so that they do not change as rows scroll in and out.
  */
 export function columnWidth(column: Column, records: readonly SObjectRecord[]): number {
-  let width = textWidth(column.key)
-  for (const record of records.slice(0, SAMPLE_ROWS)) width = Math.max(width, textWidth(cellText(cellValue(record, column))))
+  let width = textWidth(column.key, MAX_WIDTH)
+  for (const record of records.slice(0, SAMPLE_ROWS)) {
+    if (width >= MAX_WIDTH) break
+    width = Math.max(width, textWidth(cellText(cellValue(record, column)), MAX_WIDTH))
+  }
   return Math.min(Math.max(width, MIN_WIDTH), MAX_WIDTH)
 }
 

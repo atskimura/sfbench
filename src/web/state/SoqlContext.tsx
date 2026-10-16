@@ -64,11 +64,15 @@ export type QueryResult =
       state: 'done'
       /** The records loaded so far. Later pages are pushed onto this array, not copied (docs/web.md). */
       records: SObjectRecord[]
-      columns: Column[]
+      columns: readonly Column[]
       totalSize: number
       /** Set while more pages remain. */
       nextRecordsUrl: string | undefined
       loadingNext: boolean
+      /** The last load of the next page failed; it loads again only when asked (no automatic retries). */
+      nextFailed: boolean
+      /** Records in the first page: Salesforce sends smaller pages for wide rows or subqueries. */
+      pageSize: number
       /** The org the query ran on (the result stays with it). */
       username: string
       /** The FROM object, for display and the CSV file name. */
@@ -81,8 +85,11 @@ export type QueryResult =
 
 type ResultState = {
   result: QueryResult
-  /** Loads the next page of the result, unless one is loading or none remains. */
-  loadNext: () => void
+  /**
+   * Loads the next page of the result, unless one is loading or none remains.
+   * After a failure, only `retry` (a button) loads it again.
+   */
+  loadNext: (retry?: boolean) => void
 }
 
 const SoqlContext = createContext<SoqlState | undefined>(undefined)
@@ -191,6 +198,8 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
           totalSize: response.totalSize,
           nextRecordsUrl: response.done ? undefined : response.nextRecordsUrl,
           loadingNext: false,
+          nextFailed: false,
+          pageSize: Math.max(response.records.length, 1),
           username: selected,
           // Parsed now, not from the 300 ms debounced selection (docs/web.md).
           object: parseSoql(soql)?.sObject ?? fromObjectOf(soql),
@@ -279,14 +288,15 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
     }),
     [names, selection, firstLine, panelObject, tooling, queryAll, history, applyText, setText, edit, run],
   )
-  const loadNext = useCallback(() => {
+  const loadNext = useCallback((retry = false) => {
     const current = result
     if (current.state !== 'done' || !current.nextRecordsUrl || current.loadingNext) return
+    if (current.nextFailed && !retry) return
     if (nextInFlight.current === current.nextRecordsUrl) return
     nextInFlight.current = current.nextRecordsUrl
     const generation = runGeneration.current
     const { username, records, nextRecordsUrl } = current
-    setResult({ ...current, loadingNext: true })
+    setResult({ ...current, loadingNext: true, nextFailed: false })
     api.nextPage(username, nextRecordsUrl, runAbort.current?.signal).then(
       (page) => {
         nextInFlight.current = undefined
@@ -307,7 +317,7 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
       (e: unknown) => {
         nextInFlight.current = undefined
         if (generation !== runGeneration.current) return
-        setResult((prev) => (prev.state === 'done' && prev.records === records ? { ...prev, loadingNext: false } : prev))
+        setResult((prev) => (prev.state === 'done' && prev.records === records ? { ...prev, loadingNext: false, nextFailed: true } : prev))
         reportOrgError(username, e)
       },
     )

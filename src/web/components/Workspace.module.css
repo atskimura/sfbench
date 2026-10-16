@@ -96,9 +96,10 @@
 
 .divider > button {
   position: absolute;
-  top: calc(-1 * var(--space-2) / 2 - 13px);
+  /* Centered on the gap between the editor and the results. */
+  top: calc(-1 * var(--space-2) / 2);
+  transform: translateY(-50%);
   background: var(--color-panel);
-  font-size: 11px;
 }
 
 .strip {

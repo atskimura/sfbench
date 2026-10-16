@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
-import { addColumns, PAGE_SIZE, type SObjectRecord } from '../results/columns.ts'
+import { addColumns, type SObjectRecord } from '../results/columns.ts'
 import { csvFileName, toCsv } from '../results/csv.ts'
 import { useOrgs } from '../state/OrgContext.tsx'
 import type { QueryResult } from '../state/SoqlContext.tsx'
@@ -51,7 +51,7 @@ export function CsvExport({ result }: { result: Done }) {
   }
 
   const start = () => {
-    const remaining = result.totalSize - result.records.length
+    const remaining = result.nextRecordsUrl ? result.totalSize - result.records.length : 0
     if (remaining > CONFIRM_ABOVE) setState({ step: 'confirm', remaining })
     else void save()
   }
@@ -59,7 +59,8 @@ export function CsvExport({ result }: { result: Done }) {
   if (state.step === 'confirm') {
     return (
       <span className={styles.csvStatus} role="alert">
-        {t.csvConfirm(state.remaining, Math.ceil(state.remaining / PAGE_SIZE))}
+        {/* Pages are as large as the first one (Salesforce sends smaller ones for wide rows). */}
+        {t.csvConfirm(state.remaining, Math.ceil(state.remaining / result.pageSize))}
         <button type="button" className={panel.button} onClick={() => void save()}>
           {t.csvContinue}
         </button>
@@ -91,6 +92,9 @@ function download(text: string, fileName: string): void {
   const link = document.createElement('a')
   link.href = url
   link.download = fileName
+  // Some browsers start the download later and need the link in the document and the URL alive.
+  document.body.append(link)
   link.click()
-  setTimeout(() => URL.revokeObjectURL(url), 0)
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }

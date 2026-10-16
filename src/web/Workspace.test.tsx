@@ -179,11 +179,13 @@ describe('SOQL workspace', () => {
   })
 
   it('asks before loading more than 10,000 records for CSV', async () => {
-    mocked.query.mockResolvedValue({ totalSize: 20_000, done: false, nextRecordsUrl: '/next/1', records: [{ Id: '001', Name: 'Acme' }] })
+    const records = Array.from({ length: 2000 }, (_, i) => ({ Id: `00${i}`, Name: `Row ${i}` }))
+    mocked.query.mockResolvedValue({ totalSize: 20_000, done: false, nextRecordsUrl: '/next/1', records })
     mocked.nextPage.mockReturnValue(new Promise(() => {}))
     render(<App launch={{ org: 'demo', query: 'SELECT Id, Name FROM Account', run: true }} />)
     await userEvent.click(await screen.findByRole('button', { name: t.exportCsv }))
-    expect(screen.getByText(t.csvConfirm(19_999, 10), { exact: false })).toBeTruthy()
+    // The API calls are estimated from the size of the first page.
+    expect(screen.getByText(t.csvConfirm(18_000, 9), { exact: false })).toBeTruthy()
     await userEvent.click(screen.getByRole('button', { name: t.cancel }))
     expect(screen.getByRole('button', { name: t.exportCsv })).toBeTruthy()
   })
@@ -199,5 +201,27 @@ describe('SOQL workspace', () => {
     await userEvent.click(await screen.findByRole('button', { name: t.showEditor }))
     expect(screen.getByRole('button', { name: t.showRecent })).toBeTruthy()
     localStorage.clear()
+  })
+
+  it('does not load the next page again by itself after a failure, but retries by the button', async () => {
+    mocked.query.mockResolvedValue({ totalSize: 4, done: false, nextRecordsUrl: '/next/1', records: [{ Id: '001', Name: 'Row 0' }] })
+    mocked.nextPage.mockRejectedValueOnce(new Error('INVALID_QUERY_LOCATOR')).mockResolvedValueOnce({
+      totalSize: 4,
+      done: true,
+      records: [{ Id: '002', Name: 'Row 1' }],
+    })
+    render(<App launch={{ org: 'demo', query: 'SELECT Id, Name FROM Account', run: true }} />)
+    expect(await screen.findByText(t.loadMoreFailed)).toBeTruthy()
+    await new Promise((r) => setTimeout(r, 100))
+    expect(mocked.nextPage).toHaveBeenCalledTimes(1)
+    await userEvent.click(screen.getByRole('button', { name: t.loadMore(1) }))
+    expect(await screen.findByText('Row 1')).toBeTruthy()
+  })
+
+  it('shows nothing remaining for COUNT()', async () => {
+    mocked.query.mockResolvedValue({ totalSize: 50_000, done: true, records: [] })
+    render(<App launch={{ org: 'demo', query: 'SELECT COUNT() FROM Account', run: true }} />)
+    expect(await screen.findByText(t.recordCount(50_000))).toBeTruthy()
+    expect(screen.queryByText(t.loadedCount(0))).toBeNull()
   })
 })

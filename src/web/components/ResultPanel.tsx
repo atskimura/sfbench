@@ -2,7 +2,7 @@
 // child records of a subquery cell, and CSV export (docs/web.md "結果の表").
 import { useDeferredValue, useMemo, useState } from 'react'
 import { t } from '../i18n/i18n.ts'
-import { addColumns, cellText, cellValue, PAGE_SIZE, type ChildRecords, type Column, type SObjectRecord } from '../results/columns.ts'
+import { addColumns, cellText, cellValue, type ChildRecords, type Column, type SObjectRecord } from '../results/columns.ts'
 import { useOrgs } from '../state/OrgContext.tsx'
 import { useResult, type QueryResult } from '../state/SoqlContext.tsx'
 import { CopyCommand } from './CopyCommand.tsx'
@@ -38,6 +38,24 @@ export function ResultPanel() {
 }
 
 type Done = Extract<QueryResult, { state: 'done' }>
+
+type Scan = { filter: string; columns: readonly Column[]; count: number; matches: readonly number[] }
+/** Per result: the rows already checked, so that a new page checks only its own rows. */
+const scans = new WeakMap<readonly SObjectRecord[], Scan>()
+
+/** Indices of the loaded rows with a cell containing `filter` (lower case). */
+function matchingRows(records: readonly SObjectRecord[], columns: readonly Column[], loaded: number, filter: string): readonly number[] {
+  let scan = scans.get(records)
+  if (!scan || scan.filter !== filter || scan.columns !== columns || scan.count > loaded) {
+    scan = { filter, columns, count: 0, matches: [] }
+  }
+  const matches = [...scan.matches]
+  for (let i = scan.count; i < loaded; i++) {
+    if (columns.some((c) => cellText(cellValue(records[i], c)).toLowerCase().includes(filter))) matches.push(i)
+  }
+  scans.set(records, { filter, columns, count: loaded, matches })
+  return matches
+}
 type OpenChild = { row: number; column: Column; child: ChildRecords }
 
 function Records({ result }: { result: Done }) {
@@ -51,16 +69,13 @@ function Records({ result }: { result: Done }) {
   const { records, columns } = result
   const loaded = records.length
 
-  const rows = useMemo(() => {
-    if (!deferredFilter) return undefined
-    const matched: number[] = []
-    for (let i = 0; i < loaded; i++) {
-      if (columns.some((c) => cellText(cellValue(records[i], c)).toLowerCase().includes(deferredFilter))) matched.push(i)
-    }
-    return matched
-  }, [records, columns, loaded, deferredFilter])
+  const rows = useMemo(
+    () => (deferredFilter ? matchingRows(records, columns, loaded, deferredFilter) : undefined),
+    [records, columns, loaded, deferredFilter],
+  )
 
-  const remaining = result.totalSize - loaded
+  // COUNT() has a totalSize but no records: nothing remains without a next page.
+  const remaining = result.nextRecordsUrl ? result.totalSize - loaded : 0
   return (
     <>
       <div className={panel.header}>
@@ -94,14 +109,17 @@ function Records({ result }: { result: Done }) {
           onNearEnd={rows ? undefined : loadNext}
           label={t.results}
         />
-        {result.nextRecordsUrl && (rows || result.loadingNext) && (
+        {result.nextRecordsUrl && (rows || result.loadingNext || result.nextFailed) && (
           <div className={styles.more}>
             {result.loadingNext ? (
               <span className={panel.meta}>{t.loadingMore}</span>
             ) : (
-              <button type="button" className={panel.button} onClick={loadNext}>
-                {t.loadMore(Math.min(PAGE_SIZE, remaining))}
-              </button>
+              <>
+                {result.nextFailed && <span className={panel.meta}>{t.loadMoreFailed}</span>}
+                <button type="button" className={panel.button} onClick={() => loadNext(true)}>
+                  {t.loadMore(Math.min(result.pageSize, remaining))}
+                </button>
+              </>
             )}
           </div>
         )}

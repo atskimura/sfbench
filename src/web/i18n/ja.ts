@@ -82,6 +82,7 @@ export const ja: Messages = {
   filterRows: '読み込んだ行を絞り込む',
   loadMore: (n: number) => `次の ${n.toLocaleString()} 件を読み込む`,
   loadingMore: '続きを読み込んでいます…',
+  loadMoreFailed: '続きを読み込めませんでした。',
   openChildRecords: '子レコードを表示',
   childRecordsTitle: (relationship: string, row: number) => `${row} 行目の ${relationship}`,
   childFirstPageOnly: '最初のページのみ',
