@@ -20,7 +20,7 @@ lwc-soql-builder から引き継ぐ機能の一覧は [docs/parity.md](docs/pari
 そのため、サーバーのコードは型注釈を消すだけで動く構文（`erasableSyntaxOnly`）で書く。
 `enum` や `namespace`、コンストラクタ引数のプロパティ宣言は使えない。
 
-`dev:server` の状態は `~/.sfbench/` ではなく `.sfbench-dev/`（環境変数 `SFBENCH_HOME` で変えられる）に置き、手元で使っている sfbench と混ざらないようにする。
+`dev:server` は、普段は `~/.sfbench/` に置く状態（`server.json`、設定、最近のクエリ、ログなど）を、リポジトリのルート直下の `.sfbench-dev/` に置く。手元で常駐している sfbench と混ざらないようにするためである。置き場所は環境変数 `SFBENCH_HOME` で変えられる。
 画面は `http://localhost:5173/launch/dev` で開く。
 
 ## ディレクトリ
