@@ -21,7 +21,7 @@ sfbench の画面の構成と振る舞いを書く。
 
 - 上部に、エイリアスかユーザー名で絞り込む入力欄を置く。
 - 各行に、状態の印、エイリアス、種別、ユーザー名を表示する。今選んでいる組織は背景色で示す。
-- 種別は `sf org list` でわかる範囲（Production、Sandbox、Scratch、Dev Hub）で表示する。Developer Edition などは Production と区別できないので、Production と表示する。Production は誤操作しにくいよう赤系の色にする。
+- 種別は `sf org list` でわかる範囲で表示する。`orgEdition` があればその値（Developer Edition、Enterprise Edition など）を、なければ Production、Sandbox、Scratch、Dev Hub のいずれかを表示する。Sandbox と Scratch でない組織は、誤操作しにくいよう赤系の色にする。
 - Scratch には有効期限を表示する。
 - 状態の印は、未確認（まだ使っていない）、正常、認証エラーの3つである。一覧は接続を確かめずに表示し（`--skip-connection-status`）、使ったときの結果で印を変える。
 - 認証エラーになった組織は、印を灰色にし、再ログインのコマンド（`sf org login web -a <alias>`）をコピーボタン付きで表示する。

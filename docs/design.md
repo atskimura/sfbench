@@ -85,13 +85,18 @@ Windows では `sf` の実体が `sf.cmd` で、Node はシェルを通さない
 - アクセストークンを失効させたあとで `show-access-token` を呼ぶと、CLI がリフレッシュした新しいトークンを返す。
 - `sf api request rest` は REST API、Tooling API、describe のいずれも動き、`--include` で `Sforce-Limit-Info` ヘッダーも返す。1回の呼び出しに約3秒かかる。
 
-次は区切り1で確かめる。
+区切り1の初めに、同じ環境で次を確かめた。
 
-- `--skip-connection-status` を付けた `sf org list` が `instanceUrl` と組織の種別（`isSandbox`、`isScratch`、`isDevHub`）を含むこと。
-- `SF_TARGET_ORG` が `show-access-token`、`api request rest`、`org open` に効くこと。
-- `sf config get target-org --json` の出力の形。
-- `api request rest --file` の JSON の書式。
-- 認証エラー（リフレッシュトークンの失効など）のときに `show-access-token` が返すエラーの `name`。
+- `--skip-connection-status` を付けた `sf org list` は、`instanceUrl`、`isSandbox`、`isScratch`、`isDevHub` を含む。多くの組織では `orgEdition`（`Developer Edition`、`Enterprise Edition` など）も含むが、空の組織もある。組織が約90ある環境では、出力まで約9秒かかった。
+- `sf config get target-org --json` は、既定の組織が未設定だと `result[0]` に `value` を含まない。
+- `SF_TARGET_ORG` は `api request rest` と `show-access-token` に効く。
+- `api request rest --file` の JSON は `{ "url", "method", "header": [{ "key", "value" }], "body": { "mode": "raw", "raw" } }` の形で書く。ヘッダーを `{ "名前": "値" }` の形で書くとエラーになる。
+- `api request rest` は、HTTP のエラー（400 など）でも終了コード 1 で、標準出力にステータス行とボディを出す。
+- リフレッシュトークンが失効した組織では、`api request rest` は `name` が `Error`、`message` が「Unable to refresh session due to: ... expired access/refresh token」のエラーを返す。`show-access-token` はエラーにならず、保存済みの古いトークンを返す。
+
+次は未確認である。
+
+- `SF_TARGET_ORG` が `org open` に効くこと。
 - Windows で上の呼び出し方が動くこと。
 
 `sf org list --json` の出力には各組織の `accessToken` が含まれる。
@@ -121,7 +126,13 @@ API バージョンは、組織ごとに最初の呼び出しで `/services/data
 切り替えた組織は、10分経ったら次の呼び出しでもう一度 `fetch` を試す。
 サーバーは自動では止まらないので、一時的な失敗で遅い経路に移ったままにならないようにするためである。
 
-認証エラーと、それ以外の失敗の見分け方は、区切り1で実際のエラー出力を記録し、エラーの `name` の判定表として実装する。
+次のいずれかを認証エラーとみなす。
+エラーの `name` は汎用的な `Error` のことがあり、それだけでは判定できないからである。
+
+- `fetch` の経路で、トークンを取り直して再試行しても 401 が返った。失効した組織でも `show-access-token` は古いトークンを返すので、取り直しても 401 が続く。
+- `sf api request rest` が 401 を返した。
+- sf CLI のエラー文が、リフレッシュトークンの失効を示している（「Unable to refresh session」「expired access/refresh token」「invalid_grant」を含む）。
+
 認証エラーのときは経路を切り替えず、画面に再ログインのコマンド（`sf org login web -a <alias>`）を表示する。
 `sf api request rest` に切り替えても同じ認証情報を使うので、結果は変わらないからである。
 
