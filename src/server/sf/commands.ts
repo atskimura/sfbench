@@ -49,7 +49,11 @@ export function toOrgs(result: OrgListResult): Org[] {
       isExpired: Boolean(o.isExpired),
     })
   }
-  return orgs.sort((a, b) => (a.alias ?? a.username).localeCompare(b.alias ?? b.username))
+  // Orgs with an alias first (by alias), then the rest (by username): orgs
+  // without an alias are usually leftovers such as test users.
+  return orgs.sort((a, b) =>
+    a.alias && b.alias ? a.alias.localeCompare(b.alias) : a.alias ? -1 : b.alias ? 1 : a.username.localeCompare(b.username),
+  )
 }
 
 export async function listOrgs(cwd: string): Promise<Org[]> {

@@ -1,5 +1,8 @@
+import { readFileSync } from 'node:fs'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
+
+const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }
 
 // The web UI lives in src/web. In development, API calls go to the local
 // sfbench server started with `npm run dev:server` (see docs/design.md).
@@ -8,6 +11,9 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   root: 'src/web',
   plugins: [react()],
+  define: {
+    __SFBENCH_VERSION__: JSON.stringify(version),
+  },
   build: {
     outDir: '../../dist/web',
     emptyOutDir: true,

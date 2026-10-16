@@ -2,21 +2,48 @@
 :root {
   --color-bg: #f2f3f1;
   --color-panel: #ffffff;
+  --color-panel-muted: #f6f8f7;
   --color-ink: #1b2326;
   --color-muted: #5a666a;
   --color-line: #dce0dd;
   --color-header: #16232a;
+  --color-header-ink: #e8eef0;
+  --color-header-muted: #afc0c6;
+  --color-header-control: #1f313a;
+  --color-header-line: #3a4c55;
   --color-accent: #0a7468;
+  --color-accent-ink: #ffffff;
   --color-accent-soft: #e2f0ed;
   --color-link: #0b5fa5;
+  --color-ok: #4fd1bf;
+  --color-unknown: #c9d1d3;
+  --color-danger: #9b2c1f;
+  --color-danger-strong: #b3261e;
+  --color-danger-soft: #fdecea;
+  --color-danger-line: #f4c7c0;
+  --color-on-danger: #ffffff;
+  --color-badge-sandbox-bg: #e8f0fb;
+  --color-badge-sandbox: #1f4e8c;
+  --color-badge-scratch-bg: #f1ebfa;
+  --color-badge-scratch: #5b3a99;
+  --color-badge-neutral-bg: #e9ecea;
+  --color-badge-neutral: #4a5558;
+  --color-code-bg: #f2f4f3;
+  --color-scrim: rgb(14 24 28 / 45%);
+  --shadow-popover: 0 12px 32px rgb(15 30 36 / 22%);
 
   --font-sans: system-ui, -apple-system, 'Segoe UI', 'Hiragino Sans', 'Yu Gothic UI', sans-serif;
   --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --font-size: 13px;
+  --font-size-small: 12px;
 
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
+  --radius: 4px;
+  --radius-large: 8px;
+  --header-height: 48px;
 
   color-scheme: light;
 }
@@ -25,13 +52,31 @@
   :root {
     --color-bg: #141917;
     --color-panel: #1b2220;
+    --color-panel-muted: #222b28;
     --color-ink: #e4ebe8;
     --color-muted: #9aa6a1;
     --color-line: #2f3936;
     --color-header: #0e1517;
+    --color-header-ink: #e4ebe8;
+    --color-header-muted: #9aa6a1;
+    --color-header-control: #18252a;
+    --color-header-line: #2f3f45;
     --color-accent: #5cc4ae;
+    --color-accent-ink: #0e1517;
     --color-accent-soft: #1d3530;
     --color-link: #7fb4e8;
+    --color-danger: #f08a80;
+    --color-danger-strong: #c0392b;
+    --color-danger-soft: #3a1f1c;
+    --color-danger-line: #6b2f29;
+    --color-badge-sandbox-bg: #1d2b40;
+    --color-badge-sandbox: #9cc2f2;
+    --color-badge-scratch-bg: #2b2140;
+    --color-badge-scratch: #c7b2ee;
+    --color-badge-neutral-bg: #2a3230;
+    --color-badge-neutral: #b6c0bc;
+    --color-code-bg: #222b28;
+    --color-scrim: rgb(0 0 0 / 55%);
 
     color-scheme: dark;
   }
@@ -42,5 +87,31 @@ body {
   background: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: var(--font-size);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--color-link);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
