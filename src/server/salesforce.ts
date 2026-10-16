@@ -44,9 +44,31 @@ export type SalesforceResponse = {
   body: unknown
 }
 
+/** Salesforce did not answer in time. */
+export class SalesforceTimeoutError extends Error {
+  constructor() {
+    super('Salesforce did not respond in time.')
+    this.name = 'SalesforceTimeoutError'
+  }
+}
+
+/** The fetch transport failed before or while talking to Salesforce. */
+class FetchFailure extends Error {
+  readonly original: unknown
+  /** False when the request was never sent (for example, no access token). */
+  readonly mayHaveReachedSalesforce: boolean
+  constructor(message: string, cause: unknown, mayHaveReachedSalesforce: boolean) {
+    super(message)
+    this.name = 'FetchFailure'
+    this.original = cause
+    this.mayHaveReachedSalesforce = mayHaveReachedSalesforce
+  }
+}
+
 type Transport = 'fetch' | 'cli'
 
 const RETRY_FETCH_AFTER_MS = 10 * 60 * 1000
+const FETCH_TIMEOUT_MS = 120_000
 
 export type OrgClientOptions = {
   username: string
@@ -104,10 +126,13 @@ export class OrgClient {
       this.transport = 'fetch'
       return res
     } catch (e) {
-      if (e instanceof OrgAuthError || e instanceof SfNotFoundError) throw e
-      // The token could not be obtained, or the network failed. Try sf, and
-      // switch only if sf succeeds: when the network is down, sf fails too.
-      log.warn(`${this.username}: fetch failed (${(e as Error).message}); trying sf api request rest`)
+      if (!(e instanceof FetchFailure)) throw e
+      // Requests that change data are sent again only if nothing reached
+      // Salesforce yet (the token could not be obtained). After a network
+      // error, Salesforce may already have processed them.
+      if (e.mayHaveReachedSalesforce && req.method !== 'GET' && req.method !== 'HEAD') throw e.original
+      // Switch only if sf succeeds: when the network is down, sf fails too.
+      log.warn(`${this.username}: ${e.message}; trying sf api request rest`)
       const res = await this.sendWithCli(req)
       if (this.transport !== 'cli') log.info(`${this.username}: switched to sf api request rest`)
       this.transport = 'cli'
@@ -117,12 +142,12 @@ export class OrgClient {
   }
 
   private async sendWithFetch(req: SalesforceRequest): Promise<RawResponse> {
-    let token = await this.getToken(false)
+    let token = await this.getTokenForFetch(false)
     let res = await this.fetchOnce(req, token)
     if (res.status === 401) {
       // The access token expired. sf refreshes it; if the refresh token is no
       // longer valid, sf returns the same stale token and the retry fails too.
-      token = await this.getToken(true)
+      token = await this.getTokenForFetch(true)
       res = await this.fetchOnce(req, token)
       if (res.status === 401) {
         this.token = undefined
@@ -130,6 +155,15 @@ export class OrgClient {
       }
     }
     return res
+  }
+
+  private async getTokenForFetch(refresh: boolean): Promise<string> {
+    try {
+      return await this.getToken(refresh)
+    } catch (e) {
+      if (e instanceof OrgAuthError || e instanceof SfNotFoundError) throw e
+      throw new FetchFailure(`could not get an access token (${(e as Error).message})`, e, false)
+    }
   }
 
   private sendWithCli(req: SalesforceRequest): Promise<RawResponse> {
@@ -153,20 +187,26 @@ export class OrgClient {
   }
 
   private async fetchOnce(req: SalesforceRequest, token: string): Promise<RawResponse> {
-    const res = await fetch(new URL(req.path, this.instanceUrl), {
-      method: req.method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-        ...(req.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-        ...req.headers,
-      },
-      body: req.body,
-      redirect: 'manual',
-    })
-    const headers: Record<string, string> = {}
-    res.headers.forEach((value, key) => (headers[key] = value))
-    return { status: res.status, headers, body: await res.text() }
+    try {
+      const res = await fetch(new URL(req.path, this.instanceUrl), {
+        method: req.method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+          ...(req.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+          ...req.headers,
+        },
+        body: req.body,
+        redirect: 'manual',
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      })
+      const headers: Record<string, string> = {}
+      res.headers.forEach((value, key) => (headers[key] = value))
+      return { status: res.status, headers, body: await res.text() }
+    } catch (e) {
+      if ((e as Error).name === 'TimeoutError') throw new SalesforceTimeoutError()
+      throw new FetchFailure(`fetch failed (${(e as Error).message})`, e, true)
+    }
   }
 
   private recordApiUsage(header: string | undefined): void {

@@ -1,6 +1,6 @@
 // The local HTTP server: the web UI's static files and the /api endpoints.
 // See docs/design.md ("ローカルサーバー").
-import { randomBytes } from 'node:crypto'
+import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { extname, join, relative, sep } from 'node:path'
@@ -18,7 +18,7 @@ import type {
 import { log } from '../log.ts'
 import type { OrgRegistry } from '../orgs.ts'
 import type { Paths } from '../paths.ts'
-import { InvalidPathError, OrgClient, SalesforceError } from '../salesforce.ts'
+import { InvalidPathError, OrgClient, SalesforceError, SalesforceTimeoutError } from '../salesforce.ts'
 import { openRecord } from '../sf/commands.ts'
 import { OrgAuthError, SfCliError, SfNotFoundError } from '../sf/errors.ts'
 import { addHistory, loadHistory, loadSettings, saveSettings } from '../store.ts'
@@ -142,7 +142,7 @@ export class App {
         return
       }
       if (path === '/api/launch' && method === 'POST') {
-        sendJson(res, 200, await this.createLaunch(await readJsonBody(req)))
+        sendJson(res, 200, await this.createLaunch(await readJsonObject(req)))
         return
       }
       if (path === '/api/shutdown' && method === 'POST') {
@@ -156,7 +156,7 @@ export class App {
     if (!isSameOriginRequest(req.headers)) throw new HttpError(403, 'UNAUTHORIZED', 'Cross-origin request')
 
     if (path === '/api/session' && method === 'POST') {
-      sendJson(res, 200, this.exchangeCode(await readJsonBody(req)))
+      sendJson(res, 200, this.exchangeCode(await readJsonObject(req)))
       return
     }
 
@@ -172,7 +172,7 @@ export class App {
         return
       }
       if (method === 'PUT') {
-        const body = (await readJsonBody(req)) as Partial<Settings>
+        const body = (await readJsonObject(req)) as Partial<Settings>
         const settings = { ...loadSettings(file) }
         if (typeof body.omitNamespace === 'boolean') settings.omitNamespace = body.omitNamespace
         saveSettings(file, settings)
@@ -189,7 +189,13 @@ export class App {
 
     const m = /^\/api\/orgs\/([^/]+)\/(.+)$/.exec(path)
     if (m) {
-      await this.handleOrgApi(req, res, url, decodeURIComponent(m[1]), m[2], method)
+      let username: string
+      try {
+        username = decodeURIComponent(m[1])
+      } catch {
+        throw new HttpError(400, 'BAD_REQUEST', 'Invalid org in the path')
+      }
+      await this.handleOrgApi(req, res, url, username, m[2], method)
       return
     }
     throw new HttpError(404, 'NOT_FOUND', 'Not found')
@@ -246,7 +252,7 @@ export class App {
     }
 
     if (rest === 'query' && method === 'POST') {
-      const q = (await readJsonBody(req)) as Partial<QueryRequest>
+      const q = (await readJsonObject(req)) as Partial<QueryRequest>
       if (typeof q.soql !== 'string' || !q.soql.trim()) throw new HttpError(400, 'BAD_REQUEST', 'soql is required')
       const tooling = q.tooling === true
       const queryAll = q.queryAll === true
@@ -269,7 +275,7 @@ export class App {
     }
 
     if (rest === 'query/next' && method === 'POST') {
-      const q = (await readJsonBody(req)) as Partial<NextPageRequest>
+      const q = (await readJsonObject(req)) as Partial<NextPageRequest>
       if (typeof q.nextRecordsUrl !== 'string') throw new HttpError(400, 'BAD_REQUEST', 'nextRecordsUrl is required')
       const result = await client.request({ method: 'GET', path: q.nextRecordsUrl, headers: await this.queryHeaders(client) })
       sendJson(res, 200, withUsage(result.body as object))
@@ -277,7 +283,7 @@ export class App {
     }
 
     if (rest === 'open' && method === 'POST') {
-      const { recordId } = (await readJsonBody(req)) as { recordId?: unknown }
+      const { recordId } = (await readJsonObject(req)) as { recordId?: unknown }
       if (typeof recordId !== 'string' || !/^[a-zA-Z0-9]{15}(?:[a-zA-Z0-9]{3})?$/.test(recordId)) {
         throw new HttpError(400, 'BAD_REQUEST', 'A 15 or 18 character record ID is required')
       }
@@ -289,16 +295,26 @@ export class App {
     throw new HttpError(404, 'NOT_FOUND', 'Not found')
   }
 
-  /** The namespace header goes on queries only, as in lwc-soql-builder. */
+  /**
+   * The namespace header goes on queries only, as in lwc-soql-builder. If the
+   * namespace cannot be read (for example, the user cannot query
+   * Organization), the query still runs, without the header.
+   */
   private async queryHeaders(client: OrgClient): Promise<Record<string, string>> {
     if (!loadSettings(this.options.paths.settings).omitNamespace) return {}
-    const { namespacePrefix } = await this.options.orgs.summary(client)
-    return namespacePrefix ? { 'Sforce-Call-Options': `defaultNamespace=${namespacePrefix}` } : {}
+    try {
+      const { namespacePrefix } = await this.options.orgs.summary(client)
+      return namespacePrefix ? { 'Sforce-Call-Options': `defaultNamespace=${namespacePrefix}` } : {}
+    } catch (e) {
+      if (e instanceof OrgAuthError || e instanceof SfNotFoundError) throw e
+      log.warn(`${client.username}: could not read the namespace; querying without it`)
+      return {}
+    }
   }
 
   private requireAdmin(req: IncomingMessage): void {
     const token = req.headers['x-sfbench-admin']
-    if (!isAdminRequestOrigin(req.headers) || typeof token !== 'string' || token !== this.options.adminToken) {
+    if (!isAdminRequestOrigin(req.headers) || typeof token !== 'string' || !sameSecret(token, this.options.adminToken)) {
       throw new HttpError(401, 'UNAUTHORIZED', 'Admin token required')
     }
   }
@@ -354,6 +370,8 @@ export class App {
     } else if (e instanceof SalesforceError) {
       const status = e.status >= 400 && e.status < 500 ? e.status : 502
       sendJson(res, status, { error: { code: 'SALESFORCE_ERROR', message: e.message, status: e.status, details: e.body } })
+    } else if (e instanceof SalesforceTimeoutError) {
+      sendJson(res, 504, errorBody('SALESFORCE_ERROR', e.message))
     } else if (e instanceof InvalidPathError) {
       sendJson(res, 400, errorBody('BAD_REQUEST', e.message))
     } else if (e instanceof SfNotFoundError) {
@@ -361,8 +379,6 @@ export class App {
     } else if (e instanceof SfCliError) {
       log.warn(`sf error: ${e.message}`)
       sendJson(res, 502, errorBody('SF_CLI_ERROR', e.message))
-    } else if (e instanceof SyntaxError) {
-      sendJson(res, 400, errorBody('BAD_REQUEST', 'Invalid JSON'))
     } else {
       log.error(`error: ${(e as Error).stack ?? String(e)}`)
       sendJson(res, 500, errorBody('INTERNAL_ERROR', 'Internal error'))
@@ -398,6 +414,13 @@ export class App {
   }
 }
 
+/** Constant-time comparison, so that response times do not reveal the token. */
+function sameSecret(a: string, b: string): boolean {
+  const ba = Buffer.from(a)
+  const bb = Buffer.from(b)
+  return ba.length === bb.length && timingSafeEqual(ba, bb)
+}
+
 function errorBody(code: ApiErrorCode, message: string): ApiError {
   return { error: { code, message } }
 }
@@ -412,7 +435,8 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(data)
 }
 
-async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+/** Reads a JSON object body. Anything else (empty, null, an array, a string) is a 400. */
+async function readJsonObject(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = []
   let size = 0
   for await (const chunk of req) {
@@ -421,5 +445,14 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
     chunks.push(chunk as Buffer)
   }
   const text = Buffer.concat(chunks).toString('utf8')
-  return text ? JSON.parse(text) : undefined
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch {
+    throw new HttpError(400, 'BAD_REQUEST', 'The request body must be a JSON object')
+  }
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new HttpError(400, 'BAD_REQUEST', 'The request body must be a JSON object')
+  }
+  return value as Record<string, unknown>
 }

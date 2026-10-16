@@ -77,7 +77,8 @@ async function fetchSummary(client: OrgClient): Promise<OrgSummary> {
   const version = await client.version()
   const soql = 'SELECT OrganizationType, IsSandbox, NamespacePrefix FROM Organization'
   const res = await client.request({ method: 'GET', path: `/services/data/v${version}/query?q=${encodeURIComponent(soql)}` })
-  const record = (res.body as { records: Record<string, unknown>[] }).records[0]
+  const record = (res.body as { records?: Record<string, unknown>[] } | undefined)?.records?.[0]
+  if (!record) throw new Error('The Organization query returned no record')
   return {
     organizationType: String(record.OrganizationType ?? ''),
     isSandbox: Boolean(record.IsSandbox),

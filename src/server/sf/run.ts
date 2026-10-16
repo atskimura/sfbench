@@ -80,10 +80,12 @@ export async function runSf(args: readonly string[], options: SfRunOptions): Pro
   if (options.targetOrg) env.SF_TARGET_ORG = options.targetOrg
   if (isWindows) env.NoDefaultCurrentDirectoryInExePath = '1'
 
+  const label = `sf ${args.slice(0, 2).join(' ')}`
   await acquire()
   try {
     return await new Promise<SfRunResult>((resolve, reject) => {
-      execFile(
+      let timedOut = false
+      const child = execFile(
         // With a shell, Node joins the command line without quoting, so quote the path.
         isWindows ? `"${file}"` : file,
         args,
@@ -92,28 +94,41 @@ export async function runSf(args: readonly string[], options: SfRunOptions): Pro
           env,
           shell: isWindows,
           windowsHide: true,
-          timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-          killSignal: 'SIGKILL',
           maxBuffer: MAX_OUTPUT_BYTES,
           encoding: 'utf8',
         },
         (error, stdout, stderr) => {
-          if (error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
-            reject(new SfNotFoundError())
-            return
-          }
-          if (error && error.killed) {
-            reject(new SfCliError(`sf ${args[0]} ${args[1] ?? ''} timed out`))
-            return
-          }
-          const exitCode = typeof error?.code === 'number' ? error.code : error ? 1 : 0
-          resolve({ stdout, stderr, exitCode })
+          clearTimeout(timer)
+          const code = (error as NodeJS.ErrnoException | null)?.code
+          if (code === 'ENOENT') reject(new SfNotFoundError())
+          else if (timedOut) reject(new SfCliError(`${label} timed out`))
+          else if (code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') reject(new SfCliError(`${label} printed too much output`))
+          else resolve({ stdout, stderr, exitCode: typeof error?.code === 'number' ? error.code : error ? 1 : 0 })
         },
       )
+      const timer = setTimeout(() => {
+        timedOut = true
+        killTree(child.pid, () => child.kill('SIGKILL'))
+      }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS)
     })
   } finally {
     release()
   }
+}
+
+/**
+ * On Windows, sf runs under cmd.exe, so killing the child only stops cmd.exe
+ * and leaves sf running. taskkill /T stops the whole process tree.
+ */
+function killTree(pid: number | undefined, fallback: () => void): void {
+  if (!isWindows || pid === undefined) {
+    fallback()
+    return
+  }
+  const taskkill = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe')
+  execFile(taskkill, ['/T', '/F', '/PID', String(pid)], { windowsHide: true }, (error) => {
+    if (error) fallback()
+  })
 }
 
 type SfJson<T> = { status?: number; result?: T; name?: string; message?: string }
@@ -128,15 +143,24 @@ export async function runSfJson<T>(args: readonly string[], options: SfRunOption
     json = undefined
   }
   if (json && json.status === 0 && exitCode === 0 && json.result !== undefined) return json.result
-  if (json?.message) throw new SfCliError(json.message, json.name)
+  if (json?.message) throw new SfCliError(redactUrls(json.message), json.name)
   throw new SfCliError(lastErrorLine(stderr) ?? `sf ${args.join(' ')} failed with exit code ${exitCode}`)
 }
 
-/** Extracts the error message from sf's human-readable stderr ("Error (Name): message"). */
+/**
+ * Extracts the error message from sf's human-readable stderr ("Error (Name): message").
+ * URLs are removed: sf can print URLs that carry a session (such as frontdoor
+ * URLs), and these messages reach the log and the browser.
+ */
 export function lastErrorLine(stderr: string): string | undefined {
   const lines = stderr.split(/\r?\n/).map((l) => l.trim())
   const errorLine = lines.find((l) => /^Error \(.+?\): /.test(l))
-  if (errorLine) return errorLine.replace(/^Error \(.+?\): /, '')
+  if (errorLine) return redactUrls(errorLine.replace(/^Error \(.+?\): /, ''))
   const meaningful = lines.filter((l) => l && !l.startsWith('›'))
-  return meaningful.at(-1)
+  const last = meaningful.at(-1)
+  return last === undefined ? undefined : redactUrls(last)
+}
+
+export function redactUrls(text: string): string {
+  return text.replace(/https?:\/\/\S+/g, '<URL>')
 }

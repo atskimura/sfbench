@@ -1,7 +1,7 @@
 // The sf commands sfbench uses, other than `sf api request rest` (apiRequest.ts).
 import type { Org, OrgKind } from '../../shared/api.ts'
 import { SfCliError } from './errors.ts'
-import { runSf, runSfJson } from './run.ts'
+import { lastErrorLine, runSf, runSfJson } from './run.ts'
 
 type RawOrg = {
   username?: string
@@ -67,8 +67,12 @@ export async function listOrgs(cwd: string): Promise<Org[]> {
  * their own default org.
  */
 export async function getDefaultOrg(cwd: string): Promise<string | undefined> {
-  const result = await runSfJson<{ value?: unknown }[]>(['config', 'get', 'target-org'], { cwd })
-  const value = result[0]?.value
+  return parseDefaultOrg(await runSfJson<unknown>(['config', 'get', 'target-org'], { cwd }))
+}
+
+/** Reads the `result` of `sf config get target-org --json`. There is no `value` when no default org is set. */
+export function parseDefaultOrg(result: unknown): string | undefined {
+  const value = Array.isArray(result) ? (result[0] as { value?: unknown } | undefined)?.value : undefined
   return typeof value === 'string' && value ? value : undefined
 }
 
@@ -93,5 +97,6 @@ export async function getAccessToken(username: string, cwd: string): Promise<str
 export async function openRecord(username: string, recordId: string, cwd: string): Promise<void> {
   if (!/^[a-zA-Z0-9]{15}(?:[a-zA-Z0-9]{3})?$/.test(recordId)) throw new SfCliError('Invalid record ID')
   const { exitCode, stderr } = await runSf(['org', 'open', '--path', `/${recordId}`], { targetOrg: username, cwd })
-  if (exitCode !== 0) throw new SfCliError(stderr.trim() || 'sf org open failed')
+  // stderr can contain the frontdoor URL, which carries a session; lastErrorLine removes URLs.
+  if (exitCode !== 0) throw new SfCliError(`sf org open failed: ${lastErrorLine(stderr) ?? 'unknown error'}`)
 }
