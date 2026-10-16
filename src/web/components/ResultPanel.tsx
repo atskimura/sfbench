@@ -67,7 +67,7 @@ function Records({ result }: { result: Done }) {
   const [selected, setSelected] = useState<CellRef>()
   const [child, setChild] = useState<OpenChild>()
   const { records, columns } = result
-  const loaded = records.length
+  const { loaded } = result
 
   const rows = useMemo(
     () => (deferredFilter ? matchingRows(records, columns, loaded, deferredFilter) : undefined),
@@ -75,12 +75,14 @@ function Records({ result }: { result: Done }) {
   )
 
   // COUNT() has a totalSize but no records: nothing remains without a next page.
-  const remaining = result.nextRecordsUrl ? result.totalSize - loaded : 0
+  // totalSize can fall behind when records are added after the query ran.
+  const remaining = result.nextRecordsUrl ? Math.max(result.totalSize - loaded, 0) : 0
+  const nextCount = remaining > 0 ? Math.min(result.pageSize, remaining) : result.pageSize
   return (
     <>
       <div className={panel.header}>
         <span className={styles.count}>{t.recordCount(result.totalSize)}</span>
-        {remaining > 0 && <span className={panel.meta}>{t.loadedCount(loaded)}</span>}
+        {result.nextRecordsUrl && <span className={panel.meta}>{t.loadedCount(loaded)}</span>}
         <span className={panel.meta}>
           {[result.object, t.elapsed((result.elapsedMs / 1000).toFixed(2)), timeFormat.format(result.executedAt)].filter(Boolean).join(' · ')}
         </span>
@@ -99,6 +101,7 @@ function Records({ result }: { result: Done }) {
       <div className={styles.body}>
         <ResultTable
           records={records}
+          loaded={loaded}
           rows={rows}
           columns={columns}
           instanceUrl={instanceUrl}
@@ -113,11 +116,13 @@ function Records({ result }: { result: Done }) {
           <div className={styles.more}>
             {result.loadingNext ? (
               <span className={panel.meta}>{t.loadingMore}</span>
+            ) : result.nextFailed === 'rerun' ? (
+              <span className={panel.meta}>{t.locatorExpired}</span>
             ) : (
               <>
                 {result.nextFailed && <span className={panel.meta}>{t.loadMoreFailed}</span>}
                 <button type="button" className={panel.button} onClick={() => loadNext(true)}>
-                  {t.loadMore(Math.min(result.pageSize, remaining))}
+                  {t.loadMore(nextCount)}
                 </button>
               </>
             )}

@@ -24,7 +24,8 @@ export function CsvExport({ result }: { result: Done }) {
 
   const save = async () => {
     // What the table has loaded now; later pages it loads meanwhile are fetched here again.
-    const loaded = result.records.length
+    // `loaded` and nextRecordsUrl describe the same point; records may already hold a newer page.
+    const { loaded } = result
     const base = result.records.slice(0, loaded)
     let url = result.nextRecordsUrl
     const extra: SObjectRecord[] = []
@@ -51,7 +52,7 @@ export function CsvExport({ result }: { result: Done }) {
   }
 
   const start = () => {
-    const remaining = result.nextRecordsUrl ? result.totalSize - result.records.length : 0
+    const remaining = result.nextRecordsUrl ? Math.max(result.totalSize - result.loaded, 0) : 0
     if (remaining > CONFIRM_ABOVE) setState({ step: 'confirm', remaining })
     else void save()
   }

@@ -89,6 +89,7 @@ export const en = {
   loadMore: (n: number) => `Load the next ${n.toLocaleString()}`,
   loadingMore: 'Loading more…',
   loadMoreFailed: 'Could not load more records.',
+  locatorExpired: 'The rest of this result is no longer available (it expires after a while). Run the query again.',
   openChildRecords: 'Show these child records',
   childRecordsTitle: (relationship: string, row: number) => `${relationship} of row ${row}`,
   childFirstPageOnly: 'First page only',

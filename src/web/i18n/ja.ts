@@ -83,6 +83,7 @@ export const ja: Messages = {
   loadMore: (n: number) => `次の ${n.toLocaleString()} 件を読み込む`,
   loadingMore: '続きを読み込んでいます…',
   loadMoreFailed: '続きを読み込めませんでした。',
+  locatorExpired: 'この結果の続きは、時間が経って取得できなくなりました。もう一度実行してください。',
   openChildRecords: '子レコードを表示',
   childRecordsTitle: (relationship: string, row: number) => `${row} 行目の ${relationship}`,
   childFirstPageOnly: '最初のページのみ',

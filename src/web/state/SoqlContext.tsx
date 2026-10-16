@@ -64,13 +64,23 @@ export type QueryResult =
       state: 'done'
       /** The records loaded so far. Later pages are pushed onto this array, not copied (docs/web.md). */
       records: SObjectRecord[]
+      /**
+       * How many of `records` this state covers. The array grows just before
+       * the state that includes the new page; read this, not records.length,
+       * together with nextRecordsUrl.
+       */
+      loaded: number
       columns: readonly Column[]
       totalSize: number
       /** Set while more pages remain. */
       nextRecordsUrl: string | undefined
       loadingNext: boolean
-      /** The last load of the next page failed; it loads again only when asked (no automatic retries). */
-      nextFailed: boolean
+      /**
+       * The last load of the next page failed: `retry` loads again only when
+       * asked (no automatic retries); `rerun` cannot load again (the query
+       * locator expired), so the query must run again.
+       */
+      nextFailed: false | 'retry' | 'rerun'
       /** Records in the first page: Salesforce sends smaller pages for wide rows or subqueries. */
       pageSize: number
       /** The org the query ran on (the result stays with it). */
@@ -90,6 +100,11 @@ type ResultState = {
    * After a failure, only `retry` (a button) loads it again.
    */
   loadNext: (retry?: boolean) => void
+}
+
+/** The query locator behind nextRecordsUrl expired or was dropped: the same request can never succeed. */
+function isLocatorGone(e: unknown): boolean {
+  return e instanceof ApiRequestError && e.code === 'SALESFORCE_ERROR' && JSON.stringify(e.body?.details ?? '').includes('INVALID_QUERY_LOCATOR')
 }
 
 const SoqlContext = createContext<SoqlState | undefined>(undefined)
@@ -194,6 +209,7 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
         setResult({
           state: 'done',
           records: response.records,
+          loaded: response.records.length,
           columns: addColumns([], response.records),
           totalSize: response.totalSize,
           nextRecordsUrl: response.done ? undefined : response.nextRecordsUrl,
@@ -307,6 +323,7 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
           prev.state === 'done' && prev.records === records
             ? {
                 ...prev,
+                loaded: records.length,
                 columns: addColumns(prev.columns, page.records),
                 nextRecordsUrl: page.done ? undefined : page.nextRecordsUrl,
                 loadingNext: false,
@@ -317,8 +334,9 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
       (e: unknown) => {
         nextInFlight.current = undefined
         if (generation !== runGeneration.current) return
-        setResult((prev) => (prev.state === 'done' && prev.records === records ? { ...prev, loadingNext: false, nextFailed: true } : prev))
-        reportOrgError(username, e)
+        const failed = isLocatorGone(e) ? 'rerun' : 'retry'
+        setResult((prev) => (prev.state === 'done' && prev.records === records ? { ...prev, loadingNext: false, nextFailed: failed } : prev))
+        if (failed === 'retry') reportOrgError(username, e)
       },
     )
   }, [result, reportApiUsage, reportOrgError])

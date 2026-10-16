@@ -23,16 +23,15 @@ export function Workspace() {
   )
 }
 
+// Layout does not read the SOQL state, so that typing (which changes it)
+// does not draw the result table again; only the small parts below do.
 function Layout() {
   const { selectedOrg, loading, orgs } = useOrgs()
   const { open, setOpen } = usePanels()
-  const soql = useSoql()
   return (
     <div className={styles.workspace}>
       <div className={open.objects ? styles.left : styles.leftClosed}>
-        {!open.objects && (
-          <Strip label={t.showObjects} text={soql.panelObject ?? t.sObjects} onClick={() => setOpen('objects', true)} />
-        )}
+        {!open.objects && <ObjectsStrip onClick={() => setOpen('objects', true)} />}
         {/* Kept mounted while closed, so that the loaded lists stay. */}
         <div className={styles.fill} hidden={!open.objects}>
           {selectedOrg ? (
@@ -57,12 +56,7 @@ function Layout() {
             <Strip label={t.showRecent} text={t.recent} onClick={() => setOpen('recent', true)} />
           )}
         </div>
-        {!open.editor && (
-          <div className={`${panel.panel} ${styles.closedEditor}`}>
-            <RunButton />
-            <code className={styles.firstLine}>{soql.firstLine}</code>
-          </div>
-        )}
+        {!open.editor && <ClosedEditor />}
         <div className={styles.divider}>
           <button type="button" className={panel.button} onClick={() => setOpen('editor', !open.editor)} aria-expanded={open.editor}>
             {open.editor ? t.hideEditor : t.showEditor}
@@ -70,6 +64,22 @@ function Layout() {
         </div>
         <ResultPanel />
       </div>
+    </div>
+  )
+}
+
+function ObjectsStrip({ onClick }: { onClick: () => void }) {
+  const soql = useSoql()
+  return <Strip label={t.showObjects} text={soql.panelObject ?? t.sObjects} onClick={onClick} />
+}
+
+/** The closed editor area: the Run button and the first line of the query. */
+function ClosedEditor() {
+  const soql = useSoql()
+  return (
+    <div className={`${panel.panel} ${styles.closedEditor}`}>
+      <RunButton />
+      <code className={styles.firstLine}>{soql.firstLine}</code>
     </div>
   )
 }

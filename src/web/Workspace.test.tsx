@@ -224,4 +224,27 @@ describe('SOQL workspace', () => {
     expect(await screen.findByText(t.recordCount(50_000))).toBeTruthy()
     expect(screen.queryByText(t.loadedCount(0))).toBeNull()
   })
+
+  it('asks to run the query again when the rest of the result has expired', async () => {
+    mocked.query.mockResolvedValue({ totalSize: 4, done: false, nextRecordsUrl: '/next/1', records: [{ Id: '001', Name: 'Row 0' }] })
+    mocked.nextPage.mockRejectedValue(
+      new ApiRequestError(400, 'SALESFORCE_ERROR', 'invalid query locator', {
+        code: 'SALESFORCE_ERROR',
+        message: 'invalid query locator',
+        details: [{ errorCode: 'INVALID_QUERY_LOCATOR', message: 'invalid query locator' }],
+      }),
+    )
+    render(<App launch={{ org: 'demo', query: 'SELECT Id, Name FROM Account', run: true }} />)
+    expect(await screen.findByText(t.locatorExpired)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: t.loadMore(1) })).toBeNull()
+  })
+
+  it('moves the selected cell with the arrow keys and shows its full text', async () => {
+    mocked.query.mockResolvedValue({ totalSize: 2, done: true, records: [{ Id: '001', Name: 'First' }, { Id: '002', Name: 'Second' }] })
+    render(<App launch={{ org: 'demo', query: 'SELECT Id, Name FROM Account', run: true }} />)
+    const table = await screen.findByRole('table', { name: t.results })
+    ;(table.parentElement as HTMLElement).focus()
+    await userEvent.keyboard('{ArrowDown}{ArrowRight}{ArrowDown}')
+    expect(screen.getAllByText('Second')).toHaveLength(2)
+  })
 })
