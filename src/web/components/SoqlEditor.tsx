@@ -9,9 +9,10 @@ import { EditorState, Prec } from '@codemirror/state'
 import { EditorView, keymap, placeholder } from '@codemirror/view'
 import { useEffect, useRef } from 'react'
 import { t } from '../i18n/i18n.ts'
-import { fieldCandidates, fromObjectOf, keywordCandidates } from '../soql/completion.ts'
+import { contextCandidates, keywordCandidates, type Candidate, type Describer } from '../soql/completion.ts'
+import { cursorInfo } from '../soql/context.ts'
 import { useOrgs } from '../state/OrgContext.tsx'
-import { describeGlobal, describeSObject, findObject } from '../state/describeCache.ts'
+import { describeGlobal, describeSObject } from '../state/describeCache.ts'
 import { saveEditorText, savedEditorText } from '../state/editorStorage.ts'
 import { useSoql } from '../state/SoqlContext.tsx'
 import styles from './SoqlEditor.module.css'
@@ -42,8 +43,16 @@ const editorTheme = EditorView.theme({
 const SETTLE_MS = 300
 /** Safari can deliver the Enter that commits IME conversion after compositionend. */
 const COMPOSITION_ENTER_MS = 100
-/** After a describe fails, completion offers keywords only for this long instead of asking again on every key. */
+/** After a describe fails, completion does not ask for it again for this long (it runs on every key). */
 const RETRY_AFTER_MS = 30_000
+
+/** The icon CodeMirror shows next to each candidate. */
+const OPTION_TYPE: Record<Candidate['kind'], string> = {
+  object: 'class',
+  relationship: 'type',
+  field: 'property',
+  keyword: 'keyword',
+}
 
 export function SoqlEditor() {
   const host = useRef<HTMLDivElement>(null)
@@ -59,39 +68,41 @@ export function SoqlEditor() {
     if (!host.current) return
     let settleTimer: ReturnType<typeof setTimeout> | undefined
     let compositionEndedAt = 0
-    let failedAt = { key: '', time: 0 }
+    /** When each describe (per org, API and object) last failed. */
+    const failedAt = new Map<string, number>()
+    const guarded = async <T,>(key: string, load: () => Promise<T>): Promise<T> => {
+      if (Date.now() - (failedAt.get(key) ?? 0) < RETRY_AFTER_MS) throw new Error('failed recently')
+      try {
+        return await load()
+      } catch (e) {
+        failedAt.set(key, Date.now())
+        throw e
+      }
+    }
 
     const completionSource = async (context: CompletionContext): Promise<CompletionResult | null> => {
-      const word = context.matchBefore(/[\p{L}\p{N}_]+/u)
-      if (!word && !context.explicit) return null
-      const from = word ? word.from : context.pos
-      const text = word ? word.text : ''
-      // Parent paths such as Account.Na come with context-aware completion (PR 2c).
-      if (context.state.sliceDoc(from - 1, from) === '.') return null
+      const info = cursorInfo(context.state.doc.toString(), context.pos)
+      if (info.context.kind === 'none') return null
+      // Open while typing a word or right after a dot (`Account.`), or on Ctrl+Space.
+      if (!info.word && !info.afterDot && !context.explicit) return null
       const { soql: s, selected: username } = latest.current
-      const options = keywordCandidates(text).map((c) => ({ label: c.label, apply: c.insert, type: 'keyword' }))
-      const written = fromObjectOf(context.state.doc.toString())
-      const failureKey = `${username}\n${s.tooling}\n${written?.toLowerCase()}`
-      const recentlyFailed = failedAt.key === failureKey && Date.now() - failedAt.time < RETRY_AFTER_MS
-      if (written && username && !recentlyFailed) {
+      // Without describes: keywords, except after a dot where only fields fit.
+      let candidates = info.dotted ? [] : keywordCandidates(info.word)
+      if (username) {
+        const prefix = `${username}\n${s.tooling}\n`
+        const describer: Describer = {
+          objects: async () => (await guarded(prefix, () => describeGlobal(username, s.tooling))).sobjects,
+          describe: (name) => guarded(prefix + name.toLowerCase(), () => describeSObject(username, name, s.tooling)),
+        }
         try {
-          // Describe only objects the org has, so that a half-typed FROM name
-          // does not send a request on every keystroke.
-          const object = findObject(await describeGlobal(username, s.tooling), written, s.names.ns)
-          if (!object) return options.length ? { from, options, filter: false } : null
-          const describe = await describeSObject(username, object.name, s.tooling)
-          const fields = fieldCandidates(describe.fields, text, s.names).map((c) => ({
-            label: c.label,
-            apply: c.insert,
-            type: 'property',
-          }))
-          options.unshift(...fields)
+          candidates = await contextCandidates(info, describer, s.names)
         } catch {
-          // Keywords only. The left panel shows the error of the same describe.
-          failedAt = { key: failureKey, time: Date.now() }
+          // The fallback above, without a notification: completion runs on every key.
         }
       }
-      return options.length ? { from, options, filter: false } : null
+      if (candidates.length === 0) return null
+      const options = candidates.map((c) => ({ label: c.label, apply: c.insert, type: OPTION_TYPE[c.kind] }))
+      return { from: info.from, options, filter: false }
     }
 
     const view = new EditorView({
