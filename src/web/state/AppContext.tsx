@@ -1,7 +1,7 @@
 // App-wide state: whether the server is reachable, a fatal problem, and notifications.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Settings } from '../../shared/api.ts'
-import { ApiRequestError, api } from '../api/client.ts'
+import { ApiRequestError, api } from '../apiClient.ts'
 
 export type Notification = {
   id: number

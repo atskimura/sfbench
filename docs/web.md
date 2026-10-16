@@ -250,7 +250,7 @@ sfbench のバージョンは、ビルド時に Vite の `define` で画面に�
 - 画面の部品は、主要な流れ（起動、組織の選択、オブジェクトの選択と項目の追加、実行、エラーの表示）だけを Testing Library でテストする。API はテストの中で差し替える。
 - jsdom はレイアウトを計算しないので、TanStack Virtual は行を描かない。結果の表のテストでは、要素の大きさを差し替えるか、仮想化を止める設定を部品に用意する。
 - CodeMirror は jsdom の上では Testing Library の入力操作で書き換えられないので、テストではエディタの `view.dispatch` で入力する。
-- 実際の組織につないだ確認と、日本語入力の確認は、手で行う（`npm run dev:server` と `npm run dev:web`）。
+- 実際の組織につないだ確認と、日本語入力の確認は、手で行う（`npm run dev`）。
 
 ## 進め方
 

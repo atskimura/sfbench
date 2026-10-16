@@ -1,7 +1,7 @@
 // Completion candidates for the cursor's context (docs/web.md "補完"): objects
 // after FROM, child relationships after FROM in a subquery, fields of the
 // object (following parent relationships), and SOQL keywords.
-import type { FieldDescribe, SObjectDescribe, SObjectSummary } from '../api/client.ts'
+import type { FieldDescribe, SObjectDescribe, SObjectSummary } from '../apiClient.ts'
 import type { CursorInfo, Scope } from './context.ts'
 import { findByName, nameKey, soqlName } from './namespace.ts'
 import type { NameContext } from './selection.ts'

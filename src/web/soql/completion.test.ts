@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { FieldDescribe, SObjectDescribe } from '../api/client.ts'
+import type { FieldDescribe, SObjectDescribe } from '../apiClient.ts'
 import { contextCandidates, fieldCandidates, keywordCandidates, type Describer } from './completion.ts'
 import { cursorInfo } from './context.ts'
 

@@ -1,7 +1,7 @@
 // describe results in memory, per org. The server caches them too, so losing
 // this on a tab reload is fine (docs/web.md "状態の持ち方").
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type DescribeGlobal, type DescribeSObject } from '../api/client.ts'
+import { api, type DescribeGlobal, type DescribeSObject } from '../apiClient.ts'
 
 const globals = new Map<string, Promise<DescribeGlobal>>()
 const objects = new Map<string, Promise<DescribeSObject>>()

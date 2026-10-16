@@ -3,7 +3,7 @@
 // effects would send it twice and the second exchange would fail.
 // See docs/web.md ("起動から作業画面まで").
 import type { LaunchOptions } from '../shared/api.ts'
-import { ApiRequestError, api, getSessionToken } from './api/client.ts'
+import { ApiRequestError, api, getSessionToken } from './apiClient.ts'
 import { t } from './i18n/i18n.ts'
 
 export type Startup =

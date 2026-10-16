@@ -1,7 +1,7 @@
 // The fields and child relationships of the object in FROM
 // (docs/screens.md "オブジェクトと項目の一覧（左）", docs/parity.md).
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import type { ChildRelationship, FieldDescribe } from '../api/client.ts'
+import type { ChildRelationship, FieldDescribe } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
 import { matches } from '../soql/completion.ts'
 import { nameKey } from '../soql/namespace.ts'
