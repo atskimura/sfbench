@@ -79,9 +79,11 @@ Salesforce への問い合わせはこのサーバーが行い、アクセスト
 
 ```
 npm install
-npm run dev:server   # ローカルサーバー
-npm run dev:web      # 画面の開発サーバー
+npm run dev   # 画面の開発サーバーとローカルサーバーを起動する
 ```
+
+`http://localhost:5173/launch/dev` を開きます。
+コードを保存すると、画面とサーバーにそのまま反映されます。
 
 設計は [docs/design.md](docs/design.md) にあります。
 
