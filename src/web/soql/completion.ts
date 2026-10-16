@@ -1,7 +1,9 @@
-// Completion candidates as in lwc-soql-builder: the FROM object's fields and
-// SOQL keywords. Context-aware candidates come in PR 2c (docs/web.md "補完").
-import type { FieldDescribe } from '../api/client.ts'
-import { soqlName } from './namespace.ts'
+// Completion candidates for the cursor's context (docs/web.md "補完"): objects
+// after FROM, child relationships after FROM in a subquery, fields of the
+// object (following parent relationships), and SOQL keywords.
+import type { FieldDescribe, SObjectDescribe, SObjectSummary } from '../api/client.ts'
+import type { CursorInfo, Scope } from './context.ts'
+import { nameKey, soqlName } from './namespace.ts'
 import type { NameContext } from './selection.ts'
 
 export type Candidate = {
@@ -9,7 +11,13 @@ export type Candidate = {
   label: string
   /** Inserted text. */
   insert: string
-  kind: 'field' | 'keyword'
+  kind: 'object' | 'relationship' | 'field' | 'keyword'
+}
+
+/** Where the candidates come from; the editor passes the cached describes. */
+export type Describer = {
+  objects: () => Promise<SObjectSummary[]>
+  describe: (objectName: string) => Promise<SObjectDescribe>
 }
 
 export const SOQL_KEYWORDS = [
@@ -37,8 +45,25 @@ export function matches(word: string, ...texts: (string | undefined)[]): boolean
   return texts.some((t) => t?.toLowerCase().includes(w))
 }
 
+/**
+ * Sorts by how the word matches: names that start with it, then labels that
+ * start with it, then the rest, each in the original order (`Con` puts
+ * Contacts before AccountContactRoles).
+ */
+function byRank<T>(items: T[], word: string, texts: (item: T) => (string | undefined)[]): T[] {
+  const w = word.toLowerCase()
+  const rank = (item: T) => {
+    const i = texts(item).findIndex((t) => t?.toLowerCase().startsWith(w))
+    return i === -1 ? Number.MAX_SAFE_INTEGER : i
+  }
+  return items
+    .map((item, index) => ({ item, index, rank: rank(item) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((x) => x.item)
+}
+
 export function fieldCandidates(fields: FieldDescribe[], word: string, ctx: NameContext): Candidate[] {
-  return fields
+  return byRank(fields, word, (f) => [f.name, f.label])
     .filter((f) => matches(word, f.name, f.label))
     .map((f) => {
       const insert = soqlName(f.name, ctx.ns, ctx.omitNamespace)
@@ -47,5 +72,69 @@ export function fieldCandidates(fields: FieldDescribe[], word: string, ctx: Name
 }
 
 export function keywordCandidates(word: string): Candidate[] {
-  return SOQL_KEYWORDS.filter((k) => matches(word, k)).map((k) => ({ label: k, insert: k, kind: 'keyword' as const }))
+  return byRank(SOQL_KEYWORDS, word, (k) => [k]).filter((k) => matches(word, k)).map((k) => ({ label: k, insert: k, kind: 'keyword' as const }))
+}
+
+/** The object a scope reads: the FROM object, or the child object of its child relationship. */
+async function scopeObject(scope: Scope, d: Describer, ns: NameContext['ns']): Promise<string | undefined> {
+  const from = scope.from
+  if (!from) return undefined
+  if (scope.child) {
+    const parent = scope.parent && (await scopeObject(scope.parent, d, ns))
+    if (!parent) return undefined
+    const key = nameKey(from, ns)
+    const rel = (await d.describe(parent)).childRelationships.find((r) => r.relationshipName && nameKey(r.relationshipName, ns) === key)
+    return rel?.childSObject
+  }
+  const key = nameKey(from, ns)
+  return (await d.objects()).find((o) => nameKey(o.name, ns) === key)?.name
+}
+
+/** Follows parent relationships such as Account.Owner; a polymorphic one goes to its first target, as before. */
+async function followPath(object: string | undefined, path: string[], d: Describer, ns: NameContext['ns']): Promise<string | undefined> {
+  for (const part of path) {
+    if (!object) return undefined
+    const key = nameKey(part, ns)
+    const field = (await d.describe(object)).fields.find((f) => f.relationshipName && nameKey(f.relationshipName, ns) === key)
+    object = field?.referenceTo[0]
+  }
+  return object
+}
+
+/** Candidates for the cursor. Rejects when a describe fails; the caller falls back to keywords. */
+export async function contextCandidates(info: CursorInfo, d: Describer, ctx: NameContext): Promise<Candidate[]> {
+  const { context, word } = info
+  switch (context.kind) {
+    case 'none':
+      return []
+    case 'keyword':
+      return keywordCandidates(word)
+    case 'from': {
+      if (context.scope.child) {
+        const parent = context.scope.parent && (await scopeObject(context.scope.parent, d, ctx.ns))
+        if (!parent) return []
+        const rels = (await d.describe(parent)).childRelationships.filter(
+          (r): r is typeof r & { relationshipName: string } => Boolean(r.relationshipName),
+        )
+        return byRank(rels, word, (r) => [r.relationshipName, r.childSObject])
+          .filter((r) => matches(word, r.relationshipName, r.childSObject))
+          .map((r) => {
+            const insert = soqlName(r.relationshipName, ctx.ns, ctx.omitNamespace)
+            return { label: `${insert} / ${r.childSObject}`, insert, kind: 'relationship' as const }
+          })
+      }
+      return byRank(await d.objects(), word, (o) => [o.name, o.label])
+        .filter((o) => o.queryable !== false && matches(word, o.name, o.label))
+        .map((o) => {
+          const insert = soqlName(o.name, ctx.ns, ctx.omitNamespace)
+          return { label: `${insert} / ${o.label}`, insert, kind: 'object' as const }
+        })
+    }
+    case 'field': {
+      const object = await followPath(await scopeObject(context.scope, d, ctx.ns), context.path, d, ctx.ns)
+      const fields = object ? fieldCandidates((await d.describe(object)).fields, word, ctx) : []
+      // After a dot only fields make sense.
+      return context.path.length > 0 ? fields : [...fields, ...keywordCandidates(word)]
+    }
+  }
 }
