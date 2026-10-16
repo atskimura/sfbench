@@ -131,10 +131,10 @@ function OrgRow({ org, current, status, onSelect }: { org: Org; current: boolean
           <span className={styles.rowTitle}>
             <span className={styles.rowAlias}>{org.alias ?? org.username}</span>
             <span className={`${styles.badge} ${badge}`}>{orgKindLabel(org)}</span>
-            {org.isExpired && <span className={`${styles.badge} ${styles.badgeNeutral}`}>expired</span>}
+            {org.isExpired && <span className={`${styles.badge} ${styles.badgeNeutral}`}>{t.expired}</span>}
           </span>
           {org.alias && <span className={styles.username}>{org.username}</span>}
-          {org.expirationDate && !org.isExpired && <span className={styles.note}>Expires {org.expirationDate}</span>}
+          {org.expirationDate && !org.isExpired && <span className={styles.note}>{t.expires(org.expirationDate)}</span>}
         </span>
       </button>
       {status?.state === 'authError' && status.reloginCommand && (

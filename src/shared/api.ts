@@ -56,6 +56,9 @@ export type HistoryEntry = {
 
 export type HistoryResponse = { entries: HistoryEntry[] }
 
+export const MIN_TIMEOUT_SECONDS = 10
+export const MAX_TIMEOUT_SECONDS = 600
+
 export type Settings = {
   omitNamespace: boolean
   /** How long to wait for Salesforce, in seconds (10 to 600). */

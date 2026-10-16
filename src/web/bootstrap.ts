@@ -10,7 +10,6 @@ export type Startup =
   | { kind: 'ready'; launch?: LaunchOptions }
   | { kind: 'expired' }
   | { kind: 'noSession' }
-  | { kind: 'sfNotFound' }
   | { kind: 'error'; message: string }
 
 export async function startup(location: Location, history: History): Promise<Startup> {
@@ -23,7 +22,6 @@ export async function startup(location: Location, history: History): Promise<Sta
     } catch (e) {
       history.replaceState(null, '', '/')
       if (e instanceof ApiRequestError && e.status === 410) return { kind: 'expired' }
-      if (e instanceof ApiRequestError && e.code === 'NETWORK_ERROR') return { kind: 'error', message: e.message }
       return { kind: 'error', message: (e as Error).message }
     }
   }

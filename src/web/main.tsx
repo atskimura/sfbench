@@ -20,9 +20,7 @@ startup(window.location, window.history).then((result) => {
               ? t.launchExpired
               : result.kind === 'noSession'
                 ? t.noSession
-                : result.kind === 'sfNotFound'
-                  ? t.sfNotFound
-                  : result.message
+                : result.message
           }
         />
       )}

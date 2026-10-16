@@ -1,14 +1,12 @@
 // Settings (docs/screens.md "設定"). The AI section comes in milestone 3.
 import { useEffect, useId, useRef, useState } from 'react'
-import type { Settings } from '../../shared/api.ts'
+import { MAX_TIMEOUT_SECONDS as MAX_TIMEOUT, MIN_TIMEOUT_SECONDS as MIN_TIMEOUT, type Settings } from '../../shared/api.ts'
 import { api } from '../api/client.ts'
 import { t } from '../i18n/i18n.ts'
 import { DOCUMENTATION_URL, GITHUB_URL } from '../links.ts'
 import { useApp } from '../state/AppContext.tsx'
 import styles from './SettingsDialog.module.css'
 
-const MIN_TIMEOUT = 10
-const MAX_TIMEOUT = 600
 
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const { handleCommonError, notify } = useApp()
@@ -20,19 +18,31 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const timeoutId = useId()
   const timeoutNoteId = useId()
 
+  // The latest callbacks, so that loading runs once per opening of the dialog.
+  const callbacks = useRef({ handleCommonError, notify, onClose })
+  useEffect(() => {
+    callbacks.current = { handleCommonError, notify, onClose }
+  })
+
   useEffect(() => {
     dialogRef.current?.showModal?.()
+    let active = true
     api.settings().then(
       (s) => {
+        if (!active) return
         setSettings(s)
         setTimeoutText(String(s.requestTimeoutSeconds))
       },
       (e: unknown) => {
-        if (!handleCommonError(e)) notify({ message: (e as Error).message })
-        onClose()
+        if (!active) return
+        if (!callbacks.current.handleCommonError(e)) callbacks.current.notify({ message: (e as Error).message })
+        callbacks.current.onClose()
       },
     )
-  }, [handleCommonError, notify, onClose])
+    return () => {
+      active = false
+    }
+  }, [])
 
   const timeout = Number(timeoutText)
   const timeoutValid = /^\d+$/.test(timeoutText) && timeout >= MIN_TIMEOUT && timeout <= MAX_TIMEOUT
@@ -99,7 +109,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setTimeoutText(e.target.value)}
               />
               <span id={timeoutNoteId} className={timeoutValid ? styles.note : styles.error}>
-                {timeoutValid ? t.settingsTimeoutNote : t.settingsTimeoutInvalid}
+                {timeoutValid ? t.settingsTimeoutNote(MIN_TIMEOUT, MAX_TIMEOUT) : t.settingsTimeoutInvalid(MIN_TIMEOUT, MAX_TIMEOUT)}
               </span>
             </section>
           </>

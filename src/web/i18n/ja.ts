@@ -27,8 +27,11 @@ export const ja: Messages = {
   settingsOmitNamespaceNote: '名前空間のある組織で acme__Invoice__c の代わりに Invoice__c と書けます。全組織に効きます。',
   settingsConnection: '接続',
   settingsTimeout: 'Salesforce の応答を待つ時間（秒）',
-  settingsTimeoutNote: '10 から 600 まで。長いクエリや大きな describe で足りないときに延ばします。',
-  settingsTimeoutInvalid: '10 から 600 までの整数を入れてください。',
+  settingsTimeoutNote: (min: number, max: number) =>
+    `${min} から ${max} まで。長いクエリや大きな describe で足りないときに延ばします。`,
+  settingsTimeoutInvalid: (min: number, max: number) => `${min} から ${max} までの整数を入れてください。`,
+  expired: '期限切れ',
+  expires: (date: string) => `${date} に期限切れ`,
   sessionLost: 'sfbench に接続できません。`npx sfbench` を実行して開き直してください。',
   launchExpired: 'この URL は使えません（期限切れか使用済み）。`npx sfbench` を実行して開き直してください。',
   noSession: '`npx sfbench` を実行して開いてください。',

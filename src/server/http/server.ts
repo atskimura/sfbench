@@ -4,16 +4,18 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { extname, join, relative, sep } from 'node:path'
-import type {
-  ApiError,
-  ApiErrorCode,
-  HistoryResponse,
-  LaunchOptions,
-  NextPageRequest,
-  OrgsResponse,
-  QueryRequest,
-  SessionResponse,
-  Settings,
+import {
+  MAX_TIMEOUT_SECONDS,
+  MIN_TIMEOUT_SECONDS,
+  type ApiError,
+  type ApiErrorCode,
+  type HistoryResponse,
+  type LaunchOptions,
+  type NextPageRequest,
+  type OrgsResponse,
+  type QueryRequest,
+  type SessionResponse,
+  type Settings,
 } from '../../shared/api.ts'
 import { log } from '../log.ts'
 import type { OrgRegistry } from '../orgs.ts'
@@ -27,7 +29,7 @@ import {
 } from '../salesforce.ts'
 import { openOrg } from '../sf/commands.ts'
 import { OrgAuthError, SfCliError, SfNotFoundError } from '../sf/errors.ts'
-import { addHistory, isValidTimeout, loadHistory, loadSettings, saveSettings } from '../store.ts'
+import { addHistory, isValidTimeout, loadHistory, type SettingsStore } from '../store.ts'
 import { isAdminRequestOrigin, isAllowedHost, isSameOriginRequest } from './security.ts'
 
 const MAX_BODY_BYTES = 5 * 1024 * 1024
@@ -44,6 +46,7 @@ export type AppOptions = {
   orgs: OrgRegistry
   /** Built web UI, or undefined when it is not built (development). */
   webRoot: string | undefined
+  settings: SettingsStore
   /** In dev mode, a session token that survives restarts. */
   devSessionToken?: string
   onShutdown: () => void
@@ -174,23 +177,25 @@ export class App {
     }
 
     if (path === '/api/settings') {
-      const file = this.options.paths.settings
       if (method === 'GET') {
-        sendJson(res, 200, loadSettings(file))
+        sendJson(res, 200, this.options.settings.get())
         return
       }
       if (method === 'PUT') {
         const body = (await readJsonObject(req)) as Partial<Settings>
-        const settings = { ...loadSettings(file) }
+        const settings = { ...this.options.settings.get() }
         if (typeof body.omitNamespace === 'boolean') settings.omitNamespace = body.omitNamespace
         if (body.requestTimeoutSeconds !== undefined) {
           if (!isValidTimeout(body.requestTimeoutSeconds)) {
-            throw new HttpError(400, 'BAD_REQUEST', 'requestTimeoutSeconds must be an integer from 10 to 600')
+            throw new HttpError(
+              400,
+              'BAD_REQUEST',
+              `requestTimeoutSeconds must be an integer from ${MIN_TIMEOUT_SECONDS} to ${MAX_TIMEOUT_SECONDS}`,
+            )
           }
           settings.requestTimeoutSeconds = body.requestTimeoutSeconds
         }
-        saveSettings(file, settings)
-        sendJson(res, 200, settings)
+        sendJson(res, 200, this.options.settings.set(settings))
         return
       }
     }
@@ -311,7 +316,7 @@ export class App {
    * Organization), the query still runs, without the header.
    */
   private async queryHeaders(client: OrgClient): Promise<Record<string, string>> {
-    if (!loadSettings(this.options.paths.settings).omitNamespace) return {}
+    if (!this.options.settings.get().omitNamespace) return {}
     try {
       const { namespacePrefix } = await this.options.orgs.summary(client)
       return namespacePrefix ? { 'Sforce-Call-Options': `defaultNamespace=${namespacePrefix}` } : {}

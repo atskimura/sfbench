@@ -1,11 +1,11 @@
 // Settings and query history, stored under ~/.sfbench. See docs/design.md ("データの保存").
 import { join } from 'node:path'
-import type { HistoryEntry, Settings } from '../shared/api.ts'
+import { MAX_TIMEOUT_SECONDS, MIN_TIMEOUT_SECONDS, type HistoryEntry, type Settings } from '../shared/api.ts'
 import { readJson, writeFileAtomic } from './fsutil.ts'
 
 export const DEFAULT_SETTINGS: Settings = { omitNamespace: true, requestTimeoutSeconds: 120 }
-export const MIN_TIMEOUT_SECONDS = 10
-export const MAX_TIMEOUT_SECONDS = 600
+
+export { MAX_TIMEOUT_SECONDS, MIN_TIMEOUT_SECONDS }
 
 export function isValidTimeout(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) >= MIN_TIMEOUT_SECONDS && (value as number) <= MAX_TIMEOUT_SECONDS
@@ -24,6 +24,30 @@ export function loadSettings(file: string): Settings {
 
 export function saveSettings(file: string, settings: Settings): void {
   writeFileAtomic(file, JSON.stringify(settings, null, 2))
+}
+
+/**
+ * Settings kept in memory: they are read on every Salesforce request, so the
+ * file is read once at startup and written on each change.
+ */
+export class SettingsStore {
+  private readonly file: string
+  private current: Settings
+
+  constructor(file: string) {
+    this.file = file
+    this.current = loadSettings(file)
+  }
+
+  get(): Settings {
+    return this.current
+  }
+
+  set(settings: Settings): Settings {
+    saveSettings(this.file, settings)
+    this.current = settings
+    return settings
+  }
 }
 
 export const MAX_HISTORY = 100

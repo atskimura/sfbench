@@ -79,7 +79,8 @@ export type OrgContextValue = State & {
   selectedOrg: Org | undefined
   selectedSummary: OrgSummary | undefined
   isProduction: boolean
-  loadOrgs: (refresh: boolean) => Promise<void>
+  /** Loads the org list. Resolves to the list, or undefined if it failed or a newer load replaced it. */
+  loadOrgs: (refresh: boolean) => Promise<Org[] | undefined>
   selectOrg: (username: string) => void
   setPickerOpen: (open: boolean) => void
   reportApiUsage: (username: string, usage: ApiUsage | undefined) => void
@@ -111,6 +112,7 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
   const { handleCommonError, notify } = useApp()
   const [state, dispatch] = useReducer(reducer, initialState)
   const started = useRef(false)
+  const loadGeneration = useRef(0)
   const launchQuery = useRef<{ query: string; run: boolean } | undefined>(
     launch?.query ? { query: launch.query, run: launch.run === true } : undefined,
   )
@@ -121,13 +123,19 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
 
   const loadOrgs = useCallback(
     async (refresh: boolean) => {
+      // A newer load wins: an older `sf org list` result arriving later is dropped.
+      const generation = ++loadGeneration.current
       dispatch({ type: 'loading' })
       try {
         const { orgs } = await api.orgs(refresh)
+        if (generation !== loadGeneration.current) return undefined
         dispatch({ type: 'loaded', orgs })
+        return orgs
       } catch (e) {
-        if (!handleCommonError(e)) dispatch({ type: 'loadFailed', message: (e as Error).message })
-        else dispatch({ type: 'loadFailed', message: '' })
+        if (generation !== loadGeneration.current) return undefined
+        const handled = handleCommonError(e)
+        dispatch({ type: 'loadFailed', message: handled ? '' : (e as Error).message })
+        return undefined
       }
     },
     [handleCommonError],
@@ -177,27 +185,20 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
     if (started.current) return
     started.current = true
     void (async () => {
-      dispatch({ type: 'loading' })
-      let orgs: Org[]
-      try {
-        orgs = (await api.orgs(false)).orgs
-        dispatch({ type: 'loaded', orgs })
-      } catch (e) {
-        if (!handleCommonError(e)) dispatch({ type: 'loadFailed', message: (e as Error).message })
-        return
-      }
+      const orgs = await loadOrgs(false)
+      if (!orgs) return
       const wanted = launch?.org ?? readSelected()
       const found = wanted ? orgs.find((o) => o.alias === wanted || o.username === wanted) : undefined
       if (found) {
         selectOrg(found.username)
-      } else if (launch?.org) {
-        launchQuery.current = launchQuery.current && { ...launchQuery.current, run: false }
-        dispatch({ type: 'picker', open: true, notice: t.unknownLaunchOrg(launch.org) })
-      } else {
-        dispatch({ type: 'picker', open: true, notice: launch ? t.noDefaultOrg : undefined })
+        return
       }
+      // No org to run in: the query is put in the editor but not run (docs/web.md).
+      launchQuery.current = launchQuery.current && { ...launchQuery.current, run: false }
+      const notice = launch?.org ? t.unknownLaunchOrg(launch.org) : launch ? t.noDefaultOrg : undefined
+      dispatch({ type: 'picker', open: true, notice })
     })()
-  }, [launch, handleCommonError, selectOrg])
+  }, [launch, loadOrgs, selectOrg])
 
   const setPickerOpen = useCallback(
     (open: boolean) => {
