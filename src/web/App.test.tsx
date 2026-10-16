@@ -111,4 +111,27 @@ describe('App', () => {
     render(<App launch={{ org: 'demo' }} />)
     expect(await screen.findByText(/sf org login web --instance-url/)).toBeTruthy()
   })
+
+  it('still selects the launch org when the list is opened during the first load', async () => {
+    let release: (v: { orgs: Org[] }) => void = () => {}
+    mocked.orgs.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)))
+    render(<App launch={{ org: 'demo' }} />)
+    await userEvent.click(screen.getByRole('button', { name: /組織を選択|Select an org/ }))
+    release({ orgs: [prod, dev] })
+    await waitFor(() => expect(sessionStorage.getItem('sfbench.selectedOrg')).toBe(dev.username))
+  })
+
+  it('ignores the org saved in the tab for a new launch without an org', async () => {
+    sessionStorage.setItem('sfbench.selectedOrg', prod.username)
+    render(<App launch={{ query: 'SELECT Id FROM Account', run: true }} />)
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.textContent).toMatch(/target-org/)
+    expect(mocked.summary).not.toHaveBeenCalled()
+  })
+
+  it('opens the org list to show the error when the first load fails', async () => {
+    mocked.orgs.mockRejectedValue(new ApiRequestError(502, 'SF_CLI_ERROR', 'sf org list failed'))
+    render(<App launch={undefined} />)
+    expect((await screen.findByRole('dialog')).textContent).toContain('sf org list failed')
+  })
 })

@@ -4,6 +4,7 @@
 // See docs/web.md ("起動から作業画面まで").
 import type { LaunchOptions } from '../shared/api.ts'
 import { ApiRequestError, api, getSessionToken } from './api/client.ts'
+import { t } from './i18n/i18n.ts'
 
 export type Startup =
   /** `launch` is present when opened from `npx sfbench`, absent on a tab reload. */
@@ -22,7 +23,8 @@ export async function startup(location: Location, history: History): Promise<Sta
     } catch (e) {
       history.replaceState(null, '', '/')
       if (e instanceof ApiRequestError && e.status === 410) return { kind: 'expired' }
-      return { kind: 'error', message: (e as Error).message }
+      // The server cannot be reached or failed: the same guidance as a lost session.
+      return { kind: 'error', message: t.sessionLost }
     }
   }
   return getSessionToken() ? { kind: 'ready' } : { kind: 'noSession' }

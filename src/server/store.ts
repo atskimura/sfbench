@@ -1,15 +1,10 @@
 // Settings and query history, stored under ~/.sfbench. See docs/design.md ("データの保存").
 import { join } from 'node:path'
-import { MAX_TIMEOUT_SECONDS, MIN_TIMEOUT_SECONDS, type HistoryEntry, type Settings } from '../shared/api.ts'
+import { isValidTimeout, type HistoryEntry, type Settings } from '../shared/api.ts'
 import { readJson, writeFileAtomic } from './fsutil.ts'
 
 export const DEFAULT_SETTINGS: Settings = { omitNamespace: true, requestTimeoutSeconds: 120 }
 
-export { MAX_TIMEOUT_SECONDS, MIN_TIMEOUT_SECONDS }
-
-export function isValidTimeout(value: unknown): value is number {
-  return Number.isInteger(value) && (value as number) >= MIN_TIMEOUT_SECONDS && (value as number) <= MAX_TIMEOUT_SECONDS
-}
 
 export function loadSettings(file: string): Settings {
   const stored = readJson(file)

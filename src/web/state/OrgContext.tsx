@@ -173,32 +173,48 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
           reportApiUsage(username, summary.apiUsage)
         },
         (e: unknown) => {
-          if (e instanceof ApiRequestError && (e.code === 'ORG_AUTH_ERROR' || e.isSessionLost)) handleOrgError(username, e)
+          // Other failures (such as a user who cannot read Organization) are not shown.
+          const shown = ['ORG_AUTH_ERROR', 'NOT_FOUND', 'SF_CLI_NOT_FOUND']
+          if (e instanceof ApiRequestError && (shown.includes(e.code) || e.isSessionLost)) handleOrgError(username, e)
         },
       )
     },
     [handleOrgError, reportApiUsage],
   )
 
-  // Startup: load the org list once, then choose the org (docs/web.md "起動から作業画面まで").
+  // Startup: load the org list once (docs/web.md "起動から作業画面まで").
   useEffect(() => {
     if (started.current) return
     started.current = true
-    void (async () => {
-      const orgs = await loadOrgs(false)
-      if (!orgs) return
-      const wanted = launch?.org ?? readSelected()
-      const found = wanted ? orgs.find((o) => o.alias === wanted || o.username === wanted) : undefined
-      if (found) {
-        selectOrg(found.username)
-        return
+    void loadOrgs(false)
+  }, [loadOrgs])
+
+  // Choose the org once, when the first org list arrives, whichever load
+  // delivered it (the user may open the list while the first load runs).
+  const chosen = useRef(false)
+  useEffect(() => {
+    if (chosen.current) return
+    if (state.orgs === undefined) {
+      // The first load failed: open the list, which shows the error.
+      if (state.loadError) {
+        chosen.current = true
+        dispatch({ type: 'picker', open: true })
       }
-      // No org to run in: the query is put in the editor but not run (docs/web.md).
-      launchQuery.current = launchQuery.current && { ...launchQuery.current, run: false }
-      const notice = launch?.org ? t.unknownLaunchOrg(launch.org) : launch ? t.noDefaultOrg : undefined
-      dispatch({ type: 'picker', open: true, notice })
-    })()
-  }, [launch, loadOrgs, selectOrg])
+      return
+    }
+    chosen.current = true
+    // A new launch uses only what the launch says; a tab reload restores the saved org.
+    const wanted = launch ? launch.org : readSelected()
+    const found = wanted ? state.orgs.find((o) => o.alias === wanted || o.username === wanted) : undefined
+    if (found) {
+      selectOrg(found.username)
+      return
+    }
+    // No org to run in: the query is put in the editor but not run (docs/web.md).
+    launchQuery.current = launchQuery.current && { ...launchQuery.current, run: false }
+    const notice = launch?.org ? t.unknownLaunchOrg(launch.org) : launch ? t.noDefaultOrg : undefined
+    dispatch({ type: 'picker', open: true, notice })
+  }, [state.orgs, state.loadError, launch, selectOrg])
 
   const setPickerOpen = useCallback(
     (open: boolean) => {

@@ -1,6 +1,11 @@
 // Settings (docs/screens.md "設定"). The AI section comes in milestone 3.
 import { useEffect, useId, useRef, useState } from 'react'
-import { MAX_TIMEOUT_SECONDS as MAX_TIMEOUT, MIN_TIMEOUT_SECONDS as MIN_TIMEOUT, type Settings } from '../../shared/api.ts'
+import {
+  isValidTimeout,
+  MAX_TIMEOUT_SECONDS as MAX_TIMEOUT,
+  MIN_TIMEOUT_SECONDS as MIN_TIMEOUT,
+  type Settings,
+} from '../../shared/api.ts'
 import { api } from '../api/client.ts'
 import { t } from '../i18n/i18n.ts'
 import { DOCUMENTATION_URL, GITHUB_URL } from '../links.ts'
@@ -44,8 +49,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     }
   }, [])
 
-  const timeout = Number(timeoutText)
-  const timeoutValid = /^\d+$/.test(timeoutText) && timeout >= MIN_TIMEOUT && timeout <= MAX_TIMEOUT
+  const timeout = /^\d+$/.test(timeoutText) ? Number(timeoutText) : Number.NaN
+  const timeoutValid = isValidTimeout(timeout)
 
   const save = async () => {
     if (!settings || !timeoutValid) return

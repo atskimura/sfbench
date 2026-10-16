@@ -59,6 +59,10 @@ export type HistoryResponse = { entries: HistoryEntry[] }
 export const MIN_TIMEOUT_SECONDS = 10
 export const MAX_TIMEOUT_SECONDS = 600
 
+export function isValidTimeout(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= MIN_TIMEOUT_SECONDS && (value as number) <= MAX_TIMEOUT_SECONDS
+}
+
 export type Settings = {
   omitNamespace: boolean
   /** How long to wait for Salesforce, in seconds (10 to 600). */

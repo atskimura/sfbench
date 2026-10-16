@@ -27,7 +27,7 @@ export function Header() {
         <span className={styles.usage}>{t.apiUsage(numberFormat.format(usage.used), numberFormat.format(usage.max))}</span>
       )}
       <OrgSwitcher />
-      <OpenOrgButton />
+      <OpenOrgButton key={selected} />
       <a className={styles.iconButton} href={DOCUMENTATION_URL} target="_blank" rel="noreferrer" aria-label={t.documentation} title={t.documentation}>
         <HelpIcon />
       </a>

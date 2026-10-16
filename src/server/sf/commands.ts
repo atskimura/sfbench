@@ -1,6 +1,6 @@
 // The sf commands sfbench uses, other than `sf api request rest` (apiRequest.ts).
 import type { Org, OrgKind } from '../../shared/api.ts'
-import { SfCliError } from './errors.ts'
+import { OrgAuthError, SfCliError, isAuthErrorMessage } from './errors.ts'
 import { lastErrorLine, runSf, runSfJson } from './run.ts'
 
 type RawOrg = {
@@ -108,5 +108,9 @@ export async function openOrg(username: string, cwd: string): Promise<void> {
   // stdout contains the frontdoor URL, which carries a session: it is never read or logged.
   const { exitCode, stderr } = await runSf(['org', 'open'], { targetOrg: username, cwd })
   // stderr can contain the frontdoor URL, which carries a session; lastErrorLine removes URLs.
-  if (exitCode !== 0) throw new SfCliError(`sf org open failed: ${lastErrorLine(stderr) ?? 'unknown error'}`)
+  if (exitCode !== 0) {
+    const message = lastErrorLine(stderr) ?? 'unknown error'
+    if (isAuthErrorMessage(message)) throw new OrgAuthError(username, message)
+    throw new SfCliError(`sf org open failed: ${message}`)
+  }
 }

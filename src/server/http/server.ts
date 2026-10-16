@@ -5,6 +5,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { extname, join, relative, sep } from 'node:path'
 import {
+  isValidTimeout,
   MAX_TIMEOUT_SECONDS,
   MIN_TIMEOUT_SECONDS,
   type ApiError,
@@ -29,7 +30,7 @@ import {
 } from '../salesforce.ts'
 import { openOrg } from '../sf/commands.ts'
 import { OrgAuthError, SfCliError, SfNotFoundError } from '../sf/errors.ts'
-import { addHistory, isValidTimeout, loadHistory, type SettingsStore } from '../store.ts'
+import { addHistory, loadHistory, type SettingsStore } from '../store.ts'
 import { isAdminRequestOrigin, isAllowedHost, isSameOriginRequest } from './security.ts'
 
 const MAX_BODY_BYTES = 5 * 1024 * 1024
