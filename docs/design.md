@@ -268,12 +268,13 @@ describe の結果はサーバーのメモリに組織ごとに保持し、タ�
 - ポートは 17717 に固定し、使用中なら起動に失敗する。Vite の転送先を固定するためと、手元で使っている sfbench（7717）とぶつからないようにするためである。
 - 状態（`server.json`、設定、最近のクエリ、ログなど、普段は `~/.sfbench/` に置くもの）を、リポジトリのルート直下の `.sfbench-dev/` に置く。開発中のサーバーが、手元で常駐している sfbench の `server.json` を上書きしたり、普段使いの設定や履歴を壊したりしないようにするためである。`.sfbench-dev/` は `.gitignore` に入れてある。置き場所は環境変数 `SFBENCH_HOME` で変えられる。
 - `/api/session` は、コード `dev` を何度でも受け付け、毎回同じ開発用のセッショントークンを返す。開発用のセッショントークンはサーバーの起動のたびに変わらない値（`.sfbench-dev/` に保存）にする。再起動のたびにコードを取り直さずに済むようにするためである。
-- `Host` と `Origin` に Vite の開発サーバー（`localhost:5173`）も許可する。Vite の転送は、ブラウザの `Origin` をそのまま渡す。Vite 8 は転送時に既定で `Host` を転送先に書き換えるので、`changeOrigin: false` で `Host` も渡させる。
+- `Host` と `Origin` に Vite の開発サーバー（`localhost:5173`）も許可する。Vite の転送は、ブラウザの `Origin` をそのまま渡す。Vite の転送先を文字列の省略形（`'/api': 'http://…'`）で書くと `changeOrigin` が有効になり、`Host` が転送先に書き換わる。そのためオブジェクトの形で書き、`changeOrigin: false` を明示する。
 
 サーバーは起動時に `http://localhost:5173/launch/dev` を表示する。
 Vite は `/launch/dev` には画面（`index.html`）を返し、`/api` だけをサーバー（`127.0.0.1:17717`）へ転送する。
 画面のモジュールは `src/web/api/` に置かない。置くと `/api/` で始まる URL で配信され、サーバーへ転送されてしまう。
-`npm run dev` は `npm run dev:server` と `npm run dev:web` を並べて起動し、どちらかが終わるか Ctrl+C を押すと両方を止める（`scripts/dev.mjs`）。
+`npm run dev` は `npm run dev:server` と `npm run dev:web` を並べて起動し、Ctrl+C を押すか Vite が終わると両方を止める（`scripts/dev.mjs`）。
+サーバーは `node --watch` の下で動くので、起動に失敗しても（ポート 17717 が使用中など）終了せず、エラーを表示してファイルの変更を待つ。このとき Vite は動き続ける。
 画面のコードを保存すると Vite がその場で反映し、サーバーのコードを保存すると `node --watch` がサーバーを起動し直すので、`npm run build` は要らない。
 Vite の開発サーバーは `localhost:5173` に固定し、使用中なら起動に失敗する。
 `dev:server` は Node の型除去機能で TypeScript を直接実行する。

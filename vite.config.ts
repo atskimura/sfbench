@@ -26,7 +26,9 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      // Keep the Host header (localhost:5173): the server checks it against the Origin.
+      // The object form keeps the Host header (localhost:5173), which the
+      // server checks against the Origin. The string shorthand would set
+      // changeOrigin and send Host 127.0.0.1:17717 instead.
       '/api/': { target: 'http://127.0.0.1:17717', changeOrigin: false },
     },
   },
