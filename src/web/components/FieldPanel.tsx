@@ -212,11 +212,13 @@ function FieldRow({
   const target = field.referenceTo[0]
   const canExpand = Boolean(field.relationshipName && target)
   const atMaxDepth = relationships.length >= MAX_PARENT_DEPTH
+  // Fields inside a child relationship sit one level below it.
+  const indent = relationships.length + (childRelationship ? 1 : 0)
   const id = useId()
 
   return (
     <li role="treeitem" aria-expanded={canExpand ? expanded : undefined} aria-selected={checked} className={checked ? styles.checked : undefined}>
-      <div className={styles.row} style={{ paddingLeft: `calc(var(--space-3) + ${relationships.length} * var(--space-4))` }}>
+      <div className={styles.row} style={{ paddingLeft: `calc(var(--space-3) + ${indent} * var(--space-4))` }}>
         {canExpand ? (
           <button
             type="button"
