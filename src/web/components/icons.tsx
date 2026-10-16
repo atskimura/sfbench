@@ -12,9 +12,10 @@ export function LogoIcon({ size = 20 }: Props) {
 
 export function GearIcon({ size = 18 }: Props) {
   return (
-    <svg width={size} height={size} viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <svg width={size} height={size} viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
+      {/* An 8-tooth cog with a hole in the middle. */}
+      <path d="M16.11 8.11 L18.04 8.37 L18.04 11.63 L16.11 11.89 L15.66 12.99 L16.83 14.53 L14.53 16.83 L12.99 15.66 L11.89 16.11 L11.63 18.04 L8.37 18.04 L8.11 16.11 L7.01 15.66 L5.47 16.83 L3.17 14.53 L4.34 12.99 L3.89 11.89 L1.96 11.63 L1.96 8.37 L3.89 8.11 L4.34 7.01 L3.17 5.47 L5.47 3.17 L7.01 4.34 L8.11 3.89 L8.37 1.96 L11.63 1.96 L11.89 3.89 L12.99 4.34 L14.53 3.17 L16.83 5.47 L15.66 7.01 Z" />
       <circle cx="10" cy="10" r="2.6" />
-      <path d="M10 2.5v2.2M10 15.3v2.2M2.5 10h2.2M15.3 10h2.2M4.7 4.7l1.6 1.6M13.7 13.7l1.6 1.6M4.7 15.3l1.6-1.6M13.7 6.3l1.6-1.6" />
     </svg>
   )
 }
