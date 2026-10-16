@@ -1,0 +1,45 @@
+{
+  "name": "sfbench",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A local workbench for Salesforce: SOQL, Apex and REST API, powered by your sf CLI auth",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "sfbench": "dist/server/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": "^22.21.0 || >=24.5.0"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "^22.21.0 || >=24.5.0",
+      "onFail": "warn"
+    }
+  },
+  "scripts": {
+    "dev:web": "vite",
+    "dev:server": "node --use-env-proxy --watch src/server/cli.ts --dev",
+    "typecheck": "tsc -b",
+    "lint": "oxlint",
+    "test": "vitest run --passWithNoTests",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc -b && vite build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "oxlint": "^1.81.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.5"
+  }
+}

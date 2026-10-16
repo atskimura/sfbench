@@ -1,0 +1,46 @@
+/* Design tokens. Components refer to these variables and never to literal colors. */
+:root {
+  --color-bg: #f2f3f1;
+  --color-panel: #ffffff;
+  --color-ink: #1b2326;
+  --color-muted: #5a666a;
+  --color-line: #dce0dd;
+  --color-header: #16232a;
+  --color-accent: #0a7468;
+  --color-accent-soft: #e2f0ed;
+  --color-link: #0b5fa5;
+
+  --font-sans: system-ui, -apple-system, 'Segoe UI', 'Hiragino Sans', 'Yu Gothic UI', sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #141917;
+    --color-panel: #1b2220;
+    --color-ink: #e4ebe8;
+    --color-muted: #9aa6a1;
+    --color-line: #2f3936;
+    --color-header: #0e1517;
+    --color-accent: #5cc4ae;
+    --color-accent-soft: #1d3530;
+    --color-link: #7fb4e8;
+
+    color-scheme: dark;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
