@@ -1,0 +1,14 @@
+{
+  "status": 0,
+  "result": [
+    {
+      "name": "target-org",
+      "key": "target-org",
+      "value": "demo",
+      "path": "/home/dev/project/.sf/config.json",
+      "success": true,
+      "location": "Local"
+    }
+  ],
+  "warnings": []
+}

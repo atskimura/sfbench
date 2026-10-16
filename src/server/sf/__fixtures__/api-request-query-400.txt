@@ -1,0 +1,19 @@
+HTTP/1.1 400
+date: Fri, 16 Oct 2026 08:31:50 GMT
+vary: Accept-Encoding
+x-content-type-options: nosniff
+strict-transport-security: max-age=63072000; includeSubDomains
+permissions-policy: unload=*
+x-robots-tag: none
+x-sfdc-trace-flags: 01
+cache-control: no-cache,must-revalidate,max-age=0,no-store,private
+sforce-limit-info: api-usage=38/50000
+content-type: application/json;charset=UTF-8
+connection: close
+transfer-encoding: chunked
+[
+  {
+    "message": "\nSELECT Id FROM NoSuchObject__c\n               ^\nERROR at Row:1:Column:16\nsObject type 'NoSuchObject__c' is not supported. If you are attempting to use a custom object, be sure to append the '__c' after the entity name. Please reference your WSDL or the describe call for the appropriate names.",
+    "errorCode": "INVALID_TYPE"
+  }
+]

@@ -1,0 +1,10 @@
+{
+  // Type-checks server and shared tests, which tsconfig.server.json leaves out of the build.
+  "extends": "./tsconfig.server.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.server-test.tsbuildinfo",
+    "noEmit": true
+  },
+  "include": ["src/server/**/*.test.ts", "src/shared/**/*.test.ts", "src/server/**/__fixtures__/**/*.ts"],
+  "exclude": []
+}

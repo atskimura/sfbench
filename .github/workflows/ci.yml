@@ -29,3 +29,6 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npm test
+      # The development entry point runs the TypeScript sources with Node's type stripping.
+      - run: node src/server/cli.ts --help
+      - run: node dist/server/cli.js --version

@@ -1,0 +1,81 @@
+// `sf api request rest`, the fallback transport. One of the documented
+// exceptions to "depend only on sf's JSON output": with --include, sf prints a
+// status line, headers and the body as plain text. All of that parsing lives
+// here, tested against recorded output in __fixtures__.
+import { randomBytes } from 'node:crypto'
+import { rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { OrgAuthError, SfCliError, isAuthErrorMessage } from './errors.ts'
+import { lastErrorLine, runSf } from './run.ts'
+
+export type RawResponse = {
+  status: number
+  /** Header names in lower case. */
+  headers: Record<string, string>
+  body: string
+}
+
+export type ApiRequest = {
+  method: string
+  /** Absolute path on the instance, such as /services/data/v62.0/query?q=... */
+  path: string
+  headers: Record<string, string>
+  body?: string
+}
+
+const HEADER_LINE = /^([!#$%&'*+.^_`|~0-9A-Za-z-]+):[ \t]?(.*)$/
+
+/**
+ * Parses the output of `sf api request rest --include`. sf prints no blank
+ * line between the headers and the body, so the body starts at the first line
+ * that is not a header. A plain-text body whose first line looks like a header
+ * would be misread; Salesforce REST responses are JSON, so this does not occur.
+ */
+export function parseIncludedResponse(stdout: string): RawResponse | undefined {
+  // Strip ANSI color codes in case sf colors its output despite NO_COLOR.
+  // oxlint-disable-next-line no-control-regex
+  const lines = stdout.replace(/\x1b\[[0-9;]*m/g, '').split(/\r?\n/)
+  const statusMatch = /^HTTP\/[\d.]+ (\d{3})\b/.exec(lines[0] ?? '')
+  if (!statusMatch) return undefined
+  const headers: Record<string, string> = {}
+  let i = 1
+  for (; i < lines.length; i++) {
+    const m = HEADER_LINE.exec(lines[i])
+    if (!m) break
+    headers[m[1].toLowerCase()] = m[2].trim()
+  }
+  // Skip a blank separator line in case a future sf version prints one.
+  if (lines[i] === '') i++
+  return { status: Number(statusMatch[1]), headers, body: lines.slice(i).join('\n').trimEnd() }
+}
+
+/** Sends a REST request through `sf api request rest`. Throws OrgAuthError when the org's auth is no longer valid. */
+export async function apiRequest(username: string, request: ApiRequest, tmpDir: string): Promise<RawResponse> {
+  // The request goes in a file so that user input never appears on the command line.
+  const fileName = `req-${randomBytes(8).toString('hex')}.json`
+  const filePath = join(tmpDir, fileName)
+  const fileBody = {
+    url: request.path,
+    method: request.method,
+    header: Object.entries(request.headers).map(([key, value]) => ({ key, value })),
+    body: { mode: 'raw', raw: request.body ?? '' },
+  }
+  writeFileSync(filePath, JSON.stringify(fileBody), { mode: 0o600 })
+  try {
+    const { stdout, stderr } = await runSf(['api', 'request', 'rest', '--file', fileName, '--include'], {
+      targetOrg: username,
+      cwd: tmpDir,
+      timeoutMs: 120_000,
+    })
+    const response = parseIncludedResponse(stdout)
+    if (response) {
+      if (response.status === 401) throw new OrgAuthError(username, 'Salesforce rejected the session (401).')
+      return response
+    }
+    const message = lastErrorLine(stderr) ?? 'sf api request rest returned no response'
+    if (isAuthErrorMessage(message)) throw new OrgAuthError(username, message)
+    throw new SfCliError(message)
+  } finally {
+    rmSync(filePath, { force: true })
+  }
+}

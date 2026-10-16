@@ -1,0 +1,9 @@
+{
+  "status": 0,
+  "result": {
+    "accessToken": "00D000000000000AAA!FAKE.TOKEN.FOR.TESTS"
+  },
+  "warnings": [
+    "This command exposes a sensitive Access Token that allows for subsequent activity using your current authenticated session. Sharing this information is equivalent to logging someone in under the current credential, resulting in unintended access and escalation of privilege. For additional information about org authorization, review https://developer.salesforce.com/docs/atlas.en-us.sfdx_dev.meta/sfdx_dev/sfdx_dev_auth.htm."
+  ]
+}

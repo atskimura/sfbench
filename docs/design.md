@@ -85,13 +85,18 @@ Windows では `sf` の実体が `sf.cmd` で、Node はシェルを通さない
 - アクセストークンを失効させたあとで `show-access-token` を呼ぶと、CLI がリフレッシュした新しいトークンを返す。
 - `sf api request rest` は REST API、Tooling API、describe のいずれも動き、`--include` で `Sforce-Limit-Info` ヘッダーも返す。1回の呼び出しに約3秒かかる。
 
-次は区切り1で確かめる。
+区切り1の初めに、同じ環境で次を確かめた。
 
-- `--skip-connection-status` を付けた `sf org list` が `instanceUrl` と組織の種別（`isSandbox`、`isScratch`、`isDevHub`）を含むこと。
-- `SF_TARGET_ORG` が `show-access-token`、`api request rest`、`org open` に効くこと。
-- `sf config get target-org --json` の出力の形。
-- `api request rest --file` の JSON の書式。
-- 認証エラー（リフレッシュトークンの失効など）のときに `show-access-token` が返すエラーの `name`。
+- `--skip-connection-status` を付けた `sf org list` は、`instanceUrl`、`isSandbox`、`isScratch`、`isDevHub` を含む。多くの組織では `orgEdition`（`Developer Edition`、`Enterprise Edition` など）も含むが、空の組織もある。組織が約90ある環境では、出力まで約9秒かかった。
+- `sf config get target-org --json` は、既定の組織が未設定だと `result[0]` に `value` を含まない。
+- `SF_TARGET_ORG` は `api request rest` と `show-access-token` に効く。
+- `api request rest --file` の JSON は `{ "url", "method", "header": [{ "key", "value" }], "body": { "mode": "raw", "raw" } }` の形で書く。ヘッダーを `{ "名前": "値" }` の形で書くとエラーになる。
+- `api request rest` は、HTTP のエラー（400 など）でも終了コード 1 で、標準出力にステータス行とボディを出す。
+- リフレッシュトークンが失効した組織では、`api request rest` は `name` が `Error`、`message` が「Unable to refresh session due to: ... expired access/refresh token」のエラーを返す。`show-access-token` はエラーにならず、保存済みの古いトークンを返す。
+
+次は未確認である。
+
+- `SF_TARGET_ORG` が `org open` に効くこと。
 - Windows で上の呼び出し方が動くこと。
 
 `sf org list --json` の出力には各組織の `accessToken` が含まれる。
@@ -114,14 +119,25 @@ API バージョンは、組織ごとに最初の呼び出しで `/services/data
 次のいずれかに当てはまるとき、その組織の呼び出しを `sf api request rest` で試す。
 
 - `show-access-token` が認証エラー以外の理由で失敗した（コマンドの仕様が変わったなど）。
-- `fetch` がネットワークエラーで失敗した。
+- `fetch` がネットワークエラーで失敗した。ただし、データを変えうる要求（GET と HEAD 以外）は試さず、エラーにする。応答を受け取る途中で接続が切れた場合、Salesforce はすでに処理を終えている可能性があり、送り直すと二重に実行されるからである。トークンを取得できなかった場合は、要求がまだ送られていないので、どの要求でも試す。
+
+`fetch` には120秒のタイムアウトを設ける。
+タイムアウトした場合は経路を切り替えず、エラーにする。
 
 `sf api request rest` で成功した場合だけ、その組織の経路を切り替える。
 失敗した場合は切り替えず、エラーを画面に出す（ネットワークそのものが落ちているときに、遅い経路に移っても結果は変わらないため）。
-切り替えた組織は、10分経ったら次の呼び出しでもう一度 `fetch` を試す。
+切り替えた組織は、10分経ったあとの最初の読み取りの要求（GET と HEAD）で、もう一度 `fetch` を試す。
+データを変えうる要求で試さないのは、`fetch` がまだ失敗する場合に、その要求を送り直せないからである。
+`fetch` で接続が途中で切れたデータを変えうる要求は、「Salesforce が処理した可能性があるので送り直していない」と伝えるエラーにする。
 サーバーは自動では止まらないので、一時的な失敗で遅い経路に移ったままにならないようにするためである。
 
-認証エラーと、それ以外の失敗の見分け方は、区切り1で実際のエラー出力を記録し、エラーの `name` の判定表として実装する。
+次のいずれかを認証エラーとみなす。
+エラーの `name` は汎用的な `Error` のことがあり、それだけでは判定できないからである。
+
+- `fetch` の経路で、トークンを取り直して再試行しても 401 が返った。失効した組織でも `show-access-token` は古いトークンを返すので、取り直しても 401 が続く。
+- `sf api request rest` が 401 を返した。
+- sf CLI のエラー文が、リフレッシュトークンの失効を示している（「Unable to refresh session」「expired access/refresh token」「invalid_grant」を含む）。
+
 認証エラーのときは経路を切り替えず、画面に再ログインのコマンド（`sf org login web -a <alias>`）を表示する。
 `sf api request rest` に切り替えても同じ認証情報を使うので、結果は変わらないからである。
 
@@ -260,8 +276,11 @@ AI のエージェントから呼ばれることを想定して、コマンド�
 
 `-o` を省いたときは、CLI の入口が自分の作業ディレクトリで `sf config get target-org` を実行して既定の組織を得る。
 sf CLI の既定の組織はプロジェクトのディレクトリごとの設定で変わるので、利用者が `npx sfbench` を実行した場所の設定に従うためである。
-CLI の入口は、`-o` の値か既定の組織（エイリアスかユーザー名）をそのまま `/api/launch` に送り、サーバーが自分の持つ組織の一覧でユーザー名に解決する。
-一覧にない値なら、サーバーはエラーを返し、CLI の入口はそれを出力して終了する。
+CLI の入口は、`-o` の値か既定の組織（エイリアスかユーザー名）をそのまま `/api/launch` に送り、すぐにブラウザを開く。
+組織の名前は画面が組織の一覧（`/api/orgs`）と照らしてユーザー名に解決し、その間は読み込み中の表示を出す。
+`sf org list` は組織が多いと数秒から十数秒かかるので、CLI の入口がそれを待ってからブラウザを開くと、利用者は何も表示されないまま待たされるからである。
+一覧にない名前なら、画面は「sf CLI に `<名前>` という組織はありません」と表示し、組織の一覧を開いた状態にする。
+`--run` の指定があっても、このときは実行しない。
 既定の組織もない場合、`--run` を付けていればコマンドはエラーで終了する。
 付けていなければ、組織の一覧を開いた状態で画面を開く。
 
@@ -289,7 +308,8 @@ SSH のポート転送で使う場合は、手元と同じポート番号に転�
 
 サーバーは、待ち受けを始めてから `server.json` を書く。
 書き込みは一時ファイルに書いてから名前を変えて置き換え、書きかけの状態を読ませない。
-起動時には `~/.sfbench/tmp/` に残ったファイルを消す。
+起動時には `~/.sfbench/tmp/` に残ったファイルのうち、1時間以上前のものを消す。
+新しいファイルは、止まらずに残っている古いサーバーが使っている可能性があるからである。
 
 既存のタブには送り込まず、毎回新しいタブを開く。
 人が書きかけのクエリを上書きしないためである。
@@ -371,6 +391,7 @@ Windows ではこの権限の指定が効かないので、ユーザーのプロ
 | 項目 | 既定 | 内容 |
 | --- | --- | --- |
 | 名前空間を省く | オン | 組織の名前空間を省いて SOQL を書けるようにする。全組織で共通 |
+| Salesforce の応答を待つ時間 | 120秒 | `fetch` と `sf api request rest` のタイムアウト。長いクエリや大きな describe で足りないときに延ばす（区切り2で実装） |
 | AI | オフ | 使う AI の API と、その接続情報 |
 
 名前空間を省く設定がオンのとき、サーバーは `/query` と `/query/next` の呼び出しに `Sforce-Call-Options: defaultNamespace=<名前空間>` ヘッダーを付け、画面は SOQL の生成と補完で名前空間を省く。
