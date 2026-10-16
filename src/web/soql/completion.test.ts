@@ -35,7 +35,11 @@ describe('contextCandidates', () => {
     Account: {
       name: 'Account',
       label: '取引先',
-      fields: [field('Name', '取引先名'), field('OwnerId', '所有者 ID', { relationshipName: 'Owner', referenceTo: ['User'] })],
+      fields: [
+        field('Name', '取引先名'),
+        field('OwnerId', '所有者 ID', { relationshipName: 'Owner', referenceTo: ['User'] }),
+        field('BrandName', 'ブランド'),
+      ],
       childRelationships: [
         { childSObject: 'Contact', field: 'AccountId', relationshipName: 'Contacts' },
         { childSObject: 'acme__Invoice__c', field: 'acme__Account__c', relationshipName: 'acme__Invoices__r' },
@@ -71,14 +75,14 @@ describe('contextCandidates', () => {
   })
 
   it('lists fields of the FROM object, then keywords', async () => {
-    expect(await labels('SELECT Na| FROM Account')).toEqual(['Name / 取引先名'])
-    expect(await labels('SELECT Id FROM Account WHERE Na| ')).toEqual(['Name / 取引先名'])
+    expect(await labels('SELECT Na| FROM Account')).toEqual(['Name / 取引先名', 'BrandName / ブランド'])
+    expect(await labels('SELECT Id FROM Account WHERE Na| ')).toEqual(['Name / 取引先名', 'BrandName / ブランド'])
     expect(await labels('SELECT Id FROM Account WHER|')).toEqual(['WHERE'])
   })
 
   it('follows parent relationships, and lists only fields after a dot', async () => {
     expect(await labels('SELECT Account.Owner.| FROM Contact')).toEqual(['Username / ユーザー名'])
-    expect(await labels('SELECT c.Account.Na| FROM Contact c')).toEqual(['Name / 取引先名'])
+    expect(await labels('SELECT c.Account.Na| FROM Contact c')).toEqual(['Name / 取引先名', 'BrandName / ブランド'])
     expect(await labels('SELECT Account.Nothing.| FROM Contact')).toEqual([])
   })
 
@@ -88,8 +92,16 @@ describe('contextCandidates', () => {
     expect(await labels('SELECT Id, (SELECT 合| FROM Invoices__r) FROM Account')).toEqual(['Total__c / 合計'])
   })
 
+  it('ranks keywords that start with the word before fields that only contain it', async () => {
+    expect(await labels("SELECT Id FROM Account WHERE Name = 'x' AN|")).toEqual(['AND', 'BrandName / ブランド', 'FIELDS(STANDARD)'])
+  })
+
+  it('lists no keywords after a dot', async () => {
+    expect(await labels('SELECT Id FROM Account LIMIT 1.|')).toEqual([])
+  })
+
   it('lists only fields after the FROM alias and a dot', async () => {
-    expect(await labels('SELECT a.| FROM Account a')).toEqual(['Name / 取引先名', 'OwnerId / 所有者 ID'])
+    expect(await labels('SELECT a.| FROM Account a')).toEqual(['Name / 取引先名', 'OwnerId / 所有者 ID', 'BrandName / ブランド'])
   })
 
   it('puts names, then labels, that start with the word first', () => {

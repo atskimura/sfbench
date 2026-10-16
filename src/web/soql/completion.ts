@@ -11,6 +11,8 @@ export type Candidate = {
   label: string
   /** Inserted text. */
   insert: string
+  /** The label or child object, also matched against the typed word. */
+  secondary?: string
   kind: 'object' | 'relationship' | 'field' | 'keyword'
 }
 
@@ -61,7 +63,7 @@ export function fieldCandidates(fields: FieldDescribe[], word: string, ctx: Name
   )
     .map((f) => {
       const insert = soqlName(f.name, ctx.ns, ctx.omitNamespace)
-      return { label: `${insert} / ${f.label}`, insert, kind: 'field' as const }
+      return { label: `${insert} / ${f.label}`, insert, secondary: f.label, kind: 'field' as const }
     })
 }
 
@@ -100,7 +102,7 @@ export async function contextCandidates(info: CursorInfo, d: Describer, ctx: Nam
     case 'none':
       return []
     case 'keyword':
-      return keywordCandidates(word)
+      return info.dotted ? [] : keywordCandidates(word)
     case 'from': {
       if (context.scope.child) {
         const parent = context.scope.parent && (await scopeObject(context.scope.parent, d, ctx.ns))
@@ -130,7 +132,9 @@ export async function contextCandidates(info: CursorInfo, d: Describer, ctx: Nam
       const object = await followPath(await scopeObject(context.scope, d, ctx.ns), context.path, d, ctx.ns)
       const fields = object ? fieldCandidates((await d.describe(object)).fields, word, ctx) : []
       // After a dot (including `a.` with the FROM alias) only fields make sense.
-      return info.dotted ? fields : [...fields, ...keywordCandidates(word)]
+      // Otherwise rank fields and keywords together, so that AND comes before
+      // fields that only contain "an".
+      return info.dotted ? fields : byRank([...fields, ...keywordCandidates(word)], word, (c) => [c.insert, c.secondary])
     }
   }
 }

@@ -83,6 +83,32 @@ describe('cursorInfo', () => {
     expect(info.context).toMatchObject({ kind: 'from', scope: { child: true, parent: { from: 'Account', alias: undefined } } })
   })
 
+  it('closes a function parenthesis that is not closed yet at FROM', () => {
+    expect(at('SELECT COUNT(Na| FROM Account').context).toMatchObject({ kind: 'field', scope: { from: 'Account' } })
+    expect(fromObjectOf('SELECT COUNT(Name FROM Account')).toBe('Account')
+  })
+
+  it('reads the clauses after FROM while the object name is empty', () => {
+    expect(at("SELECT Id FROM | WHERE Name = 'x'").context.kind).toBe('from')
+    expect(at("SELECT Id FROM  WHERE Na| = 'x' ORDER BY Name").context).toMatchObject({ kind: 'field' })
+    expect(fromObjectOf("SELECT Id FROM  WHERE Name = 'x'")).toBeUndefined()
+  })
+
+  it('keeps the FROM object with the old relationship join syntax', () => {
+    expect(at('SELECT c.Name FROM Contact c, c.Account a WHERE c.La|').context).toMatchObject({
+      kind: 'field',
+      path: [],
+      scope: { from: 'Contact', alias: 'c' },
+    })
+  })
+
+  it('does not close a subquery at a name From after a dot', () => {
+    expect(at('SELECT Id, (SELECT Id FROM Contacts WHERE x.From = null AND La|) FROM Account').context).toMatchObject({
+      kind: 'field',
+      scope: { from: 'Contacts', child: true },
+    })
+  })
+
   it('does not take a relationship named like a clause word as a clause', () => {
     expect(at('SELECT Order.OrderNumber, (SELECT Id FROM |) FROM OrderItem').context).toMatchObject({
       kind: 'from',

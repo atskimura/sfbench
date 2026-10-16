@@ -70,6 +70,8 @@ type Frame = {
   clauseWords: number
   /** A FROM has started in this query. */
   sawFrom: boolean
+  /** A comma has come in the FROM clause. */
+  fromListed: boolean
   /** The query frame this frame is in. */
   query: Frame | undefined
 }
@@ -85,7 +87,7 @@ type Snapshot = { frame: Frame; clause: string | undefined; clauseWords: number 
 function scan(text: string, stopAt: number, pos: number): { root: Scope; atCursor: Snapshot; inString: boolean } {
   const tokens = tokenize(text)
   const rootScope: Scope = { from: undefined, alias: undefined, child: false, parent: undefined }
-  const root: Frame = { scope: rootScope, clause: undefined, clauseWords: 0, sawFrom: false, query: undefined }
+  const root: Frame = { scope: rootScope, clause: undefined, clauseWords: 0, sawFrom: false, fromListed: false, query: undefined }
   root.query = root
   const stack: Frame[] = [root]
   const snapshot = (): Snapshot => {
@@ -109,11 +111,13 @@ function scan(text: string, stopAt: number, pos: number): { root: Scope; atCurso
         const scope: Scope | undefined = isSubquery
           ? { from: undefined, alias: undefined, child: parentQuery?.clause === 'select', parent: parentQuery?.scope }
           : undefined
-        const next: Frame = { scope, clause: undefined, clauseWords: 0, sawFrom: false, query: undefined }
+        const next: Frame = { scope, clause: undefined, clauseWords: 0, sawFrom: false, fromListed: false, query: undefined }
         next.query = scope ? next : frame.query
         stack.push(next)
       } else if (token.text === ')' && stack.length > 1) {
         stack.pop()
+      } else if (token.text === ',' && frame === frame.query && frame.clause === 'from') {
+        frame.fromListed = true
       }
       continue
     }
@@ -121,29 +125,36 @@ function scan(text: string, stopAt: number, pos: number): { root: Scope; atCurso
     const query = frame.query
     if (!query) continue
     const lower = token.text.toLowerCase()
-    if (frame === query && lower === 'from' && query.sawFrom && query !== root) {
-      // A second FROM in a subquery: its `(` has not been closed yet (the
-      // editor does not close brackets). Close it and read this FROM again.
-      while (stack.pop() !== query);
-      i--
-      continue
-    }
-    // Only words directly in the query (not inside a function's parentheses)
-    // change clauses; so do not names around a dot (`Order.OrderNumber`), or
-    // the name right after FROM (objects named Group or Order).
-    // Touching the dot: in `SELECT a. FROM`, FROM after the typed `a.` is still a clause.
+    // A word touching a dot is a name (`Order.OrderNumber`, `x.From`). In
+    // `SELECT a. FROM`, the FROM after the typed `a.` is still a clause.
     const nearDot =
       (tokens[i + 1]?.text === '.' && tokens[i + 1].start === token.end) ||
       (tokens[i - 1]?.text === '.' && tokens[i - 1].end === token.start)
-    if (frame === query && CLAUSES.has(lower) && !nearDot && !(query.clause === 'from' && query.clauseWords === 0)) {
+    // GROUP and ORDER start a clause only before BY; otherwise they are names
+    // (the objects Group and Order).
+    const isClause =
+      CLAUSES.has(lower) && !nearDot && (lower !== 'group' && lower !== 'order' ? true : tokens[i + 1]?.text.toLowerCase() === 'by')
+    if (isClause && lower === 'from' && (frame !== query || (query.sawFrom && query !== root))) {
+      // FROM inside a function's parentheses, or a second FROM in a subquery:
+      // a `(` has not been closed yet (the editor does not close brackets).
+      // Close the open parentheses and read this FROM again.
+      if (frame !== query) while (stack[stack.length - 1] !== query) stack.pop()
+      else while (stack.pop() !== query);
+      i--
+      continue
+    }
+    // Only words directly in the query (not inside a function's parentheses) change clauses.
+    if (frame === query && isClause) {
       query.clause = lower
       query.clauseWords = 0
+      query.fromListed = false
       if (lower === 'from') query.sawFrom = true
       continue
     }
     if (frame === query && query.clause === 'from' && query.scope) {
-      // FROM Account, FROM Account a, FROM a.Contacts c (the last part is the name).
-      const dotted = tokens[i - 1]?.text === '.' && query.clauseWords > 0
+      // FROM Account, FROM Account a, FROM a.Contacts c (the last part is the
+      // name). After a comma (`FROM Contact c, c.Account a`) the name stays.
+      const dotted = tokens[i - 1]?.text === '.' && query.clauseWords > 0 && !query.fromListed
       if (query.clauseWords === 0 || dotted) query.scope.from = token.text
       else if (!query.scope.alias && lower !== 'as') query.scope.alias = token.text
     }
