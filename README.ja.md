@@ -21,7 +21,7 @@ REST API と匿名 Apex の実行、AI に SOQL を組ませる機能は、順�
 
 ## 必要なもの
 
-- Node.js 22.12 以上
+- Node.js 22.21.0 以上の 22 系、または 24.5.0 以上
 - [Salesforce CLI](https://developer.salesforce.com/tools/salesforcecli)（`sf`）と、使う組織へのログイン
 
 macOS、Linux、Windows で動きます。
