@@ -47,10 +47,18 @@
 
 .row {
   display: flex;
-  align-items: center;
+  /* The checkbox and the arrow line up with the label (the first of the two lines). */
+  align-items: flex-start;
   gap: var(--space-1);
   padding: var(--space-1) var(--space-3);
-  line-height: 20px;
+  line-height: 18px;
+}
+
+.row > input[type='checkbox'] {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  margin: 2.5px 4px 0;
 }
 
 .checked > .row {
