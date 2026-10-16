@@ -99,15 +99,10 @@ export function parseAccessToken(result: unknown): string {
   return token
 }
 
-/** A 15 or 18 character Salesforce record ID. */
-export function isRecordId(value: unknown): value is string {
-  return typeof value === 'string' && /^[a-zA-Z0-9]{15}(?:[a-zA-Z0-9]{3})?$/.test(value)
-}
-
-/** Opens a record in the default browser, logged in, with `sf org open`. */
-export async function openRecord(username: string, recordId: string, cwd: string): Promise<void> {
-  if (!isRecordId(recordId)) throw new SfCliError('Invalid record ID')
-  const { exitCode, stderr } = await runSf(['org', 'open', '--path', `/${recordId}`], { targetOrg: username, cwd })
+/** Opens the org's home page in the default browser, logged in, with `sf org open`. */
+export async function openOrg(username: string, cwd: string): Promise<void> {
+  // stdout contains the frontdoor URL, which carries a session: it is never read or logged.
+  const { exitCode, stderr } = await runSf(['org', 'open'], { targetOrg: username, cwd })
   // stderr can contain the frontdoor URL, which carries a session; lastErrorLine removes URLs.
   if (exitCode !== 0) throw new SfCliError(`sf org open failed: ${lastErrorLine(stderr) ?? 'unknown error'}`)
 }

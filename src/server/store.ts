@@ -3,13 +3,22 @@ import { join } from 'node:path'
 import type { HistoryEntry, Settings } from '../shared/api.ts'
 import { readJson, writeFileAtomic } from './fsutil.ts'
 
-const DEFAULT_SETTINGS: Settings = { omitNamespace: true }
+export const DEFAULT_SETTINGS: Settings = { omitNamespace: true, requestTimeoutSeconds: 120 }
+export const MIN_TIMEOUT_SECONDS = 10
+export const MAX_TIMEOUT_SECONDS = 600
+
+export function isValidTimeout(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= MIN_TIMEOUT_SECONDS && (value as number) <= MAX_TIMEOUT_SECONDS
+}
 
 export function loadSettings(file: string): Settings {
   const stored = readJson(file)
   const s = stored && typeof stored === 'object' ? (stored as Partial<Settings>) : {}
   return {
     omitNamespace: typeof s.omitNamespace === 'boolean' ? s.omitNamespace : DEFAULT_SETTINGS.omitNamespace,
+    requestTimeoutSeconds: isValidTimeout(s.requestTimeoutSeconds)
+      ? s.requestTimeoutSeconds
+      : DEFAULT_SETTINGS.requestTimeoutSeconds,
   }
 }
 

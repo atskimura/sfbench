@@ -10,6 +10,7 @@ import { initLog, log } from './log.ts'
 import { OrgRegistry } from './orgs.ts'
 import { ensureDirs, resolvePaths, webRoot, type Paths } from './paths.ts'
 import { removeServerInfo, writeServerInfo } from './state.ts'
+import { loadSettings } from './store.ts'
 import { packageVersion } from './version.ts'
 
 export const DEFAULT_PORT = 7717
@@ -70,7 +71,11 @@ export async function serve(dev: boolean): Promise<void> {
 
   const version = packageVersion()
   const adminToken = randomBytes(32).toString('base64url')
-  const orgs = new OrgRegistry(paths.tmpDir, process.env.SFBENCH_TRANSPORT === 'cli')
+  const orgs = new OrgRegistry(
+    paths.tmpDir,
+    process.env.SFBENCH_TRANSPORT === 'cli',
+    () => loadSettings(paths.settings).requestTimeoutSeconds * 1000,
+  )
   let server: Server | undefined
 
   const shutdown = () => {

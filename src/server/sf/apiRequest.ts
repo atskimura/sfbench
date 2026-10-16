@@ -50,7 +50,12 @@ export function parseIncludedResponse(stdout: string): RawResponse | undefined {
 }
 
 /** Sends a REST request through `sf api request rest`. Throws OrgAuthError when the org's auth is no longer valid. */
-export async function apiRequest(username: string, request: ApiRequest, tmpDir: string): Promise<RawResponse> {
+export async function apiRequest(
+  username: string,
+  request: ApiRequest,
+  tmpDir: string,
+  timeoutMs: number,
+): Promise<RawResponse> {
   // The request goes in a file so that user input never appears on the command line.
   const fileName = `req-${randomBytes(8).toString('hex')}.json`
   const filePath = join(tmpDir, fileName)
@@ -65,7 +70,7 @@ export async function apiRequest(username: string, request: ApiRequest, tmpDir: 
     const { stdout, stderr } = await runSf(['api', 'request', 'rest', '--file', fileName, '--include'], {
       targetOrg: username,
       cwd: tmpDir,
-      timeoutMs: 120_000,
+      timeoutMs,
     })
     const response = parseIncludedResponse(stdout)
     if (response) {

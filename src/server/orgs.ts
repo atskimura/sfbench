@@ -3,17 +3,21 @@ import type { Org, OrgSummary } from '../shared/api.ts'
 import { OrgClient } from './salesforce.ts'
 import { listOrgs } from './sf/commands.ts'
 
+export type Described = { body: unknown; fetchedAt: string }
+
 export class OrgRegistry {
   private readonly tmpDir: string
   private readonly forceCli: boolean
+  private readonly timeoutMs: () => number
   private orgs: Promise<Org[]> | undefined
   private readonly clients = new Map<string, OrgClient>()
   private readonly summaries = new Map<string, Promise<OrgSummary>>()
-  private readonly sobjects = new Map<string, Promise<unknown>>()
+  private readonly sobjects = new Map<string, Promise<Described>>()
 
-  constructor(tmpDir: string, forceCli: boolean) {
+  constructor(tmpDir: string, forceCli: boolean, timeoutMs: () => number) {
     this.tmpDir = tmpDir
     this.forceCli = forceCli
+    this.timeoutMs = timeoutMs
   }
 
   /** The org list. `sf org list` can take several seconds, so the result is cached until refresh. */
@@ -34,7 +38,13 @@ export class OrgRegistry {
     if (!org) return undefined
     let client = this.clients.get(username)
     if (!client || client.instanceUrl !== org.instanceUrl) {
-      client = new OrgClient({ username, instanceUrl: org.instanceUrl, tmpDir: this.tmpDir, forceCli: this.forceCli })
+      client = new OrgClient({
+        username,
+        instanceUrl: org.instanceUrl,
+        tmpDir: this.tmpDir,
+        forceCli: this.forceCli,
+        timeoutMs: this.timeoutMs,
+      })
       this.clients.set(username, client)
     }
     return client
@@ -51,12 +61,12 @@ export class OrgRegistry {
     return pending
   }
 
-  /** A cached describe result. `key` is "global" or an sObject name. */
-  cachedDescribe(client: OrgClient, key: string, refresh: boolean, load: () => Promise<unknown>): Promise<unknown> {
+  /** A cached describe result with the time it was fetched. `key` is "global" or an sObject name. */
+  cachedDescribe(client: OrgClient, key: string, refresh: boolean, load: () => Promise<unknown>): Promise<Described> {
     const cacheKey = `${client.username}\n${key}`
     let pending = this.sobjects.get(cacheKey)
     if (refresh || !pending) {
-      pending = load()
+      pending = load().then((body) => ({ body, fetchedAt: new Date().toISOString() }))
       this.sobjects.set(cacheKey, pending)
       const stored = pending
       pending.catch(() => {

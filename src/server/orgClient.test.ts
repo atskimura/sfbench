@@ -18,7 +18,13 @@ const cliOk = { status: 200, headers: {}, body: '{"via":"cli"}' }
 const networkError = () => Promise.reject(new TypeError('fetch failed'))
 
 const newClient = () =>
-  new OrgClient({ username: 'u@example.com', instanceUrl: 'https://acme.my.salesforce.com', tmpDir: '/tmp', forceCli: false })
+  new OrgClient({
+    username: 'u@example.com',
+    instanceUrl: 'https://acme.my.salesforce.com',
+    tmpDir: '/tmp',
+    forceCli: false,
+    timeoutMs: () => 120_000,
+  })
 const get = { method: 'GET', path: '/services/data/v66.0/limits' } as const
 const post = { method: 'POST', path: '/services/data/v66.0/sobjects/Account', body: '{"Name":"x"}' } as const
 

@@ -25,9 +25,9 @@ import {
   SalesforceTimeoutError,
   SalesforceUnreachableError,
 } from '../salesforce.ts'
-import { isRecordId, openRecord } from '../sf/commands.ts'
+import { openOrg } from '../sf/commands.ts'
 import { OrgAuthError, SfCliError, SfNotFoundError } from '../sf/errors.ts'
-import { addHistory, loadHistory, loadSettings, saveSettings } from '../store.ts'
+import { addHistory, isValidTimeout, loadHistory, loadSettings, saveSettings } from '../store.ts'
 import { isAdminRequestOrigin, isAllowedHost, isSameOriginRequest } from './security.ts'
 
 const MAX_BODY_BYTES = 5 * 1024 * 1024
@@ -183,6 +183,12 @@ export class App {
         const body = (await readJsonObject(req)) as Partial<Settings>
         const settings = { ...loadSettings(file) }
         if (typeof body.omitNamespace === 'boolean') settings.omitNamespace = body.omitNamespace
+        if (body.requestTimeoutSeconds !== undefined) {
+          if (!isValidTimeout(body.requestTimeoutSeconds)) {
+            throw new HttpError(400, 'BAD_REQUEST', 'requestTimeoutSeconds must be an integer from 10 to 600')
+          }
+          settings.requestTimeoutSeconds = body.requestTimeoutSeconds
+        }
         saveSettings(file, settings)
         sendJson(res, 200, settings)
         return
@@ -234,11 +240,11 @@ export class App {
 
     if (rest === 'sobjects' && method === 'GET') {
       const tooling = url.searchParams.get('tooling') === '1'
-      const body = await this.options.orgs.cachedDescribe(client, tooling ? 'tooling:global' : 'global', refresh, async () => {
+      const described = await this.options.orgs.cachedDescribe(client, tooling ? 'tooling:global' : 'global', refresh, async () => {
         const version = await client.version()
         return (await client.request({ method: 'GET', path: `/services/data/v${version}/${tooling ? 'tooling/' : ''}sobjects/` })).body
       })
-      sendJson(res, 200, withUsage(body as object))
+      sendJson(res, 200, withUsage({ ...(described.body as object), fetchedAt: described.fetchedAt }))
       return
     }
 
@@ -246,7 +252,7 @@ export class App {
     if (describe && method === 'GET') {
       const name = describe[1]
       const tooling = url.searchParams.get('tooling') === '1'
-      const body = await this.options.orgs.cachedDescribe(client, `${tooling ? 'tooling:' : ''}${name}`, refresh, async () => {
+      const described = await this.options.orgs.cachedDescribe(client, `${tooling ? 'tooling:' : ''}${name}`, refresh, async () => {
         const version = await client.version()
         return (
           await client.request({
@@ -255,7 +261,7 @@ export class App {
           })
         ).body
       })
-      sendJson(res, 200, withUsage(body as object))
+      sendJson(res, 200, withUsage({ ...(described.body as object), fetchedAt: described.fetchedAt }))
       return
     }
 
@@ -291,11 +297,7 @@ export class App {
     }
 
     if (rest === 'open' && method === 'POST') {
-      const { recordId } = await readJsonObject(req)
-      if (!isRecordId(recordId)) {
-        throw new HttpError(400, 'BAD_REQUEST', 'A 15 or 18 character record ID is required')
-      }
-      await openRecord(username, recordId, this.options.paths.tmpDir)
+      await openOrg(username, this.options.paths.tmpDir)
       sendJson(res, 200, { ok: true })
       return
     }

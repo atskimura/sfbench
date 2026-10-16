@@ -58,7 +58,12 @@ export type HistoryResponse = { entries: HistoryEntry[] }
 
 export type Settings = {
   omitNamespace: boolean
+  /** How long to wait for Salesforce, in seconds (10 to 600). */
+  requestTimeoutSeconds: number
 }
+
+/** describe results carry the time the server fetched them (ISO 8601). */
+export type WithFetchedAt<T> = T & { fetchedAt: string }
 
 export type LaunchOptions = {
   /**
