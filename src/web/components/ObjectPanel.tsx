@@ -59,8 +59,8 @@ function ObjectList({ globals }: { globals: Loadable<DescribeGlobal> }) {
           {objects.map((o) => (
             <li key={o.name}>
               <button type="button" className={styles.item} title={`${o.label} (${o.name})`} onClick={() => soql.pickObject(o.name)}>
-                <span>{o.label}</span>
-                <span className={`${panel.meta} ${panel.mono}`}>{o.name}</span>
+                <span className={styles.line}>{o.label}</span>
+                <span className={`${styles.line} ${panel.meta} ${panel.mono}`}>{o.name}</span>
               </button>
             </li>
           ))}

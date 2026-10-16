@@ -238,10 +238,13 @@ function FieldRow({
           checked={checked}
           onChange={() => soql.toggleField({ name: field.name, relationships }, childRelationship)}
         />
-        <label htmlFor={id} className={styles.label}>
-          {field.label} <span className={`${panel.meta} ${panel.mono}`}>{field.name}</span>
+        <label htmlFor={id} className={styles.label} title={`${field.label} (${field.name})`}>
+          <span className={styles.line}>{field.label}</span>
+          <span className={`${styles.subline} ${panel.meta} ${panel.mono}`}>
+            <span className={styles.line}>{field.name}</span>
+            <span className={styles.type}>{field.type}</span>
+          </span>
         </label>
-        <span className={`${panel.meta} ${panel.mono}`}>{field.type}</span>
       </div>
       {expanded && target && field.relationshipName && (
         <ReferenceFields
@@ -325,9 +328,9 @@ function RelationshipRow({
           {expanded ? '▾' : '▸'}
         </button>
         <input id={id} type="checkbox" checked={checked} onChange={() => soql.toggleSubquery(relationship.relationshipName)} />
-        <label htmlFor={id} className={styles.label}>
-          {relationship.relationshipName}{' '}
-          <span className={`${panel.meta} ${panel.mono}`}>
+        <label htmlFor={id} className={styles.label} title={`${relationship.relationshipName} (${relationship.childSObject})`}>
+          <span className={styles.line}>{relationship.relationshipName}</span>
+          <span className={`${styles.line} ${panel.meta} ${panel.mono}`}>
             {childLabel ? `${childLabel} · ${relationship.childSObject}` : relationship.childSObject}
           </span>
         </label>
