@@ -61,7 +61,10 @@ export type Settings = {
 }
 
 export type LaunchOptions = {
-  /** Username of the org to open, resolved by the server. */
+  /**
+   * The org to open, as given on the command line or as the sf CLI's default
+   * org: an alias or a username. The web UI matches it against the org list.
+   */
   org?: string
   query?: string
   run?: boolean

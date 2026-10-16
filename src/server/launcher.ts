@@ -12,7 +12,6 @@ import { packageVersion } from './version.ts'
 const START_TIMEOUT_MS = 15_000
 const STOP_TIMEOUT_MS = 5_000
 const HEALTH_TIMEOUT_MS = 2_000
-const LAUNCH_TIMEOUT_MS = 150_000
 
 export class UserError extends Error {
   constructor(message: string) {
@@ -143,14 +142,7 @@ export async function openSfbench(options: OpenOptions): Promise<void> {
     release()
   }
 
-  // The server resolves the org with `sf org list`, which can take tens of seconds with many orgs.
-  const res = await admin(
-    info,
-    'POST',
-    '/api/launch',
-    { org, query: options.query, run: options.run, noOpen: !options.open },
-    LAUNCH_TIMEOUT_MS,
-  )
+  const res = await admin(info, 'POST', '/api/launch', { org, query: options.query, run: options.run, noOpen: !options.open })
   if (!res.ok) {
     const body = (await res.json().catch(() => undefined)) as { error?: { message?: string } } | undefined
     throw new UserError(body?.error?.message ?? `sfbench could not open (HTTP ${res.status}).`)

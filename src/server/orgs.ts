@@ -28,12 +28,6 @@ export class OrgRegistry {
     return this.orgs
   }
 
-  /** Finds an org by username or alias. Reloads the list once when not found, in case the user logged in to a new org. */
-  async find(usernameOrAlias: string): Promise<Org | undefined> {
-    const match = (orgs: Org[]) => orgs.find((o) => o.username === usernameOrAlias || o.alias === usernameOrAlias)
-    return match(await this.list()) ?? match(await this.list(true))
-  }
-
   /** The client for a username from the list. Returns undefined for anything else. */
   async client(username: string): Promise<OrgClient | undefined> {
     const org = (await this.list()).find((o) => o.username === username)

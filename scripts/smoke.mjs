@@ -39,7 +39,9 @@ console.log('code reuse:', (await call('POST', '/api/session', { body: { code } 
 console.log('no session:', (await call('GET', '/api/orgs', { origin: null })).status)
 console.log('admin from browser origin:', (await call('GET', '/api/health')).status)
 
-const username = s.json.launch.org
+// The UI resolves the launch org (alias or username) against the org list.
+const orgsForLaunch = await call('GET', '/api/orgs', { session, origin: null })
+const username = orgsForLaunch.json.orgs.find((o) => o.alias === s.json.launch.org || o.username === s.json.launch.org).username
 let t = Date.now()
 const orgs = await call('GET', '/api/orgs', { session, origin: null })
 console.log('orgs:', orgs.status, orgs.json.orgs.length, 'orgs; token leaked =', JSON.stringify(orgs.json).includes('!'), `${Date.now() - t}ms`)

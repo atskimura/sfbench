@@ -150,7 +150,7 @@ export class App {
         return
       }
       if (path === '/api/launch' && method === 'POST') {
-        sendJson(res, 200, await this.createLaunch(await readJsonObject(req)))
+        sendJson(res, 200, this.createLaunch(await readJsonObject(req)))
         return
       }
       if (path === '/api/shutdown' && method === 'POST') {
@@ -327,13 +327,17 @@ export class App {
     }
   }
 
-  private async createLaunch(body: unknown): Promise<{ code: string; expiresAt: number }> {
-    const b = (body ?? {}) as { org?: unknown; query?: unknown; run?: unknown; noOpen?: unknown }
+  /**
+   * Issues a one-time launch code. The org is kept as given (alias or
+   * username): the web UI resolves it against the org list, so that the
+   * browser opens without waiting for `sf org list`.
+   */
+  private createLaunch(body: Record<string, unknown>): { code: string; expiresAt: number } {
+    const b = body as { org?: unknown; query?: unknown; run?: unknown; noOpen?: unknown }
     const launch: LaunchOptions = {}
     if (typeof b.org === 'string' && b.org) {
-      const org = await this.options.orgs.find(b.org)
-      if (!org) throw new HttpError(404, 'NOT_FOUND', `The sf CLI does not know an org named ${b.org}`)
-      launch.org = org.username
+      if (b.org.length > 255) throw new HttpError(400, 'BAD_REQUEST', 'Org name too long')
+      launch.org = b.org
     }
     if (typeof b.query === 'string' && b.query) launch.query = b.query
     if (b.run === true) launch.run = true
