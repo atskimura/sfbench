@@ -8,6 +8,8 @@
 
     /* Node.js runs the compiled output directly */
     "module": "nodenext",
+    /* Import with .ts so that `node src/server/cli.ts` (type stripping) and tsc agree */
+    "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
@@ -22,5 +24,5 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src/server", "src/shared"],
-  "exclude": ["src/**/*.test.ts"]
+  "exclude": ["src/**/*.test.ts", "src/**/__fixtures__/**"]
 }
