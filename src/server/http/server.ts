@@ -18,8 +18,14 @@ import type {
 import { log } from '../log.ts'
 import type { OrgRegistry } from '../orgs.ts'
 import type { Paths } from '../paths.ts'
-import { InvalidPathError, OrgClient, SalesforceError, SalesforceTimeoutError } from '../salesforce.ts'
-import { openRecord } from '../sf/commands.ts'
+import {
+  InvalidPathError,
+  OrgClient,
+  SalesforceError,
+  SalesforceTimeoutError,
+  SalesforceUnreachableError,
+} from '../salesforce.ts'
+import { isRecordId, openRecord } from '../sf/commands.ts'
 import { OrgAuthError, SfCliError, SfNotFoundError } from '../sf/errors.ts'
 import { addHistory, loadHistory, loadSettings, saveSettings } from '../store.ts'
 import { isAdminRequestOrigin, isAllowedHost, isSameOriginRequest } from './security.ts'
@@ -92,6 +98,8 @@ function loadStaticFiles(root: string | undefined): Map<string, Buffer> {
 }
 
 export class App {
+  /** The port the server listens on; checked against the Host header. */
+  port: number
   private readonly options: AppOptions
   private readonly staticFiles: Map<string, Buffer>
   private readonly sessions = new Set<string>()
@@ -99,6 +107,7 @@ export class App {
 
   constructor(options: AppOptions) {
     this.options = options
+    this.port = options.port
     this.staticFiles = loadStaticFiles(options.webRoot)
     if (options.devSessionToken) this.sessions.add(options.devSessionToken)
   }
@@ -114,8 +123,7 @@ export class App {
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const { dev, port } = this.options
-    if (!isAllowedHost(req.headers.host, port, dev)) {
+    if (!isAllowedHost(req.headers.host, this.port, this.options.dev)) {
       sendJson(res, 421, errorBody('BAD_REQUEST', 'Unexpected Host header'))
       return
     }
@@ -283,8 +291,8 @@ export class App {
     }
 
     if (rest === 'open' && method === 'POST') {
-      const { recordId } = (await readJsonObject(req)) as { recordId?: unknown }
-      if (typeof recordId !== 'string' || !/^[a-zA-Z0-9]{15}(?:[a-zA-Z0-9]{3})?$/.test(recordId)) {
+      const { recordId } = await readJsonObject(req)
+      if (!isRecordId(recordId)) {
         throw new HttpError(400, 'BAD_REQUEST', 'A 15 or 18 character record ID is required')
       }
       await openRecord(username, recordId, this.options.paths.tmpDir)
@@ -370,6 +378,8 @@ export class App {
     } else if (e instanceof SalesforceError) {
       const status = e.status >= 400 && e.status < 500 ? e.status : 502
       sendJson(res, status, { error: { code: 'SALESFORCE_ERROR', message: e.message, status: e.status, details: e.body } })
+    } else if (e instanceof SalesforceUnreachableError) {
+      sendJson(res, 502, errorBody('SALESFORCE_ERROR', e.message))
     } else if (e instanceof SalesforceTimeoutError) {
       sendJson(res, 504, errorBody('SALESFORCE_ERROR', e.message))
     } else if (e instanceof InvalidPathError) {

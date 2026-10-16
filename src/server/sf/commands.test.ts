@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { parseDefaultOrg, toOrgs } from './commands.ts'
-import { redactUrls } from './run.ts'
+import { parseAccessToken, parseDefaultOrg, toOrgs } from './commands.ts'
+import { SfCliError } from './errors.ts'
+import { parseSfJsonOutput, redactUrls } from './run.ts'
 
 const fixture = (name: string) =>
   (JSON.parse(readFileSync(join(import.meta.dirname, '__fixtures__', name), 'utf8')) as { result: never }).result
@@ -84,5 +85,35 @@ describe('redactUrls', () => {
     expect(redactUrls('Failed to open https://x.my.salesforce.com/secur/frontdoor.jsp?sid=00D!abc in a browser')).toBe(
       'Failed to open <URL> in a browser',
     )
+  })
+})
+
+describe('parseAccessToken with recorded `sf org auth show-access-token --json` output', () => {
+  it('returns the token', () => {
+    expect(parseAccessToken(fixture('show-access-token.json'))).toBe('00D000000000000AAA!FAKE.TOKEN.FOR.TESTS')
+  })
+
+  it('rejects a masked token', () => {
+    expect(() => parseAccessToken({ accessToken: '[REDACTED]' })).toThrow('usable access token')
+  })
+})
+
+describe('parseSfJsonOutput with a recorded sf error', () => {
+  it("throws with sf's name and message", () => {
+    const stdout = readFileSync(join(import.meta.dirname, '__fixtures__', 'sf-error-no-default-env.json'), 'utf8')
+    try {
+      parseSfJsonOutput({ stdout, stderr: '', exitCode: 1 }, 'sf org auth')
+      expect.unreachable()
+    } catch (e) {
+      expect(e).toBeInstanceOf(SfCliError)
+      expect((e as SfCliError).sfName).toBe('NoDefaultEnvError')
+      expect((e as SfCliError).message).toMatch(/^No default environment found/)
+    }
+  })
+
+  it('falls back to stderr when stdout is not JSON', () => {
+    expect(() =>
+      parseSfJsonOutput({ stdout: '', stderr: 'Error (1): Something broke at /services/data/v66.0/query?q=SELECT', exitCode: 1 }, 'sf x'),
+    ).toThrow('Something broke at <PATH>')
   })
 })

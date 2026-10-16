@@ -1,7 +1,7 @@
 // The server process. In normal use the CLI entry point starts it detached in
 // the background; `npm run dev:server` runs it in the foreground.
 import { randomBytes } from 'node:crypto'
-import { readdirSync, rmSync } from 'node:fs'
+import { readdirSync, rmSync, statSync } from 'node:fs'
 import type { Server } from 'node:http'
 import { join } from 'node:path'
 import { readJson, writeFileAtomic } from './fsutil.ts'
@@ -44,8 +44,19 @@ function devSessionToken(paths: Paths): string {
   return token
 }
 
+const TMP_MAX_AGE_MS = 60 * 60 * 1000
+
+/**
+ * Removes leftovers older than an hour. Newer files may belong to an older
+ * server that did not stop and is still running next to this one.
+ */
 function cleanTmp(dir: string): void {
-  for (const name of readdirSync(dir)) rmSync(join(dir, name), { recursive: true, force: true })
+  const now = Date.now()
+  for (const name of readdirSync(dir)) {
+    const file = join(dir, name)
+    const mtime = statSync(file, { throwIfNoEntry: false })?.mtimeMs
+    if (mtime !== undefined && now - mtime > TMP_MAX_AGE_MS) rmSync(file, { recursive: true, force: true })
+  }
 }
 
 export async function serve(dev: boolean): Promise<void> {
@@ -71,18 +82,20 @@ export async function serve(dev: boolean): Promise<void> {
   }
 
   const ports = dev ? [DEV_PORT] : Array.from({ length: LAST_PORT - DEFAULT_PORT + 1 }, (_, i) => DEFAULT_PORT + i)
+  // Created once: it reads the web UI's files into memory.
+  const app = new App({
+    version,
+    dev,
+    port: ports[0],
+    adminToken,
+    paths,
+    orgs,
+    webRoot: dev ? undefined : webRoot,
+    devSessionToken: dev ? devSessionToken(paths) : undefined,
+    onShutdown: shutdown,
+  })
   for (const port of ports) {
-    const app = new App({
-      version,
-      dev,
-      port,
-      adminToken,
-      paths,
-      orgs,
-      webRoot: dev ? undefined : webRoot,
-      devSessionToken: dev ? devSessionToken(paths) : undefined,
-      onShutdown: shutdown,
-    })
+    app.port = port
     const candidate = app.createServer()
     if (await listen(candidate, port)) {
       server = candidate

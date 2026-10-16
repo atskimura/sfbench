@@ -135,7 +135,12 @@ type SfJson<T> = { status?: number; result?: T; name?: string; message?: string 
 
 /** Runs an sf command with --json and returns `result`. Throws SfCliError when sf reports an error. */
 export async function runSfJson<T>(args: readonly string[], options: SfRunOptions): Promise<T> {
-  const { stdout, stderr, exitCode } = await runSf([...args, '--json'], options)
+  const output = await runSf([...args, '--json'], options)
+  return parseSfJsonOutput<T>(output, `sf ${args.slice(0, 2).join(' ')}`)
+}
+
+/** Reads sf's --json output: `result` on success, SfCliError with sf's `name` and `message` on failure. */
+export function parseSfJsonOutput<T>({ stdout, stderr, exitCode }: SfRunResult, label: string): T {
   let json: SfJson<T> | undefined
   try {
     json = JSON.parse(stdout) as SfJson<T>
@@ -144,7 +149,7 @@ export async function runSfJson<T>(args: readonly string[], options: SfRunOption
   }
   if (json && json.status === 0 && exitCode === 0 && json.result !== undefined) return json.result
   if (json?.message) throw new SfCliError(redactUrls(json.message), json.name)
-  throw new SfCliError(lastErrorLine(stderr) ?? `sf ${args.join(' ')} failed with exit code ${exitCode}`)
+  throw new SfCliError(lastErrorLine(stderr) ?? `${label} failed with exit code ${exitCode}`)
 }
 
 /**
@@ -161,6 +166,11 @@ export function lastErrorLine(stderr: string): string | undefined {
   return last === undefined ? undefined : redactUrls(last)
 }
 
+/**
+ * Removes URLs and Salesforce paths from text that goes to the log or the
+ * browser: absolute URLs can carry a session, and /services/ paths can carry
+ * SOQL in the query string.
+ */
 export function redactUrls(text: string): string {
-  return text.replace(/https?:\/\/\S+/g, '<URL>')
+  return text.replace(/https?:\/\/\S+/g, '<URL>').replace(/\/services\/\S+/g, '<PATH>')
 }

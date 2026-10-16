@@ -82,20 +82,31 @@ export function parseDefaultOrg(result: unknown): string | undefined {
  * access token without an error; the caller notices through a 401.
  */
 export async function getAccessToken(username: string, cwd: string): Promise<string> {
-  const result = await runSfJson<{ accessToken?: string }>(
-    ['org', 'auth', 'show-access-token', '--no-prompt'],
-    { targetOrg: username, cwd },
-  )
+  const result = await runSfJson<unknown>(['org', 'auth', 'show-access-token', '--no-prompt'], {
+    targetOrg: username,
+    cwd,
+  })
+  return parseAccessToken(result)
+}
+
+/** Reads the `result` of `sf org auth show-access-token --json`. */
+export function parseAccessToken(result: unknown): string {
+  const token = (result as { accessToken?: unknown } | undefined)?.accessToken
   // A real token has the form "<org id>!<secret>"; anything else means sf masked it.
-  if (!result.accessToken || !result.accessToken.includes('!')) {
+  if (typeof token !== 'string' || !token.includes('!')) {
     throw new SfCliError('sf did not return a usable access token')
   }
-  return result.accessToken
+  return token
+}
+
+/** A 15 or 18 character Salesforce record ID. */
+export function isRecordId(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-zA-Z0-9]{15}(?:[a-zA-Z0-9]{3})?$/.test(value)
 }
 
 /** Opens a record in the default browser, logged in, with `sf org open`. */
 export async function openRecord(username: string, recordId: string, cwd: string): Promise<void> {
-  if (!/^[a-zA-Z0-9]{15}(?:[a-zA-Z0-9]{3})?$/.test(recordId)) throw new SfCliError('Invalid record ID')
+  if (!isRecordId(recordId)) throw new SfCliError('Invalid record ID')
   const { exitCode, stderr } = await runSf(['org', 'open', '--path', `/${recordId}`], { targetOrg: username, cwd })
   // stderr can contain the frontdoor URL, which carries a session; lastErrorLine removes URLs.
   if (exitCode !== 0) throw new SfCliError(`sf org open failed: ${lastErrorLine(stderr) ?? 'unknown error'}`)

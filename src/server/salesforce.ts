@@ -8,7 +8,7 @@ import type { ApiUsage } from '../shared/api.ts'
 import { log } from './log.ts'
 import { apiRequest, type RawResponse } from './sf/apiRequest.ts'
 import { getAccessToken } from './sf/commands.ts'
-import { OrgAuthError, SfNotFoundError } from './sf/errors.ts'
+import { OrgAuthError, SfCliError, SfNotFoundError, isAuthErrorMessage } from './sf/errors.ts'
 
 /** Salesforce answered with an HTTP error. `body` is its parsed JSON when possible. */
 export class SalesforceError extends Error {
@@ -52,15 +52,26 @@ export class SalesforceTimeoutError extends Error {
   }
 }
 
+/**
+ * The connection broke while a request that changes data was in flight.
+ * Salesforce may have processed it, so it is not sent again.
+ */
+export class SalesforceUnreachableError extends Error {
+  constructor() {
+    super(
+      'The connection to Salesforce broke while sending the request. Salesforce may already have processed it, so sfbench did not send it again. Check the result in Salesforce.',
+    )
+    this.name = 'SalesforceUnreachableError'
+  }
+}
+
 /** The fetch transport failed before or while talking to Salesforce. */
 class FetchFailure extends Error {
-  readonly original: unknown
   /** False when the request was never sent (for example, no access token). */
   readonly mayHaveReachedSalesforce: boolean
-  constructor(message: string, cause: unknown, mayHaveReachedSalesforce: boolean) {
+  constructor(message: string, mayHaveReachedSalesforce: boolean) {
     super(message)
     this.name = 'FetchFailure'
-    this.original = cause
     this.mayHaveReachedSalesforce = mayHaveReachedSalesforce
   }
 }
@@ -87,6 +98,10 @@ export class OrgClient {
   private transport: Transport = 'fetch'
   private switchedToCliAt = 0
   private token: Promise<string> | undefined
+  /** The value `token` resolved to, once it has. */
+  private tokenValue: string | undefined
+  /** The rejected token that the pending `token` run is replacing. */
+  private replacing: string | undefined
   private apiVersion: Promise<string> | undefined
 
   constructor(options: OrgClientOptions) {
@@ -118,7 +133,11 @@ export class OrgClient {
 
   private async send(req: SalesforceRequest): Promise<RawResponse> {
     if (this.forceCli) return this.sendWithCli(req)
-    if (this.transport === 'cli' && Date.now() - this.switchedToCliAt < RETRY_FETCH_AFTER_MS) {
+    const readOnly = req.method === 'GET' || req.method === 'HEAD'
+    // After switching to sf, fetch is tried again after a while, but only with
+    // a read-only request: a request that changes data must not be the one
+    // that discovers fetch still fails, because it could not be sent again.
+    if (this.transport === 'cli' && (!readOnly || Date.now() - this.switchedToCliAt < RETRY_FETCH_AFTER_MS)) {
       return this.sendWithCli(req)
     }
     try {
@@ -127,10 +146,10 @@ export class OrgClient {
       return res
     } catch (e) {
       if (!(e instanceof FetchFailure)) throw e
-      // Requests that change data are sent again only if nothing reached
+      // A request that changes data is sent again only if nothing reached
       // Salesforce yet (the token could not be obtained). After a network
-      // error, Salesforce may already have processed them.
-      if (e.mayHaveReachedSalesforce && req.method !== 'GET' && req.method !== 'HEAD') throw e.original
+      // error, Salesforce may already have processed it.
+      if (e.mayHaveReachedSalesforce && !readOnly) throw new SalesforceUnreachableError()
       // Switch only if sf succeeds: when the network is down, sf fails too.
       log.warn(`${this.username}: ${e.message}; trying sf api request rest`)
       const res = await this.sendWithCli(req)
@@ -142,12 +161,12 @@ export class OrgClient {
   }
 
   private async sendWithFetch(req: SalesforceRequest): Promise<RawResponse> {
-    let token = await this.getTokenForFetch(false)
+    let token = await this.getTokenForFetch()
     let res = await this.fetchOnce(req, token)
     if (res.status === 401) {
       // The access token expired. sf refreshes it; if the refresh token is no
       // longer valid, sf returns the same stale token and the retry fails too.
-      token = await this.getTokenForFetch(true)
+      token = await this.getTokenForFetch(token)
       res = await this.fetchOnce(req, token)
       if (res.status === 401) {
         this.token = undefined
@@ -157,33 +176,56 @@ export class OrgClient {
     return res
   }
 
-  private async getTokenForFetch(refresh: boolean): Promise<string> {
+  private async getTokenForFetch(stale?: string): Promise<string> {
     try {
-      return await this.getToken(refresh)
+      return await this.getToken(stale)
     } catch (e) {
       if (e instanceof OrgAuthError || e instanceof SfNotFoundError) throw e
-      throw new FetchFailure(`could not get an access token (${(e as Error).message})`, e, false)
+      if (e instanceof SfCliError && isAuthErrorMessage(e.message)) throw new OrgAuthError(this.username, e.message)
+      throw new FetchFailure(`could not get an access token (${(e as Error).message})`, false)
     }
   }
 
   private sendWithCli(req: SalesforceRequest): Promise<RawResponse> {
-    return apiRequest(
-      this.username,
-      { method: req.method, path: req.path, headers: { Accept: 'application/json', ...req.headers }, body: req.body },
-      this.tmpDir,
-    )
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      ...(req.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...req.headers,
+    }
+    return apiRequest(this.username, { method: req.method, path: req.path, headers, body: req.body }, this.tmpDir)
   }
 
-  /** Concurrent callers share one `sf org auth show-access-token` run. */
-  private getToken(refresh: boolean): Promise<string> {
-    if (refresh || !this.token) {
-      const pending = getAccessToken(this.username, this.tmpDir)
-      this.token = pending
-      pending.catch(() => {
-        if (this.token === pending) this.token = undefined
-      })
+  /**
+   * The access token. Concurrent callers share one `sf org auth
+   * show-access-token` run. `stale` is the token Salesforce just rejected: a
+   * new one is fetched only if no other caller has already replaced it.
+   */
+  private getToken(stale?: string): Promise<string> {
+    // All checks are synchronous, so that concurrent callers see each other's run.
+    if (this.token) {
+      if (stale === undefined) return this.token
+      const alreadyReplaced = this.tokenValue !== undefined && this.tokenValue !== stale
+      if (stale === this.replacing || alreadyReplaced) return this.token
     }
-    return this.token
+    const pending = getAccessToken(this.username, this.tmpDir)
+    this.token = pending
+    this.tokenValue = undefined
+    this.replacing = stale
+    pending.then(
+      (value) => {
+        if (this.token === pending) {
+          this.tokenValue = value
+          this.replacing = undefined
+        }
+      },
+      () => {
+        if (this.token === pending) {
+          this.token = undefined
+          this.replacing = undefined
+        }
+      },
+    )
+    return pending
   }
 
   private async fetchOnce(req: SalesforceRequest, token: string): Promise<RawResponse> {
@@ -205,7 +247,7 @@ export class OrgClient {
       return { status: res.status, headers, body: await res.text() }
     } catch (e) {
       if ((e as Error).name === 'TimeoutError') throw new SalesforceTimeoutError()
-      throw new FetchFailure(`fetch failed (${(e as Error).message})`, e, true)
+      throw new FetchFailure(`fetch failed (${(e as Error).message})`, true)
     }
   }
 
