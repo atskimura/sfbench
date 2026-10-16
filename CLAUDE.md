@@ -66,3 +66,11 @@ docs/       設計文書
 その場合は環境変数 `SFBENCH_TRANSPORT=cli` を付けてサーバーを起動すると、トークンを扱わずに `sf api request rest` で Salesforce を呼ぶ。
 遅くなるが、機能の確認はできる。
 トークンで直接呼ぶ経路は、人が手元で確かめる。
+
+ビルドしたサーバーを実際の組織につないで通しで確かめるには、`scripts/smoke.mjs` を使う。
+起動、要求の検証、組織の一覧、クエリ、describe、履歴、設定、使い回し、停止を順に試し、トークンは表示しない。
+
+```
+npm run build
+SFBENCH_HOME=$(mktemp -d) node scripts/smoke.mjs dist/server/cli.js <組織のエイリアス>
+```
