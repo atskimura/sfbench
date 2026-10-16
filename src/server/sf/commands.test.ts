@@ -55,7 +55,7 @@ describe('toOrgs with recorded `sf org list --skip-connection-status --json` out
         edition: 'Developer Edition',
         expirationDate: '2026-11-12',
         isExpired: false,
-        availability: 'unknown',
+        availability: 'ok',
       },
     ])
   })
@@ -147,7 +147,7 @@ describe('toOrgs scratch org availability', () => {
       ],
     })
     expect(orgs.map((o) => [o.username, o.availability])).toEqual([
-      ['a@example.com', 'unknown'],
+      ['a@example.com', 'ok'],
       ['b@example.com', 'unavailable'],
       ['c@example.com', 'unavailable'],
     ])

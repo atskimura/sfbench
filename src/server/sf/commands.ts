@@ -51,8 +51,7 @@ export function toOrgs(result: OrgListResult): Org[] {
       edition: o.orgEdition || o.edition || undefined,
       expirationDate: o.isScratch ? o.expirationDate : undefined,
       isExpired: Boolean(o.isExpired),
-      // Scratch orgs carry their state even in the fast list; other orgs need the connection check.
-      availability: o.isScratch && (o.isExpired || (o.status && o.status !== 'Active')) ? 'unavailable' : 'unknown',
+      availability: scratchAvailability(o),
     })
   }
   // Orgs with an alias first (by alias), then the rest (by username): orgs
@@ -60,6 +59,18 @@ export function toOrgs(result: OrgListResult): Org[] {
   return orgs.sort((a, b) =>
     a.alias && b.alias ? a.alias.localeCompare(b.alias) : a.alias ? -1 : b.alias ? 1 : a.username.localeCompare(b.username),
   )
+}
+
+/**
+ * Scratch orgs carry their state, recorded by the Dev Hub, even in the fast
+ * list. The sf CLI does not check their connection, so an active scratch org
+ * within its expiration date is treated as usable. Other orgs need the
+ * connection check.
+ */
+function scratchAvailability(o: RawOrg): OrgAvailability {
+  if (!o.isScratch) return 'unknown'
+  if (o.isExpired || (o.status !== undefined && o.status !== 'Active')) return 'unavailable'
+  return o.status === 'Active' ? 'ok' : 'unknown'
 }
 
 /** The command that logs in to an org again. */
