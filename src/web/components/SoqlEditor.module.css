@@ -1,0 +1,43 @@
+.editor {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  font-family: var(--font-mono);
+}
+
+.editor :global(.cm-editor) {
+  height: 100%;
+  background: var(--color-panel);
+  color: var(--color-ink);
+}
+
+.editor :global(.cm-editor.cm-focused) {
+  outline: none;
+}
+
+.editor :global(.cm-content) {
+  font-family: var(--font-mono);
+  font-size: var(--font-size);
+  padding: var(--space-2) 0;
+  caret-color: var(--color-ink);
+}
+
+.editor :global(.cm-gutters) {
+  display: none;
+}
+
+.editor :global(.cm-tooltip-autocomplete) {
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+  box-shadow: var(--shadow-popover);
+  font-family: var(--font-mono);
+}
+
+.editor :global(.cm-tooltip-autocomplete ul li[aria-selected]) {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+.editor :global(.cm-placeholder) {
+  color: var(--color-muted);
+}

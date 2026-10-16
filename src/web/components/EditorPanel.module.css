@@ -1,0 +1,15 @@
+.toolbar {
+  flex-wrap: wrap;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.shortcut {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  opacity: 0.8;
+}

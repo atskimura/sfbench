@@ -1,0 +1,120 @@
+.back {
+  display: inline-flex;
+  border: 0;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.heading {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.objectName {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.tab {
+  flex: 1;
+  padding: var(--space-2) 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.tab[aria-selected='true'] {
+  color: var(--color-ink);
+  font-weight: 600;
+  border-bottom-color: var(--color-accent);
+}
+
+.tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-0) var(--space-3);
+  line-height: 20px;
+}
+
+.checked > .row {
+  background: var(--color-accent-soft);
+}
+
+.expand {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+  padding: 0;
+  flex: none;
+}
+
+.expand:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.expandSpacer {
+  width: 18px;
+  flex: none;
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.menuRoot {
+  position: relative;
+}
+
+.menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--space-1));
+  z-index: 10;
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1) 0;
+  min-width: 200px;
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-popover);
+}
+
+.menu button {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+.menu button:hover {
+  background: var(--color-panel-muted);
+}
