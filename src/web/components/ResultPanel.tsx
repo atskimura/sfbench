@@ -34,7 +34,7 @@ function flatten(record: Record<string, unknown>, prefix = '', out: Record<strin
 export function ResultPanel() {
   const { result } = useResult()
   return (
-    <section className={`${panel.panel} ${styles.result}`} aria-label="Results" aria-busy={result.state === 'running'}>
+    <section className={`${panel.panel} ${styles.result}`} aria-label={t.results} aria-busy={result.state === 'running'}>
       {result.state === 'idle' && <p className={panel.empty}>{t.noResults}</p>}
       {result.state === 'running' && <p className={panel.empty}>{t.running}</p>}
       {result.state === 'error' && (

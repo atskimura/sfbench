@@ -93,24 +93,26 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
     [selectedSummary, settings],
   )
 
-  const applyText = useCallback((text: string) => {
+  /** Parses the text into the selection; with `switchPanel`, also shows the FROM object on the left. */
+  const applyText = useCallback((text: string, switchPanel = true) => {
     const query = parseSoql(text)
     if (!text.trim()) {
       setSelection(undefined)
-      setPanelObject(undefined)
+      if (switchPanel) setPanelObject(undefined)
       return
     }
     if (!query) return
     const next = selectionOf(query, names.ns)
     setSelection(next)
-    setPanelObject((current) =>
+    if (switchPanel) setPanelObject((current) =>
       current?.toLowerCase() === next.object.toLowerCase() ? current : next.object,
     )
   }, [names.ns])
 
-  // The namespace arrives with the org summary; parse the text again with it.
+  // The namespace arrives with the org summary; parse the text again with it,
+  // leaving the left panel as the user left it.
   useEffect(() => {
-    if (editor.current) applyText(editor.current.getText())
+    if (editor.current) applyText(editor.current.getText(), false)
   }, [applyText])
 
   const setText = useCallback(
@@ -227,7 +229,7 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
         editor.current = handle
         if (handle) applyText(handle.getText())
       },
-      onTextSettled: applyText,
+      onTextSettled: (text) => applyText(text),
       setTooling: (on) => {
         setToolingState(on)
         if (on) setQueryAllState(false)

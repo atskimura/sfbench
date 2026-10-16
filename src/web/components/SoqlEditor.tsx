@@ -11,8 +11,7 @@ import { useEffect, useRef } from 'react'
 import { t } from '../i18n/i18n.ts'
 import { fieldCandidates, fromObjectOf, keywordCandidates } from '../soql/completion.ts'
 import { useOrgs } from '../state/OrgContext.tsx'
-import { nameKey } from '../soql/namespace.ts'
-import { describeGlobal, describeSObject } from '../state/describeCache.ts'
+import { describeGlobal, describeSObject, findObject } from '../state/describeCache.ts'
 import { saveEditorText, savedEditorText } from '../state/editorStorage.ts'
 import { useSoql } from '../state/SoqlContext.tsx'
 import styles from './SoqlEditor.module.css'
@@ -43,6 +42,8 @@ const editorTheme = EditorView.theme({
 const SETTLE_MS = 300
 /** Safari can deliver the Enter that commits IME conversion after compositionend. */
 const COMPOSITION_ENTER_MS = 100
+/** After a describe fails, completion offers keywords only for this long instead of asking again on every key. */
+const RETRY_AFTER_MS = 30_000
 
 export function SoqlEditor() {
   const host = useRef<HTMLDivElement>(null)
@@ -58,6 +59,7 @@ export function SoqlEditor() {
     if (!host.current) return
     let settleTimer: ReturnType<typeof setTimeout> | undefined
     let compositionEndedAt = 0
+    let failedAt = { key: '', time: 0 }
 
     const completionSource = async (context: CompletionContext): Promise<CompletionResult | null> => {
       const word = context.matchBefore(/[\p{L}\p{N}_]+/u)
@@ -69,13 +71,13 @@ export function SoqlEditor() {
       const { soql: s, selected: username } = latest.current
       const options = keywordCandidates(text).map((c) => ({ label: c.label, apply: c.insert, type: 'keyword' }))
       const written = fromObjectOf(context.state.doc.toString())
-      if (written && username) {
+      const failureKey = `${username}\n${s.tooling}\n${written?.toLowerCase()}`
+      const recentlyFailed = failedAt.key === failureKey && Date.now() - failedAt.time < RETRY_AFTER_MS
+      if (written && username && !recentlyFailed) {
         try {
           // Describe only objects the org has, so that a half-typed FROM name
           // does not send a request on every keystroke.
-          const objects = (await describeGlobal(username, s.tooling)).sobjects
-          const key = nameKey(written, s.names.ns)
-          const object = objects.find((o) => nameKey(o.name, s.names.ns) === key)
+          const object = findObject(await describeGlobal(username, s.tooling), written, s.names.ns)
           if (!object) return options.length ? { from, options, filter: false } : null
           const describe = await describeSObject(username, object.name, s.tooling)
           const fields = fieldCandidates(describe.fields, text, s.names).map((c) => ({
@@ -85,7 +87,8 @@ export function SoqlEditor() {
           }))
           options.unshift(...fields)
         } catch {
-          // Unknown object or offline: keywords only.
+          // Keywords only. The left panel shows the error of the same describe.
+          failedAt = { key: failureKey, time: Date.now() }
         }
       }
       return options.length ? { from, options, filter: false } : null

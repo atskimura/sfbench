@@ -1,0 +1,35 @@
+.root {
+  position: relative;
+}
+
+.input {
+  padding-right: 28px;
+}
+
+/* The clear button below replaces the browser's own. */
+.input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.clear {
+  position: absolute;
+  top: 50%;
+  right: calc(var(--space-3) + 4px);
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.clear:hover {
+  color: var(--color-ink);
+  background: var(--color-panel-muted);
+}

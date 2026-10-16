@@ -3,12 +3,14 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { ChildRelationship, FieldDescribe } from '../api/client.ts'
 import { t } from '../i18n/i18n.ts'
+import { matches } from '../soql/completion.ts'
 import { nameKey } from '../soql/namespace.ts'
 import { refKey } from '../soql/selection.ts'
 import { describeGlobal, describeSObject, useLoadable } from '../state/describeCache.ts'
 import { useReportOrgError } from '../state/OrgContext.tsx'
 import { useSoql } from '../state/SoqlContext.tsx'
 import styles from './FieldPanel.module.css'
+import { FilterInput } from './FilterInput.tsx'
 import panel from './Panel.module.css'
 import { ReloadButton } from './ReloadButton.tsx'
 
@@ -71,16 +73,7 @@ export function FieldPanel({ username, objectName }: { username: string; objectN
           {t.childRelationshipsTab}
         </button>
       </div>
-      <div className={panel.search}>
-        <input
-          className={panel.input}
-          type="search"
-          aria-label={t.filterFields}
-          placeholder={t.filterFields}
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-      </div>
+      <FilterInput label={t.filterFields} value={filter} onChange={setFilter} />
       <div className={panel.body} role="tabpanel" aria-labelledby={`${tabsId}-${tab === 'fields' ? 'fields' : 'rels'}`} aria-busy={describe.loading}>
         {describe.error !== undefined && <p className={panel.empty}>{t.loadFailed}</p>}
         {d && tab === 'fields' && (
@@ -175,7 +168,7 @@ function FieldList({ username, fields, relationships, childRelationship, filter 
   const soql = useSoql()
   const shown = useMemo(() => {
     const f = filter.trim().toLowerCase()
-    return sortFields(fields, sort).filter((x) => !f || x.name.toLowerCase().includes(f) || x.label.toLowerCase().includes(f))
+    return sortFields(fields, sort).filter((x) => !f || matches(f, x.name, x.label))
   }, [fields, filter, sort])
 
   const selected = useMemo(() => {
@@ -228,10 +221,11 @@ function FieldRow({
           <button
             type="button"
             className={styles.expand}
-            aria-label={expanded ? t.collapseReference : t.expandReference}
+            // Focusable even at the limit, so that keyboard and screen reader users hear why it does not open.
+            aria-label={atMaxDepth ? t.maxDepth : expanded ? t.collapseReference : t.expandReference}
             title={atMaxDepth ? t.maxDepth : expanded ? t.collapseReference : t.expandReference}
-            disabled={atMaxDepth}
-            onClick={() => setExpanded(!expanded)}
+            aria-disabled={atMaxDepth || undefined}
+            onClick={() => !atMaxDepth && setExpanded(!expanded)}
           >
             {expanded ? '▾' : '▸'}
           </button>
@@ -292,7 +286,7 @@ function RelationshipList({ username, relationships, filter }: { username: strin
     const f = filter.trim().toLowerCase()
     return relationships
       .filter((r): r is ChildRelationship & { relationshipName: string } => Boolean(r.relationshipName))
-      .filter((r) => !f || r.relationshipName.toLowerCase().includes(f) || r.childSObject.toLowerCase().includes(f))
+      .filter((r) => !f || matches(f, r.relationshipName, r.childSObject))
       .sort((a, b) => a.relationshipName.localeCompare(b.relationshipName))
   }, [relationships, filter])
   if (shown.length === 0) return <p className={panel.empty}>{t.noChildRelationships}</p>

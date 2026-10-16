@@ -68,7 +68,7 @@
   flex: none;
 }
 
-.expand:disabled {
+.expand[aria-disabled="true"] {
   opacity: 0.4;
   cursor: not-allowed;
 }

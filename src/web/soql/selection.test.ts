@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addNamespace, nameKey, stripNamespace } from './namespace.ts'
+import { nameKey, stripNamespace } from './namespace.ts'
 import {
   clearAllFields,
   formatSoql,
@@ -17,10 +17,9 @@ const oneLine = (s: string | undefined) =>
   s?.replace(/\s+/g, ' ').replace(/\( /g, '(').replace(/ \)/g, ')').trim()
 
 describe('namespace', () => {
-  it('strips and adds the prefix on each part, only for custom names', () => {
+  it('strips the prefix on each part, only for custom names', () => {
     expect(stripNamespace('acme__Invoice__r.acme__Total__c', 'acme')).toBe('Invoice__r.Total__c')
-    expect(addNamespace('Invoice__r.Name', 'acme')).toBe('acme__Invoice__r.Name')
-    expect(addNamespace('Account.Name', 'acme')).toBe('Account.Name')
+    expect(stripNamespace('acme__Invoice__r.Name', 'other')).toBe('acme__Invoice__r.Name')
     expect(nameKey('ACME__Total__c', 'acme')).toBe('total__c')
   })
 })
@@ -46,6 +45,12 @@ describe('selection', () => {
 })
 
 describe('toggleField', () => {
+  it('matches fields written with the FROM alias', () => {
+    const text = 'SELECT a.Name FROM Account a'
+    expect([...selectionOf(parseSoql(text)!, undefined).fields]).toEqual(['name'])
+    expect(oneLine(toggleField(text, { name: 'Name', relationships: [] }, acme))).not.toContain('Name')
+  })
+
   it('adds and removes a field, matching case-insensitively', () => {
     const added = toggleField('SELECT Id FROM Account', { name: 'Name', relationships: [] }, plain)
     expect(oneLine(added)).toBe('SELECT Id, Name FROM Account')

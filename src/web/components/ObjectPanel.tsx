@@ -2,12 +2,13 @@
 // (docs/screens.md "オブジェクトと項目の一覧（左）").
 import { useMemo, useState } from 'react'
 import { t } from '../i18n/i18n.ts'
-import { nameKey } from '../soql/namespace.ts'
+import { matches } from '../soql/completion.ts'
 import type { DescribeGlobal } from '../api/client.ts'
-import { describeGlobal, useLoadable, type Loadable } from '../state/describeCache.ts'
+import { describeGlobal, findObject, useLoadable, type Loadable } from '../state/describeCache.ts'
 import { useReportOrgError } from '../state/OrgContext.tsx'
 import { useSoql } from '../state/SoqlContext.tsx'
 import { FieldPanel } from './FieldPanel.tsx'
+import { FilterInput } from './FilterInput.tsx'
 import panel from './Panel.module.css'
 import styles from './ObjectPanel.module.css'
 import { ReloadButton } from './ReloadButton.tsx'
@@ -18,21 +19,15 @@ export function ObjectPanel({ username }: { username: string }) {
   useReportOrgError(username, globals.error)
 
   // The FROM object, if the org has it (matching case and namespace loosely).
-  const found = useMemo(() => {
-    if (!soql.panelObject || !globals.data) return undefined
-    const key = nameKey(soql.panelObject, soql.names.ns)
-    return globals.data.sobjects.find((o) => nameKey(o.name, soql.names.ns) === key)
-  }, [soql.panelObject, soql.names.ns, globals.data])
+  const found = soql.panelObject && globals.data ? findObject(globals.data, soql.panelObject, soql.names.ns) : undefined
 
   // While FROM names an object the org does not have (such as a half-typed
   // name), the last object found stays shown (docs/web.md).
-  const [last, setLast] = useState<{ data: DescribeGlobal; name: string }>()
-  if (found && (last?.name !== found.name || last.data !== globals.data)) {
-    setLast({ data: globals.data!, name: found.name })
-  } else if (!soql.panelObject && last) {
-    setLast(undefined)
-  }
-  const current = found?.name ?? (soql.panelObject && last?.data === globals.data ? last?.name : undefined)
+  const [last, setLast] = useState<string>()
+  if (found && last !== found.name) setLast(found.name)
+  else if (!soql.panelObject && last) setLast(undefined)
+  const lastStillListed = last !== undefined && globals.data?.sobjects.some((o) => o.name === last)
+  const current = found?.name ?? (soql.panelObject && lastStillListed ? last : undefined)
 
   if (current) return <FieldPanel key={`${current}\n${soql.tooling}`} username={username} objectName={current} />
   return <ObjectList globals={globals} />
@@ -45,7 +40,7 @@ function ObjectList({ globals }: { globals: Loadable<DescribeGlobal> }) {
     const f = filter.trim().toLowerCase()
     return (globals.data?.sobjects ?? [])
       .filter((o) => o.queryable !== false)
-      .filter((o) => !f || o.name.toLowerCase().includes(f) || o.label.toLowerCase().includes(f))
+      .filter((o) => !f || matches(f, o.name, o.label))
   }, [globals.data, filter])
 
   return (
@@ -56,16 +51,7 @@ function ObjectList({ globals }: { globals: Loadable<DescribeGlobal> }) {
         {globals.data && <span className={panel.meta}>{globals.data.sobjects.length}</span>}
         <ReloadButton label={t.reloadObjects} busy={globals.loading} onClick={globals.reload} />
       </div>
-      <div className={panel.search}>
-        <input
-          className={panel.input}
-          type="search"
-          aria-label={t.filterObjects}
-          placeholder={t.filterObjects}
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-      </div>
+      <FilterInput label={t.filterObjects} value={filter} onChange={setFilter} />
       <div className={panel.body} aria-busy={globals.loading}>
         {globals.error !== undefined && <p className={panel.empty}>{t.loadFailed}</p>}
         {globals.data && objects.length === 0 && <p className={panel.empty}>{t.noMatchingObjects}</p>}

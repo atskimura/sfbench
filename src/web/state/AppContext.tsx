@@ -39,7 +39,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Settings>()
 
   const notify = useCallback((n: Omit<Notification, 'id'>) => {
-    setNotifications((list) => [...list.slice(-4), { ...n, id: nextId++ }])
+    setNotifications((list) => {
+      // The same error from several places (such as describes of one object) is shown once.
+      if (list.some((x) => x.message === n.message && x.command === n.command)) return list
+      return [...list.slice(-4), { ...n, id: nextId++ }]
+    })
   }, [])
   const dismiss = useCallback((id: number) => setNotifications((list) => list.filter((n) => n.id !== id)), [])
 

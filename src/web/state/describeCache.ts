@@ -2,6 +2,7 @@
 // this on a tab reload is fine (docs/web.md "状態の持ち方").
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type DescribeGlobal, type DescribeSObject } from '../api/client.ts'
+import { nameKey } from '../soql/namespace.ts'
 
 const globals = new Map<string, Promise<DescribeGlobal>>()
 const objects = new Map<string, Promise<DescribeSObject>>()
@@ -32,10 +33,10 @@ export function describeSObject(username: string, name: string, tooling: boolean
   return pending
 }
 
-/** Already loaded describe results only, without fetching (for completion). */
-export async function peekSObject(username: string, name: string, tooling: boolean): Promise<DescribeSObject | undefined> {
-  const pending = objects.get(key(username, tooling, name.toLowerCase()))
-  return pending?.catch(() => undefined)
+/** The object named in SOQL (matching case and namespace loosely), if the org has it. */
+export function findObject(list: DescribeGlobal, name: string, ns: string | null | undefined): DescribeGlobal['sobjects'][number] | undefined {
+  const k = nameKey(name, ns)
+  return list.sobjects.find((o) => nameKey(o.name, ns) === k)
 }
 
 export type Loadable<T> = { data?: T; error?: unknown; loading: boolean; reload: () => void }
@@ -58,7 +59,9 @@ export function useLoadable<T>(key: string | undefined, load: (refresh: boolean)
     let active = true
     loadRef.current(reloads > 0).then(
       (data) => active && setState({ key, request: `${key}\n${reloads}`, data }),
-      (error: unknown) => active && setState({ key, request: `${key}\n${reloads}`, error }),
+      // A failed reload keeps the data already shown.
+      (error: unknown) =>
+        active && setState((prev) => ({ key, request: `${key}\n${reloads}`, data: prev.key === key ? prev.data : undefined, error })),
     )
     return () => {
       active = false
