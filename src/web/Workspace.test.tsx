@@ -52,6 +52,11 @@ const editorText = () =>
     .map((line) => line.textContent)
     .join(' ')
 
+// jsdom lays nothing out; give elements a size so that the virtualized result table draws rows.
+for (const [name, size] of [['offsetHeight', 600], ['offsetWidth', 1000]] as const) {
+  Object.defineProperty(HTMLElement.prototype, name, { configurable: true, get: () => size })
+}
+
 beforeEach(() => {
   sessionStorage.clear()
   mocked.orgs.mockResolvedValue({ orgs: [org], connectionCheck: 'done' })
@@ -135,5 +140,51 @@ describe('SOQL workspace', () => {
     await userEvent.click(menu)
     await userEvent.click(document.body)
     expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('loads the next page near the end of the table, but only by the button while filtering', async () => {
+    const page = (from: number, n: number) => Array.from({ length: n }, (_, i) => ({ Id: `00${from + i}`, Name: `Row ${from + i}` }))
+    let answer: (value: Awaited<ReturnType<typeof api.nextPage>>) => void = () => {}
+    mocked.query.mockResolvedValue({ totalSize: 6, done: false, nextRecordsUrl: '/next/1', records: page(0, 2) })
+    mocked.nextPage
+      .mockReturnValueOnce(new Promise((resolve) => (answer = resolve)))
+      .mockResolvedValueOnce({ totalSize: 6, done: true, records: page(4, 2) })
+    render(<App launch={{ org: 'demo', query: 'SELECT Id, Name FROM Account', run: true }} />)
+    // Two rows are well within 50 rows of the end, so the next page loads by itself.
+    expect(await screen.findByText('Row 1')).toBeTruthy()
+    await waitFor(() => expect(mocked.nextPage).toHaveBeenCalledTimes(1))
+    await userEvent.type(screen.getByLabelText(t.filterRows), 'Row')
+    answer({ totalSize: 6, done: false, nextRecordsUrl: '/next/2', records: page(2, 2) })
+    expect(await screen.findByText('Row 3')).toBeTruthy()
+    // While filtering, the next page waits for the button.
+    expect(mocked.nextPage).toHaveBeenCalledTimes(1)
+    await userEvent.click(screen.getByRole('button', { name: t.loadMore(2) }))
+    await waitFor(() => expect(mocked.nextPage).toHaveBeenCalledTimes(2))
+    expect(mocked.nextPage.mock.calls[1][1]).toBe('/next/2')
+    expect(await screen.findByText('Row 5')).toBeTruthy()
+  })
+
+  it('opens the child records of a subquery cell', async () => {
+    mocked.query.mockResolvedValue({
+      totalSize: 1,
+      done: true,
+      records: [{ Id: '001', Name: 'Acme', Contacts: { totalSize: 1, done: true, records: [{ Id: '003', LastName: 'Rogers' }] } }],
+    })
+    render(<App launch={{ org: 'demo', query: 'SELECT Id, Name, (SELECT Id, LastName FROM Contacts) FROM Account', run: true }} />)
+    await userEvent.click(await screen.findByRole('button', { name: '1 rows' }))
+    const child = await screen.findByRole('region', { name: 'Contacts' })
+    expect(within(child).getByText('Rogers')).toBeTruthy()
+    await userEvent.click(within(child).getByRole('button', { name: t.close }))
+    expect(screen.queryByRole('region', { name: 'Contacts' })).toBeNull()
+  })
+
+  it('asks before loading more than 10,000 records for CSV', async () => {
+    mocked.query.mockResolvedValue({ totalSize: 20_000, done: false, nextRecordsUrl: '/next/1', records: [{ Id: '001', Name: 'Acme' }] })
+    mocked.nextPage.mockReturnValue(new Promise(() => {}))
+    render(<App launch={{ org: 'demo', query: 'SELECT Id, Name FROM Account', run: true }} />)
+    await userEvent.click(await screen.findByRole('button', { name: t.exportCsv }))
+    expect(screen.getByText(t.csvConfirm(19_999, 10), { exact: false })).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: t.cancel }))
+    expect(screen.getByRole('button', { name: t.exportCsv })).toBeTruthy()
   })
 })

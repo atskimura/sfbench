@@ -5,6 +5,9 @@
 
 export type SObjectRecord = Record<string, unknown>
 
+/** One page of a query result holds up to 2000 records. */
+export const PAGE_SIZE = 2000
+
 /** A child relationship value: a subquery's records. */
 export type ChildRecords = { totalSize: number; done?: boolean; records: SObjectRecord[] }
 

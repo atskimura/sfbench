@@ -1,9 +1,64 @@
 .result {
   flex: 1;
+  min-height: 0;
+  /* The table scrolls inside; its width must not widen the page. */
+  min-width: 0;
 }
 
 .count {
   font-weight: 600;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.filter {
+  width: 200px;
+  flex: none;
+}
+
+.more {
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--color-line);
+}
+
+.detail {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: var(--space-1) var(--space-3);
+  border-top: 1px solid var(--color-line);
+  background: var(--color-panel-muted);
+  max-height: 96px;
+  overflow: auto;
+}
+
+.detailText {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.childPanel {
+  flex: 0 0 40%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 2px solid var(--color-line);
+}
+
+.csvStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-small);
 }
 
 .error {
@@ -36,31 +91,4 @@
   padding: var(--space-2);
   border-radius: var(--radius);
   margin: var(--space-1) 0 0;
-}
-
-.table {
-  border-collapse: collapse;
-  font-variant-numeric: tabular-nums;
-  min-width: 100%;
-}
-
-.table th {
-  position: sticky;
-  top: 0;
-  background: var(--color-panel-muted);
-  text-align: left;
-  font-weight: 600;
-  font-size: var(--font-size-small);
-  padding: var(--space-1) var(--space-3);
-  border-bottom: 1px solid var(--color-line);
-  white-space: nowrap;
-}
-
-.table td {
-  padding: var(--space-1) var(--space-3);
-  border-bottom: 1px solid var(--color-line);
-  white-space: nowrap;
-  max-width: 360px;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
