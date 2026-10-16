@@ -48,11 +48,16 @@ describe('history', () => {
 
 describe('settings', () => {
   it('defaults to omitting the namespace', () => {
-    expect(loadSettings(join(dir, 'settings.json'))).toEqual({ omitNamespace: true })
+    expect(loadSettings(join(dir, 'settings.json'))).toEqual({ omitNamespace: true, requestTimeoutSeconds: 120 })
   })
 
   it('round-trips', () => {
-    saveSettings(join(dir, 'settings.json'), { omitNamespace: false })
-    expect(loadSettings(join(dir, 'settings.json'))).toEqual({ omitNamespace: false })
+    saveSettings(join(dir, 'settings.json'), { omitNamespace: false, requestTimeoutSeconds: 300 })
+    expect(loadSettings(join(dir, 'settings.json'))).toEqual({ omitNamespace: false, requestTimeoutSeconds: 300 })
+  })
+
+  it('falls back to the default for an out-of-range timeout', () => {
+    saveSettings(join(dir, 'settings.json'), { omitNamespace: true, requestTimeoutSeconds: 5 })
+    expect(loadSettings(join(dir, 'settings.json')).requestTimeoutSeconds).toBe(120)
   })
 })

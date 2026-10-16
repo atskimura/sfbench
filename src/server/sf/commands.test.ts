@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { parseAccessToken, parseDefaultOrg, toOrgs } from './commands.ts'
+import { availabilityFromStatus, parseAccessToken, parseDefaultOrg, toAvailability, toOrgs } from './commands.ts'
 import { SfCliError } from './errors.ts'
 import { parseSfJsonOutput, redactUrls } from './run.ts'
 
@@ -25,6 +25,7 @@ describe('toOrgs with recorded `sf org list --skip-connection-status --json` out
         edition: 'Enterprise Edition',
         expirationDate: undefined,
         isExpired: false,
+        availability: 'unknown',
       },
       {
         username: 'hub@example.com',
@@ -34,6 +35,7 @@ describe('toOrgs with recorded `sf org list --skip-connection-status --json` out
         edition: 'Enterprise Edition',
         expirationDate: undefined,
         isExpired: false,
+        availability: 'unknown',
       },
       {
         username: 'admin@demo.example.com',
@@ -43,6 +45,7 @@ describe('toOrgs with recorded `sf org list --skip-connection-status --json` out
         edition: 'Developer Edition',
         expirationDate: undefined,
         isExpired: false,
+        availability: 'unknown',
       },
       {
         username: 'test-abc@example.com',
@@ -52,6 +55,7 @@ describe('toOrgs with recorded `sf org list --skip-connection-status --json` out
         edition: 'Developer Edition',
         expirationDate: '2026-11-12',
         isExpired: false,
+        availability: 'ok',
       },
     ])
   })
@@ -115,5 +119,37 @@ describe('parseSfJsonOutput with a recorded sf error', () => {
     expect(() =>
       parseSfJsonOutput({ stdout: '', stderr: 'Error (1): Something broke at /services/data/v66.0/query?q=SELECT', exitCode: 1 }, 'sf x'),
     ).toThrow('Something broke at <PATH>')
+  })
+})
+
+describe('toAvailability with recorded `sf org list --json` output (with connection status)', () => {
+  it('marks connected, expired-login and deleted orgs', () => {
+    expect(Object.fromEntries(toAvailability(fixture('org-list-with-status.json')))).toEqual({
+      'admin@demo.example.com': 'ok',
+      'epic.1@orgfarm.example.com': 'unavailable',
+      'u@expired.example.com': 'authError',
+    })
+  })
+
+  it('does not hide an org for an unrecognized error, such as being offline', () => {
+    expect(availabilityFromStatus('getaddrinfo ENOTFOUND login.salesforce.com')).toBe('unknown')
+    expect(availabilityFromStatus(undefined)).toBe('unknown')
+  })
+})
+
+describe('toOrgs scratch org availability', () => {
+  it('marks expired or inactive scratch orgs unavailable', () => {
+    const orgs = toOrgs({
+      scratchOrgs: [
+        { username: 'a@example.com', instanceUrl: 'https://a.example.com', isScratch: true, status: 'Active' },
+        { username: 'b@example.com', instanceUrl: 'https://b.example.com', isScratch: true, status: 'Deleted' },
+        { username: 'c@example.com', instanceUrl: 'https://c.example.com', isScratch: true, status: 'Active', isExpired: true },
+      ],
+    })
+    expect(orgs.map((o) => [o.username, o.availability])).toEqual([
+      ['a@example.com', 'ok'],
+      ['b@example.com', 'unavailable'],
+      ['c@example.com', 'unavailable'],
+    ])
   })
 })

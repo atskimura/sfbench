@@ -58,13 +58,13 @@ CLI の内部構造が変わっても、出力の形が保たれる限り動き�
 | 既定の組織の解決 | `sf config get target-org --json` | CLI の入口 |
 | アクセストークンの取得 | `sf org auth show-access-token --no-prompt --json` | サーバー |
 | 代わりの経路での API 呼び出し | `sf api request rest --file <request.json> --include` | サーバー |
-| レコードを開く | `sf org open --path /<レコード ID>` | サーバー |
+| 組織を開く | `sf org open` | サーバー |
 
 呼び出しは次の規則に従う。
 
 - 対象の組織は引数ではなく環境変数 `SF_TARGET_ORG` で渡す。値は `sf org list` に載っているユーザー名だけを受け付ける。
 - 利用者の入力（SOQL、REST API のパスやボディ）をコマンドライン引数に載せない。`sf api request rest` には、メソッド、URL、ヘッダー、ボディを書いた JSON ファイルを `--file` で渡す。ファイルは `~/.sfbench/tmp/` に作り、呼び出し後に消す。引数には英数字だけのファイル名を渡す。
-- `sf org open` のパスは、15桁か18桁の英数字のレコード ID から組み立てたものだけを渡す。
+- `sf org open` にはパスを渡さず、組織のホームを開く。
 - `sf` は、起動前に PATH の各ディレクトリから絶対パスを解決し、その絶対パスで起動する（Windows では `sf.cmd` を探す）。作業ディレクトリは PATH の探索に含めない。Windows の cmd.exe はコマンドを PATH より先に作業ディレクトリから探すので、利用者が信頼できないリポジトリで `npx sfbench` を実行したときに、そこにある `sf.cmd` を起動しないようにするためである。
 - サーバーが起動する子プロセスの作業ディレクトリは `~/.sfbench/tmp/` に固定する。例外は、CLI の入口が実行する `sf config get target-org` で、利用者の作業ディレクトリのまま実行する。プロジェクトごとの設定（`.sf/config.json`）を読むためである。この場合も `sf` は絶対パスで起動するので、作業ディレクトリにある実行ファイルは起動しない。
 - 子プロセスにはタイムアウトを設ける（既定は60秒）。タイムアウトしたプロセスは止め、エラーとして扱う。
@@ -99,6 +99,26 @@ Windows では `sf` の実体が `sf.cmd` で、Node はシェルを通さない
 - `SF_TARGET_ORG` が `org open` に効くこと。
 - Windows で上の呼び出し方が動くこと。
 
+### 組織を使えるかの確認
+
+一覧は表示を速くするため、接続を確かめない `sf org list --skip-connection-status` で取得する。
+そのうえでサーバーは、起動して一覧を取得したあとに、接続を確かめる `sf org list` を裏で1回だけ実行する。
+組織が約50ある環境で約12秒かかり、組織ごとに API を呼ぶので、一覧を開くたびには実行しない。
+利用者が「接続を確かめ直す」を押したときにも実行する。
+
+`connectedStatus` から、各組織を次のように分ける。
+
+| `connectedStatus` | 扱い |
+| --- | --- |
+| `Connected` | 使える |
+| リフレッシュトークンの失効を示すエラー文 | 再ログインが必要。一覧の下に畳んで出す |
+| 「HTTP response contains html content」か「HTTP status code: 420」を含む | 削除された組織かトライアル切れ。一覧に出さない |
+| それ以外 | わからない。一覧に出す |
+
+確認の時点でネットワークが落ちていた場合などに、すべての組織が隠れてしまわないよう、隠すのは削除やトライアル切れのはっきりした印があるときだけにする。
+スクラッチ組織は、速い一覧にも含まれる `status` と `isExpired` で判定する。
+sf CLI はスクラッチ組織の接続を確かめない（接続を確かめる `sf org list` でも `connectedStatus` がない）ので、Dev Hub に記録された状態で判断し、期限内で Active なら使える、期限切れか Active でなければ一覧に出さない。
+
 `sf org list --json` の出力には各組織の `accessToken` が含まれる。
 サーバーは画面に必要な項目だけを写し、トークンを画面に渡さない。
 
@@ -121,7 +141,7 @@ API バージョンは、組織ごとに最初の呼び出しで `/services/data
 - `show-access-token` が認証エラー以外の理由で失敗した（コマンドの仕様が変わったなど）。
 - `fetch` がネットワークエラーで失敗した。ただし、データを変えうる要求（GET と HEAD 以外）は試さず、エラーにする。応答を受け取る途中で接続が切れた場合、Salesforce はすでに処理を終えている可能性があり、送り直すと二重に実行されるからである。トークンを取得できなかった場合は、要求がまだ送られていないので、どの要求でも試す。
 
-`fetch` には120秒のタイムアウトを設ける。
+`fetch` にはタイムアウトを設ける（既定は120秒。設定の「Salesforce の応答を待つ時間」で変えられる）。
 タイムアウトした場合は経路を切り替えず、エラーにする。
 
 `sf api request rest` で成功した場合だけ、その組織の経路を切り替える。
@@ -164,7 +184,8 @@ Salesforce の呼び出しも AI の API の呼び出しも、これでプロキ
 | `POST /api/launch` | 管理用 | 起動用の一回限りのコードを発行する |
 | `POST /api/shutdown` | 管理用 | サーバーを止める |
 | `POST /api/session` | 交換用 | 起動用のコードを、セッショントークンと起動時の指定に交換する |
-| `GET /api/orgs` | 画面用 | 組織の一覧（トークンを除く） |
+| `GET /api/orgs` | 画面用 | 組織の一覧（トークンを除く）と、各組織を使えるか。`waitForCheck=1` を付けると、裏で動いている接続の確認が終わってから答える |
+| `POST /api/orgs/check` | 画面用 | 一覧を取り直し、各組織への接続を確かめ直す |
 | `GET /api/orgs/:user/summary` | 画面用 | 組織の詳しい種別（`Organization` の `OrganizationType`、`IsSandbox`）と名前空間 |
 | `GET /api/orgs/:user/sobjects` | 画面用 | describeGlobal |
 | `GET /api/orgs/:user/sobjects/:name` | 画面用 | describe |
@@ -172,7 +193,7 @@ Salesforce の呼び出しも AI の API の呼び出しも、これでプロキ
 | `POST /api/orgs/:user/query/next` | 画面用 | 続きのページ（`{ nextRecordsUrl }`） |
 | `POST /api/orgs/:user/rest` | 画面用 | REST API の実行（`{ method, path, body }`） |
 | `POST /api/orgs/:user/apex` | 画面用 | 匿名 Apex の実行（`{ code }`） |
-| `POST /api/orgs/:user/open` | 画面用 | レコードを Salesforce で開く（`{ recordId }`） |
+| `POST /api/orgs/:user/open` | 画面用 | 組織のホームを、ログイン済みの状態でブラウザに開く |
 | `GET /api/orgs/:user/history` | 画面用 | 最近のクエリ |
 | `GET /api/settings`、`PUT /api/settings` | 画面用 | 設定 |
 | `POST /api/ai/generate` | 画面用 | AI に生成させる |
@@ -199,7 +220,7 @@ describe の結果はサーバーのメモリに組織ごとに保持し、タ�
 
 画面を開く手順は次のとおりである。
 
-1. CLI の入口が `POST /api/launch` に、組織のユーザー名と起動時の指定（`--query`、`--run` など）を送る。サーバーは一回限りのコードを返す。コードの有効期限は60秒、`--no-open` のときは10分である。
+1. CLI の入口が `POST /api/launch` に、組織の名前（エイリアスかユーザー名。解決は画面が行う）と起動時の指定（`--query`、`--run` など）を送る。サーバーは一回限りのコードを返す。コードの有効期限は60秒、`--no-open` のときは10分である。
 2. CLI の入口はブラウザで `http://127.0.0.1:<port>/launch/<code>` を開く。
 3. 画面はコードを `POST /api/session` に送り、セッショントークンと起動時の指定を受け取る。コードはここで無効になる。
 4. 画面は URL を `/` に置き換え、起動時の指定を一度だけ適用する。再読み込みしても、`--run` のクエリは再実行しない。
@@ -467,7 +488,7 @@ Apex の画面は、Tooling API の `executeAnonymous` で匿名 Apex を実行�
 - 画面は React と TypeScript で書き、Vite でビルドする。
 - サーバーは TypeScript で書き、公開前に JavaScript にコンパイルする。Node 標準の API だけを使う。
 - 利用者の実行時の npm 依存はゼロにする。画面のライブラリはビルド時に取り込み、npm にはビルド済みのファイルだけを公開する。
-- 画面で使う予定のライブラリは、`soql-parser-js`（SOQL の解析と整形）、CodeMirror 6（エディタと補完）、TanStack Table と TanStack Virtual（結果の表）である。採用は各区切りで確かめてから決める。
+- 画面で使う予定のライブラリは、`soql-parser-js`（SOQL の解析と整形）、CodeMirror 6（エディタと補完）、TanStack Virtual（結果の表の仮想スクロール）である。画面の技術設計は [web.md](web.md) にある。
 - テストは Vitest で書く。sf CLI の出力は、実際の出力を記録したものを使う。
 - CI は、Ubuntu と Windows のそれぞれで、Node 22 と 24 の最新版を使って回す。下限の Node 22.21.0 は Ubuntu でだけ確かめる。
 
@@ -492,14 +513,18 @@ docs/       設計文書
 | 名前空間の取得 | SOAP | REST のクエリ |
 | 名前空間を省く | 常にオン | 設定でオフにできる |
 | API 使用量 | jsforce の `limitInfo` | サーバーが `Sforce-Limit-Info` を読む |
-| レコードを開く | `instanceUrl` へのリンク | `sf org open --path` でログイン済みの状態で開く |
-| GitHub へのリンク | ヘッダーのアイコン | 説明サイトへのリンク（ヘッダーの「?」）と、設定画面の下部のリンク |
+| レコードを開く | `instanceUrl` へのリンク | 同じ。加えて、ヘッダーの「組織を開く」ボタンで、`sf org open` によりログイン済みの状態にできる |
+| GitHub へのリンク | ヘッダーのアイコン | ヘッダーの「?」と設定画面の下部のリンク。0.1.0 では GitHub の README を開き、説明サイトができたら差し替える |
 | PWA | あり | なし |
 | Google Analytics | あり | なし |
 
+## 0.1.0 のあとに作る機能
+
+- **結果の表での編集と削除**：結果のヘッダーの「Edit」の切り替えをオンにしたときだけ、行の選択列が出る。行を選ぶと「Delete N」、セルをダブルクリックして値を変えると「Save N changes」が出る。編集できるのは FROM のオブジェクト自身の、describe で更新可能な項目だけである。保存と削除は REST API の sObject Collections で行い、本番の組織では確認のダイアログを出す。データを変える仕組みが REST API の画面と同じなので、区切り4と一緒に作る。
+
 ## 未決事項
 
-- 説明サイト（GitHub Pages）の置き場所と URL。公開時に決める。
+- 説明サイト（GitHub Pages）の置き場所と URL。0.1.0 では作らず、「?」は GitHub の README を開く。
 - 利用者が自分で原因を調べるための診断コマンド（`sfbench doctor` など）を作るか。sf CLI のバージョン、使っている経路、ログの場所を表示する案がある。
 
 ## 進め方

@@ -1,0 +1,19 @@
+.band {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-size);
+}
+
+.lost {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  border-bottom: 1px solid var(--color-danger-line);
+}
+
+.production {
+  background: var(--color-danger-strong);
+  color: var(--color-on-danger);
+  letter-spacing: 0.04em;
+}

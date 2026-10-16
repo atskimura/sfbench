@@ -1,19 +1,27 @@
 // The orgs the sf CLI knows about, and one OrgClient per org.
-import type { Org, OrgSummary } from '../shared/api.ts'
+import type { Org, OrgAvailability, OrgsResponse, OrgSummary } from '../shared/api.ts'
+import { log } from './log.ts'
 import { OrgClient } from './salesforce.ts'
-import { listOrgs } from './sf/commands.ts'
+import { checkOrgConnections, listOrgs, reloginCommand } from './sf/commands.ts'
+
+export type Described = { body: unknown; fetchedAt: string }
 
 export class OrgRegistry {
   private readonly tmpDir: string
   private readonly forceCli: boolean
+  private readonly timeoutMs: () => number
   private orgs: Promise<Org[]> | undefined
   private readonly clients = new Map<string, OrgClient>()
   private readonly summaries = new Map<string, Promise<OrgSummary>>()
-  private readonly sobjects = new Map<string, Promise<unknown>>()
+  private readonly sobjects = new Map<string, Promise<Described>>()
+  private connections: Map<string, OrgAvailability> | undefined
+  private check: Promise<void> | undefined
+  private checkState: OrgsResponse['connectionCheck'] = 'pending'
 
-  constructor(tmpDir: string, forceCli: boolean) {
+  constructor(tmpDir: string, forceCli: boolean, timeoutMs: () => number) {
     this.tmpDir = tmpDir
     this.forceCli = forceCli
+    this.timeoutMs = timeoutMs
   }
 
   /** The org list. `sf org list` can take several seconds, so the result is cached until refresh. */
@@ -28,13 +36,57 @@ export class OrgRegistry {
     return this.orgs
   }
 
+  /**
+   * Checks every org's connection in the background (docs/screens.md
+   * "組織の切り替え"). Resolves when the check ends, successfully or not.
+   */
+  checkConnections(): Promise<void> {
+    this.checkState = 'pending'
+    const run = checkOrgConnections(this.tmpDir).then(
+      (map) => {
+        if (this.check === run) {
+          this.connections = map
+          this.checkState = 'done'
+        }
+      },
+      (e: Error) => {
+        log.warn(`could not check the org connections: ${e.message}`)
+        if (this.check === run) this.checkState = 'failed'
+      },
+    )
+    this.check = run
+    return run
+  }
+
+  /** Waits for the connection check that is running, if any. */
+  waitForCheck(): Promise<void> {
+    return this.check ?? Promise.resolve()
+  }
+
+  /** The org list with each org's availability from the latest connection check. */
+  async listWithAvailability(refresh = false): Promise<OrgsResponse> {
+    const orgs = (await this.list(refresh)).map((org): Org => {
+      const availability = org.availability !== 'unknown' ? org.availability : (this.connections?.get(org.username) ?? 'unknown')
+      return availability === 'authError'
+        ? { ...org, availability, reloginCommand: reloginCommand(org) }
+        : { ...org, availability }
+    })
+    return { orgs, connectionCheck: this.checkState }
+  }
+
   /** The client for a username from the list. Returns undefined for anything else. */
   async client(username: string): Promise<OrgClient | undefined> {
     const org = (await this.list()).find((o) => o.username === username)
     if (!org) return undefined
     let client = this.clients.get(username)
     if (!client || client.instanceUrl !== org.instanceUrl) {
-      client = new OrgClient({ username, instanceUrl: org.instanceUrl, tmpDir: this.tmpDir, forceCli: this.forceCli })
+      client = new OrgClient({
+        username,
+        instanceUrl: org.instanceUrl,
+        tmpDir: this.tmpDir,
+        forceCli: this.forceCli,
+        timeoutMs: this.timeoutMs,
+      })
       this.clients.set(username, client)
     }
     return client
@@ -51,12 +103,12 @@ export class OrgRegistry {
     return pending
   }
 
-  /** A cached describe result. `key` is "global" or an sObject name. */
-  cachedDescribe(client: OrgClient, key: string, refresh: boolean, load: () => Promise<unknown>): Promise<unknown> {
+  /** A cached describe result with the time it was fetched. `key` is "global" or an sObject name. */
+  cachedDescribe(client: OrgClient, key: string, refresh: boolean, load: () => Promise<unknown>): Promise<Described> {
     const cacheKey = `${client.username}\n${key}`
     let pending = this.sobjects.get(cacheKey)
     if (refresh || !pending) {
-      pending = load()
+      pending = load().then((body) => ({ body, fetchedAt: new Date().toISOString() }))
       this.sobjects.set(cacheKey, pending)
       const stored = pending
       pending.catch(() => {

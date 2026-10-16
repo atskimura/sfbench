@@ -79,7 +79,6 @@ class FetchFailure extends Error {
 type Transport = 'fetch' | 'cli'
 
 const RETRY_FETCH_AFTER_MS = 10 * 60 * 1000
-const FETCH_TIMEOUT_MS = 120_000
 
 export type OrgClientOptions = {
   username: string
@@ -87,6 +86,8 @@ export type OrgClientOptions = {
   tmpDir: string
   /** SFBENCH_TRANSPORT=cli: always use `sf api request rest` (for development). */
   forceCli: boolean
+  /** How long to wait for Salesforce. Read on every request, so a settings change applies at once. */
+  timeoutMs: () => number
 }
 
 export class OrgClient {
@@ -95,6 +96,7 @@ export class OrgClient {
   apiUsage: ApiUsage | undefined
   private readonly tmpDir: string
   private readonly forceCli: boolean
+  private readonly timeoutMs: () => number
   private transport: Transport = 'fetch'
   private switchedToCliAt = 0
   private token: Promise<string> | undefined
@@ -109,6 +111,7 @@ export class OrgClient {
     this.instanceUrl = options.instanceUrl
     this.tmpDir = options.tmpDir
     this.forceCli = options.forceCli
+    this.timeoutMs = options.timeoutMs
   }
 
   /** The latest API version the org supports, such as "66.0". */
@@ -192,7 +195,12 @@ export class OrgClient {
       ...(req.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       ...req.headers,
     }
-    return apiRequest(this.username, { method: req.method, path: req.path, headers, body: req.body }, this.tmpDir)
+    return apiRequest(
+      this.username,
+      { method: req.method, path: req.path, headers, body: req.body },
+      this.tmpDir,
+      this.timeoutMs(),
+    )
   }
 
   /**
@@ -240,7 +248,7 @@ export class OrgClient {
         },
         body: req.body,
         redirect: 'manual',
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        signal: AbortSignal.timeout(this.timeoutMs()),
       })
       const headers: Record<string, string> = {}
       res.headers.forEach((value, key) => (headers[key] = value))

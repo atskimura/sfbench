@@ -4,16 +4,19 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { extname, join, relative, sep } from 'node:path'
-import type {
-  ApiError,
-  ApiErrorCode,
-  HistoryResponse,
-  LaunchOptions,
-  NextPageRequest,
-  OrgsResponse,
-  QueryRequest,
-  SessionResponse,
-  Settings,
+import {
+  isValidTimeout,
+  MAX_TIMEOUT_SECONDS,
+  MIN_TIMEOUT_SECONDS,
+  type ApiError,
+  type ApiErrorCode,
+  type HistoryResponse,
+  type LaunchOptions,
+  type NextPageRequest,
+  type OrgsResponse,
+  type QueryRequest,
+  type SessionResponse,
+  type Settings,
 } from '../../shared/api.ts'
 import { log } from '../log.ts'
 import type { OrgRegistry } from '../orgs.ts'
@@ -25,9 +28,9 @@ import {
   SalesforceTimeoutError,
   SalesforceUnreachableError,
 } from '../salesforce.ts'
-import { isRecordId, openRecord } from '../sf/commands.ts'
+import { openOrg, reloginCommand } from '../sf/commands.ts'
 import { OrgAuthError, SfCliError, SfNotFoundError } from '../sf/errors.ts'
-import { addHistory, loadHistory, loadSettings, saveSettings } from '../store.ts'
+import { addHistory, loadHistory, type SettingsStore } from '../store.ts'
 import { isAdminRequestOrigin, isAllowedHost, isSameOriginRequest } from './security.ts'
 
 const MAX_BODY_BYTES = 5 * 1024 * 1024
@@ -44,6 +47,7 @@ export type AppOptions = {
   orgs: OrgRegistry
   /** Built web UI, or undefined when it is not built (development). */
   webRoot: string | undefined
+  settings: SettingsStore
   /** In dev mode, a session token that survives restarts. */
   devSessionToken?: string
   onShutdown: () => void
@@ -174,24 +178,41 @@ export class App {
     }
 
     if (path === '/api/settings') {
-      const file = this.options.paths.settings
       if (method === 'GET') {
-        sendJson(res, 200, loadSettings(file))
+        sendJson(res, 200, this.options.settings.get())
         return
       }
       if (method === 'PUT') {
         const body = (await readJsonObject(req)) as Partial<Settings>
-        const settings = { ...loadSettings(file) }
+        const settings = { ...this.options.settings.get() }
         if (typeof body.omitNamespace === 'boolean') settings.omitNamespace = body.omitNamespace
-        saveSettings(file, settings)
-        sendJson(res, 200, settings)
+        if (body.requestTimeoutSeconds !== undefined) {
+          if (!isValidTimeout(body.requestTimeoutSeconds)) {
+            throw new HttpError(
+              400,
+              'BAD_REQUEST',
+              `requestTimeoutSeconds must be an integer from ${MIN_TIMEOUT_SECONDS} to ${MAX_TIMEOUT_SECONDS}`,
+            )
+          }
+          settings.requestTimeoutSeconds = body.requestTimeoutSeconds
+        }
+        sendJson(res, 200, this.options.settings.set(settings))
         return
       }
     }
 
     if (path === '/api/orgs' && method === 'GET') {
-      const orgs = await this.options.orgs.list(url.searchParams.get('refresh') === '1')
-      sendJson(res, 200, { orgs } satisfies OrgsResponse)
+      // waitForCheck=1: answer when the background connection check has finished.
+      if (url.searchParams.get('waitForCheck') === '1') await this.options.orgs.waitForCheck()
+      const body = await this.options.orgs.listWithAvailability(url.searchParams.get('refresh') === '1')
+      sendJson(res, 200, body satisfies OrgsResponse)
+      return
+    }
+
+    if (path === '/api/orgs/check' && method === 'POST') {
+      await this.options.orgs.list(true)
+      await this.options.orgs.checkConnections()
+      sendJson(res, 200, (await this.options.orgs.listWithAvailability()) satisfies OrgsResponse)
       return
     }
 
@@ -234,11 +255,11 @@ export class App {
 
     if (rest === 'sobjects' && method === 'GET') {
       const tooling = url.searchParams.get('tooling') === '1'
-      const body = await this.options.orgs.cachedDescribe(client, tooling ? 'tooling:global' : 'global', refresh, async () => {
+      const described = await this.options.orgs.cachedDescribe(client, tooling ? 'tooling:global' : 'global', refresh, async () => {
         const version = await client.version()
         return (await client.request({ method: 'GET', path: `/services/data/v${version}/${tooling ? 'tooling/' : ''}sobjects/` })).body
       })
-      sendJson(res, 200, withUsage(body as object))
+      sendJson(res, 200, withUsage({ ...(described.body as object), fetchedAt: described.fetchedAt }))
       return
     }
 
@@ -246,7 +267,7 @@ export class App {
     if (describe && method === 'GET') {
       const name = describe[1]
       const tooling = url.searchParams.get('tooling') === '1'
-      const body = await this.options.orgs.cachedDescribe(client, `${tooling ? 'tooling:' : ''}${name}`, refresh, async () => {
+      const described = await this.options.orgs.cachedDescribe(client, `${tooling ? 'tooling:' : ''}${name}`, refresh, async () => {
         const version = await client.version()
         return (
           await client.request({
@@ -255,7 +276,7 @@ export class App {
           })
         ).body
       })
-      sendJson(res, 200, withUsage(body as object))
+      sendJson(res, 200, withUsage({ ...(described.body as object), fetchedAt: described.fetchedAt }))
       return
     }
 
@@ -291,11 +312,7 @@ export class App {
     }
 
     if (rest === 'open' && method === 'POST') {
-      const { recordId } = await readJsonObject(req)
-      if (!isRecordId(recordId)) {
-        throw new HttpError(400, 'BAD_REQUEST', 'A 15 or 18 character record ID is required')
-      }
-      await openRecord(username, recordId, this.options.paths.tmpDir)
+      await openOrg(username, this.options.paths.tmpDir)
       sendJson(res, 200, { ok: true })
       return
     }
@@ -309,7 +326,7 @@ export class App {
    * Organization), the query still runs, without the header.
    */
   private async queryHeaders(client: OrgClient): Promise<Record<string, string>> {
-    if (!loadSettings(this.options.paths.settings).omitNamespace) return {}
+    if (!this.options.settings.get().omitNamespace) return {}
     try {
       const { namespacePrefix } = await this.options.orgs.summary(client)
       return namespacePrefix ? { 'Sforce-Call-Options': `defaultNamespace=${namespacePrefix}` } : {}
@@ -401,7 +418,7 @@ export class App {
 
   private async reloginCommand(username: string): Promise<string> {
     const org = (await this.options.orgs.list().catch(() => [])).find((o) => o.username === username)
-    return `sf org login web${org ? ` --instance-url ${org.instanceUrl}` : ''}${org?.alias ? ` -a ${org.alias}` : ''}`
+    return org ? reloginCommand(org) : 'sf org login web'
   }
 
   // ---- Static files ----

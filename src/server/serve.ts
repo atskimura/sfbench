@@ -10,6 +10,7 @@ import { initLog, log } from './log.ts'
 import { OrgRegistry } from './orgs.ts'
 import { ensureDirs, resolvePaths, webRoot, type Paths } from './paths.ts'
 import { removeServerInfo, writeServerInfo } from './state.ts'
+import { SettingsStore } from './store.ts'
 import { packageVersion } from './version.ts'
 
 export const DEFAULT_PORT = 7717
@@ -70,7 +71,12 @@ export async function serve(dev: boolean): Promise<void> {
 
   const version = packageVersion()
   const adminToken = randomBytes(32).toString('base64url')
-  const orgs = new OrgRegistry(paths.tmpDir, process.env.SFBENCH_TRANSPORT === 'cli')
+  const settings = new SettingsStore(paths.settings)
+  const orgs = new OrgRegistry(
+    paths.tmpDir,
+    process.env.SFBENCH_TRANSPORT === 'cli',
+    () => settings.get().requestTimeoutSeconds * 1000,
+  )
   let server: Server | undefined
 
   const shutdown = () => {
@@ -90,6 +96,7 @@ export async function serve(dev: boolean): Promise<void> {
     adminToken,
     paths,
     orgs,
+    settings,
     webRoot: dev ? undefined : webRoot,
     devSessionToken: dev ? devSessionToken(paths) : undefined,
     onShutdown: shutdown,
@@ -119,6 +126,10 @@ export async function serve(dev: boolean): Promise<void> {
   process.on('SIGTERM', shutdown)
   if (dev) process.stderr.write(`\nOpen ${DEV_WEB_URL} after starting \`npm run dev:web\`.\n\n`)
 
-  // Load the org list in the background: it can take several seconds.
-  orgs.list().catch((e: Error) => log.warn(`could not load the org list: ${e.message}`))
+  // Load the org list in the background: it can take several seconds. Then
+  // check each org's connection, which takes longer still.
+  orgs.list().then(
+    () => void orgs.checkConnections(),
+    (e: Error) => log.warn(`could not load the org list: ${e.message}`),
+  )
 }
