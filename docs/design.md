@@ -99,6 +99,25 @@ Windows では `sf` の実体が `sf.cmd` で、Node はシェルを通さない
 - `SF_TARGET_ORG` が `org open` に効くこと。
 - Windows で上の呼び出し方が動くこと。
 
+### 組織を使えるかの確認
+
+一覧は表示を速くするため、接続を確かめない `sf org list --skip-connection-status` で取得する。
+そのうえでサーバーは、起動して一覧を取得したあとに、接続を確かめる `sf org list` を裏で1回だけ実行する。
+組織が約50ある環境で約12秒かかり、組織ごとに API を呼ぶので、一覧を開くたびには実行しない。
+利用者が「接続を確かめ直す」を押したときにも実行する。
+
+`connectedStatus` から、各組織を次のように分ける。
+
+| `connectedStatus` | 扱い |
+| --- | --- |
+| `Connected` | 使える |
+| リフレッシュトークンの失効を示すエラー文 | 再ログインが必要。一覧の下に畳んで出す |
+| 「HTTP response contains html content」か「HTTP status code: 420」を含む | 削除された組織かトライアル切れ。一覧に出さない |
+| それ以外 | わからない。一覧に出す |
+
+確認の時点でネットワークが落ちていた場合などに、すべての組織が隠れてしまわないよう、隠すのは削除やトライアル切れのはっきりした印があるときだけにする。
+スクラッチ組織は、速い一覧にも含まれる `status` と `isExpired` で判定する。
+
 `sf org list --json` の出力には各組織の `accessToken` が含まれる。
 サーバーは画面に必要な項目だけを写し、トークンを画面に渡さない。
 
@@ -164,7 +183,8 @@ Salesforce の呼び出しも AI の API の呼び出しも、これでプロキ
 | `POST /api/launch` | 管理用 | 起動用の一回限りのコードを発行する |
 | `POST /api/shutdown` | 管理用 | サーバーを止める |
 | `POST /api/session` | 交換用 | 起動用のコードを、セッショントークンと起動時の指定に交換する |
-| `GET /api/orgs` | 画面用 | 組織の一覧（トークンを除く） |
+| `GET /api/orgs` | 画面用 | 組織の一覧（トークンを除く）と、各組織を使えるか。`waitForCheck=1` を付けると、裏で動いている接続の確認が終わってから答える |
+| `POST /api/orgs/check` | 画面用 | 一覧を取り直し、各組織への接続を確かめ直す |
 | `GET /api/orgs/:user/summary` | 画面用 | 組織の詳しい種別（`Organization` の `OrganizationType`、`IsSandbox`）と名前空間 |
 | `GET /api/orgs/:user/sobjects` | 画面用 | describeGlobal |
 | `GET /api/orgs/:user/sobjects/:name` | 画面用 | describe |

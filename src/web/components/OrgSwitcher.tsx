@@ -29,7 +29,7 @@ export function OrgSwitcher() {
     }
   }, [pickerOpen, selectedOrg, setPickerOpen])
 
-  const dot = selectedOrg ? dotClass(status[selectedOrg.username]) : styles.dotUnknown
+  const dot = selectedOrg ? dotClass(effectiveStatus(selectedOrg, status[selectedOrg.username])) : styles.dotUnknown
 
   return (
     <div className={styles.root} ref={rootRef}>
@@ -50,19 +50,34 @@ export function OrgSwitcher() {
   )
 }
 
+/** What this session learned about the org, or else what the connection check found. */
+function effectiveStatus(org: Org, status: OrgStatus | undefined): OrgStatus | undefined {
+  if (status) return status
+  if (org.availability === 'ok') return { state: 'ok' }
+  if (org.availability === 'authError') return { state: 'authError', reloginCommand: org.reloginCommand }
+  return undefined
+}
+
 function dotClass(status: OrgStatus | undefined): string {
   if (!status) return styles.dotUnknown
   return status.state === 'ok' ? styles.dotOk : styles.dotError
 }
 
 function OrgPopover({ id }: { id: string }) {
-  const { orgs, loading, loadError, selected, selectOrg, status, notice } = useOrgs()
+  const { orgs, loading, loadError, selected, selectOrg, status, notice, connectionCheck, recheckConnections } = useOrgs()
   const [filter, setFilter] = useState('')
   const inputId = useId()
-  const shown = useMemo(() => {
+  // Deleted or expired orgs are hidden; orgs that need a new login are folded
+  // at the bottom. The selected org is always listed (docs/screens.md).
+  const { usable, needsLogin } = useMemo(() => {
     const f = filter.trim().toLowerCase()
-    return (orgs ?? []).filter((o) => !f || o.username.toLowerCase().includes(f) || o.alias?.toLowerCase().includes(f))
-  }, [orgs, filter])
+    const matching = (orgs ?? []).filter((o) => !f || o.username.toLowerCase().includes(f) || o.alias?.toLowerCase().includes(f))
+    const state = (o: Org) => effectiveStatus(o, status[o.username])?.state
+    return {
+      usable: matching.filter((o) => o.username === selected || (o.availability !== 'unavailable' && state(o) !== 'authError')),
+      needsLogin: matching.filter((o) => o.username !== selected && state(o) === 'authError'),
+    }
+  }, [orgs, filter, status, selected])
 
   return (
     <div className={styles.popover} id={id} role="dialog" aria-label={t.selectOrg}>
@@ -95,16 +110,41 @@ function OrgPopover({ id }: { id: string }) {
           </div>
         )}
         <ul className={styles.orgs}>
-          {shown.map((org) => (
+          {usable.map((org) => (
             <OrgRow
               key={org.username}
               org={org}
               current={org.username === selected}
-              status={status[org.username]}
+              status={effectiveStatus(org, status[org.username])}
               onSelect={() => selectOrg(org.username)}
             />
           ))}
         </ul>
+        {needsLogin.length > 0 && (
+          <details className={styles.needsLogin}>
+            <summary>{t.needsLogin(needsLogin.length)}</summary>
+            <ul className={styles.orgs}>
+              {needsLogin.map((org) => (
+                <OrgRow
+                  key={org.username}
+                  org={org}
+                  current={false}
+                  status={effectiveStatus(org, status[org.username])}
+                  onSelect={() => selectOrg(org.username)}
+                />
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
+      <div className={styles.check}>
+        {connectionCheck === 'pending' ? (
+          <span aria-live="polite">{t.checkingConnections}</span>
+        ) : (
+          <button type="button" className={styles.link} onClick={() => void recheckConnections()}>
+            {t.checkConnections}
+          </button>
+        )}
       </div>
       <div className={styles.bottom}>
         <span>{t.addOrg}</span>

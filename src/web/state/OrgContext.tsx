@@ -9,7 +9,7 @@ import {
   useRef,
   type ReactNode,
 } from 'react'
-import type { ApiUsage, LaunchOptions, Org, OrgSummary } from '../../shared/api.ts'
+import type { ApiUsage, LaunchOptions, Org, OrgsResponse, OrgSummary } from '../../shared/api.ts'
 import { ApiRequestError, api } from '../api/client.ts'
 import { t } from '../i18n/i18n.ts'
 import { isProductionBySummary } from '../orgs/production.ts'
@@ -21,6 +21,7 @@ export type OrgStatus = { state: 'ok' } | { state: 'authError'; reloginCommand?:
 
 type State = {
   orgs: Org[] | undefined
+  connectionCheck: OrgsResponse['connectionCheck']
   loading: boolean
   loadError: string | undefined
   selected: string | undefined
@@ -34,7 +35,8 @@ type State = {
 
 type Action =
   | { type: 'loading' }
-  | { type: 'loaded'; orgs: Org[] }
+  | { type: 'loaded'; orgs: Org[]; connectionCheck: OrgsResponse['connectionCheck'] }
+  | { type: 'checking' }
   | { type: 'loadFailed'; message: string }
   | { type: 'select'; username: string }
   | { type: 'summary'; username: string; summary: OrgSummary }
@@ -47,7 +49,9 @@ function reducer(state: State, action: Action): State {
     case 'loading':
       return { ...state, loading: true, loadError: undefined }
     case 'loaded':
-      return { ...state, loading: false, orgs: action.orgs }
+      return { ...state, loading: false, orgs: action.orgs, connectionCheck: action.connectionCheck }
+    case 'checking':
+      return { ...state, connectionCheck: 'pending' }
     case 'loadFailed':
       return { ...state, loading: false, loadError: action.message }
     case 'select':
@@ -65,6 +69,7 @@ function reducer(state: State, action: Action): State {
 
 const initialState: State = {
   orgs: undefined,
+  connectionCheck: 'pending',
   loading: true,
   loadError: undefined,
   selected: undefined,
@@ -81,6 +86,8 @@ export type OrgContextValue = State & {
   isProduction: boolean
   /** Loads the org list. Resolves to the list, or undefined if it failed or a newer load replaced it. */
   loadOrgs: (refresh: boolean) => Promise<Org[] | undefined>
+  /** Runs the connection check again (the "check again" button). */
+  recheckConnections: () => Promise<void>
   selectOrg: (username: string) => void
   setPickerOpen: (open: boolean) => void
   reportApiUsage: (username: string, usage: ApiUsage | undefined) => void
@@ -127,9 +134,9 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
       const generation = ++loadGeneration.current
       dispatch({ type: 'loading' })
       try {
-        const { orgs } = await api.orgs(refresh)
+        const { orgs, connectionCheck } = await api.orgs(refresh)
         if (generation !== loadGeneration.current) return undefined
-        dispatch({ type: 'loaded', orgs })
+        dispatch({ type: 'loaded', orgs, connectionCheck })
         return orgs
       } catch (e) {
         if (generation !== loadGeneration.current) return undefined
@@ -189,6 +196,37 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
     void loadOrgs(false)
   }, [loadOrgs])
 
+  // While the server's background connection check runs, wait for it and
+  // update the list, so that unavailable orgs disappear (docs/screens.md).
+  const waiting = useRef(false)
+  useEffect(() => {
+    if (state.orgs === undefined || state.connectionCheck !== 'pending' || waiting.current) return
+    waiting.current = true
+    const generation = loadGeneration.current
+    api.orgs(false, true).then(
+      async ({ orgs, connectionCheck }) => {
+        // The check may not have started yet; ask again a little later.
+        if (connectionCheck === 'pending') await new Promise((resolve) => setTimeout(resolve, 2000))
+        waiting.current = false
+        if (generation === loadGeneration.current) dispatch({ type: 'loaded', orgs, connectionCheck })
+      },
+      () => {
+        waiting.current = false
+      },
+    )
+  }, [state.orgs, state.connectionCheck])
+
+  const recheckConnections = useCallback(async () => {
+    const generation = ++loadGeneration.current
+    dispatch({ type: 'checking' })
+    try {
+      const { orgs, connectionCheck } = await api.checkConnections()
+      if (generation === loadGeneration.current) dispatch({ type: 'loaded', orgs, connectionCheck })
+    } catch (e) {
+      if (!handleCommonError(e)) notify({ message: (e as Error).message })
+    }
+  }, [handleCommonError, notify])
+
   // Choose the org once, when the first org list arrives, whichever load
   // delivered it (the user may open the list while the first load runs).
   const chosen = useRef(false)
@@ -240,13 +278,14 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
       selectedSummary,
       isProduction: selectedOrg ? isProductionBySummary(selectedOrg, selectedSummary) : false,
       loadOrgs,
+      recheckConnections,
       selectOrg,
       setPickerOpen,
       reportApiUsage,
       handleOrgError,
       takeLaunchQuery,
     }
-  }, [state, loadOrgs, selectOrg, setPickerOpen, reportApiUsage, handleOrgError, takeLaunchQuery])
+  }, [state, loadOrgs, recheckConnections, selectOrg, setPickerOpen, reportApiUsage, handleOrgError, takeLaunchQuery])
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>
 }

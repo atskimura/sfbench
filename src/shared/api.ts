@@ -3,6 +3,15 @@
 
 export type OrgKind = 'production' | 'sandbox' | 'scratch' | 'devhub'
 
+/**
+ * Whether the org can be used (docs/screens.md "組織の切り替え").
+ * - unknown: not checked yet
+ * - ok: the sf CLI could connect
+ * - authError: the login expired; logging in again fixes it
+ * - unavailable: deleted, expired or unreachable (hidden from the list)
+ */
+export type OrgAvailability = 'unknown' | 'ok' | 'authError' | 'unavailable'
+
 export type Org = {
   username: string
   alias?: string
@@ -13,9 +22,16 @@ export type Org = {
   /** Expiration date of a scratch org (YYYY-MM-DD). */
   expirationDate?: string
   isExpired: boolean
+  availability: OrgAvailability
+  /** For authError: the command that logs in to the org again. */
+  reloginCommand?: string
 }
 
-export type OrgsResponse = { orgs: Org[] }
+export type OrgsResponse = {
+  orgs: Org[]
+  /** The background connection check (`sf org list` with connection status). */
+  connectionCheck: 'pending' | 'done' | 'failed'
+}
 
 export type OrgSummary = {
   /** `Organization.OrganizationType`, such as "Developer Edition". */

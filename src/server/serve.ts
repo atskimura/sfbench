@@ -126,6 +126,10 @@ export async function serve(dev: boolean): Promise<void> {
   process.on('SIGTERM', shutdown)
   if (dev) process.stderr.write(`\nOpen ${DEV_WEB_URL} after starting \`npm run dev:web\`.\n\n`)
 
-  // Load the org list in the background: it can take several seconds.
-  orgs.list().catch((e: Error) => log.warn(`could not load the org list: ${e.message}`))
+  // Load the org list in the background: it can take several seconds. Then
+  // check each org's connection, which takes longer still.
+  orgs.list().then(
+    () => void orgs.checkConnections(),
+    (e: Error) => log.warn(`could not load the org list: ${e.message}`),
+  )
 }

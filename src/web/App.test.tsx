@@ -29,6 +29,7 @@ const prod: Org = {
   kind: 'production',
   edition: 'Enterprise Edition',
   isExpired: false,
+  availability: 'ok',
 }
 const dev: Org = {
   username: 'admin@demo.example.com',
@@ -37,6 +38,7 @@ const dev: Org = {
   kind: 'production',
   edition: 'Developer Edition',
   isExpired: false,
+  availability: 'ok',
 }
 const summary = (organizationType: string): OrgSummary & { apiUsage: { used: number; max: number } } => ({
   organizationType,
@@ -47,7 +49,7 @@ const summary = (organizationType: string): OrgSummary & { apiUsage: { used: num
 
 beforeEach(() => {
   sessionStorage.clear()
-  mocked.orgs.mockResolvedValue({ orgs: [prod, dev] })
+  mocked.orgs.mockResolvedValue({ orgs: [prod, dev], connectionCheck: 'done' })
   mocked.summary.mockImplementation(async (username) =>
     summary(username === prod.username ? 'Enterprise Edition' : 'Developer Edition'),
   )
@@ -113,11 +115,11 @@ describe('App', () => {
   })
 
   it('still selects the launch org when the list is opened during the first load', async () => {
-    let release: (v: { orgs: Org[] }) => void = () => {}
+    let release: (v: { orgs: Org[]; connectionCheck: 'done' }) => void = () => {}
     mocked.orgs.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)))
     render(<App launch={{ org: 'demo' }} />)
     await userEvent.click(screen.getByRole('button', { name: /組織を選択|Select an org/ }))
-    release({ orgs: [prod, dev] })
+    release({ orgs: [prod, dev], connectionCheck: 'done' })
     await waitFor(() => expect(sessionStorage.getItem('sfbench.selectedOrg')).toBe(dev.username))
   })
 
@@ -133,5 +135,23 @@ describe('App', () => {
     mocked.orgs.mockRejectedValue(new ApiRequestError(502, 'SF_CLI_ERROR', 'sf org list failed'))
     render(<App launch={undefined} />)
     expect((await screen.findByRole('dialog')).textContent).toContain('sf org list failed')
+  })
+
+  it('hides unavailable orgs and folds orgs that need a new login', async () => {
+    const gone: Org = { ...prod, username: 'gone@example.com', alias: 'gone', availability: 'unavailable' }
+    const relogin: Org = {
+      ...prod,
+      username: 'relogin@example.com',
+      alias: 'relogin',
+      availability: 'authError',
+      reloginCommand: 'sf org login web --instance-url https://relogin.my.salesforce.com -a relogin',
+    }
+    mocked.orgs.mockResolvedValue({ orgs: [prod, dev, gone, relogin], connectionCheck: 'done' })
+    render(<App launch={undefined} />)
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).queryByText('gone')).toBeNull()
+    const folded = within(dialog).getByText(/new login|再ログイン/, { selector: 'summary' })
+    expect(folded.textContent).toContain('1')
+    expect(dialog.textContent).toContain('sf org login web --instance-url https://relogin.my.salesforce.com -a relogin')
   })
 })

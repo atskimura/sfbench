@@ -34,6 +34,9 @@ export const en = {
   noSession: 'Run `npx sfbench` to open sfbench.',
   sfNotFound: 'The Salesforce CLI (sf) was not found. Install it, then run `npx sfbench` again.',
   installSf: 'How to install the Salesforce CLI',
+  needsLogin: (count: number) => `Orgs that need a new login (${count})`,
+  checkConnections: 'Check connections again',
+  checkingConnections: 'Checking the connection to each org…',
   errorDetails: 'Details',
   dismiss: 'Dismiss',
 }

@@ -8,6 +8,7 @@ const org = (kind: Org['kind'], edition?: string): Org => ({
   kind,
   edition,
   isExpired: false,
+  availability: 'unknown',
 })
 
 describe('isProductionByList', () => {

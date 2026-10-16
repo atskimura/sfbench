@@ -28,7 +28,7 @@ import {
   SalesforceTimeoutError,
   SalesforceUnreachableError,
 } from '../salesforce.ts'
-import { openOrg } from '../sf/commands.ts'
+import { openOrg, reloginCommand } from '../sf/commands.ts'
 import { OrgAuthError, SfCliError, SfNotFoundError } from '../sf/errors.ts'
 import { addHistory, loadHistory, type SettingsStore } from '../store.ts'
 import { isAdminRequestOrigin, isAllowedHost, isSameOriginRequest } from './security.ts'
@@ -202,8 +202,17 @@ export class App {
     }
 
     if (path === '/api/orgs' && method === 'GET') {
-      const orgs = await this.options.orgs.list(url.searchParams.get('refresh') === '1')
-      sendJson(res, 200, { orgs } satisfies OrgsResponse)
+      // waitForCheck=1: answer when the background connection check has finished.
+      if (url.searchParams.get('waitForCheck') === '1') await this.options.orgs.waitForCheck()
+      const body = await this.options.orgs.listWithAvailability(url.searchParams.get('refresh') === '1')
+      sendJson(res, 200, body satisfies OrgsResponse)
+      return
+    }
+
+    if (path === '/api/orgs/check' && method === 'POST') {
+      await this.options.orgs.list(true)
+      await this.options.orgs.checkConnections()
+      sendJson(res, 200, (await this.options.orgs.listWithAvailability()) satisfies OrgsResponse)
       return
     }
 
@@ -409,7 +418,7 @@ export class App {
 
   private async reloginCommand(username: string): Promise<string> {
     const org = (await this.options.orgs.list().catch(() => [])).find((o) => o.username === username)
-    return `sf org login web${org ? ` --instance-url ${org.instanceUrl}` : ''}${org?.alias ? ` -a ${org.alias}` : ''}`
+    return org ? reloginCommand(org) : 'sf org login web'
   }
 
   // ---- Static files ----

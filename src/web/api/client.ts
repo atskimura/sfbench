@@ -112,7 +112,10 @@ export const api = {
     setSessionToken(res.sessionToken)
     return res
   },
-  orgs: (refresh = false) => request<OrgsResponse>('GET', `/api/orgs${query(flag('refresh', refresh))}`),
+  orgs: (refresh = false, waitForCheck = false) =>
+    request<OrgsResponse>('GET', `/api/orgs${query(flag('refresh', refresh), flag('waitForCheck', waitForCheck))}`),
+  /** Checks every org's connection again (about 10 seconds or more). */
+  checkConnections: () => request<OrgsResponse>('POST', '/api/orgs/check'),
   summary: (username: string) => request<WithApiUsage<OrgSummary>>('GET', `${org(username)}/summary`),
   sobjects: (username: string, tooling: boolean, refresh = false) =>
     request<DescribeGlobal>('GET', `${org(username)}/sobjects${query(flag('tooling', tooling), flag('refresh', refresh))}`),

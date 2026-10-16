@@ -1,5 +1,5 @@
 // The sf commands sfbench uses, other than `sf api request rest` (apiRequest.ts).
-import type { Org, OrgKind } from '../../shared/api.ts'
+import type { Org, OrgAvailability, OrgKind } from '../../shared/api.ts'
 import { OrgAuthError, SfCliError, isAuthErrorMessage } from './errors.ts'
 import { lastErrorLine, runSf, runSfJson } from './run.ts'
 
@@ -14,6 +14,10 @@ type RawOrg = {
   edition?: string
   expirationDate?: string
   isExpired?: boolean
+  /** Scratch orgs: "Active", "Deleted", ... */
+  status?: string
+  /** Only without --skip-connection-status: "Connected" or an error message. */
+  connectedStatus?: string
 }
 
 type OrgListResult = {
@@ -47,6 +51,8 @@ export function toOrgs(result: OrgListResult): Org[] {
       edition: o.orgEdition || o.edition || undefined,
       expirationDate: o.isScratch ? o.expirationDate : undefined,
       isExpired: Boolean(o.isExpired),
+      // Scratch orgs carry their state even in the fast list; other orgs need the connection check.
+      availability: o.isScratch && (o.isExpired || (o.status && o.status !== 'Active')) ? 'unavailable' : 'unknown',
     })
   }
   // Orgs with an alias first (by alias), then the rest (by username): orgs
@@ -54,6 +60,44 @@ export function toOrgs(result: OrgListResult): Org[] {
   return orgs.sort((a, b) =>
     a.alias && b.alias ? a.alias.localeCompare(b.alias) : a.alias ? -1 : b.alias ? 1 : a.username.localeCompare(b.username),
   )
+}
+
+/** The command that logs in to an org again. */
+export function reloginCommand(org: Pick<Org, 'instanceUrl' | 'alias'>): string {
+  return `sf org login web --instance-url ${org.instanceUrl}${org.alias ? ` -a ${org.alias}` : ''}`
+}
+
+// `sf org list` reports a deleted org or an expired trial as an HTML response with HTTP 420.
+const GONE_PATTERNS = [/HTTP status code: 420/, /HTTP response contains html content/i]
+
+/**
+ * Reads `connectedStatus`. Only clear signals hide an org: a network problem
+ * while checking (for example, being offline) must not hide every org.
+ */
+export function availabilityFromStatus(connectedStatus: string | undefined): OrgAvailability {
+  if (!connectedStatus) return 'unknown'
+  if (connectedStatus === 'Connected') return 'ok'
+  if (isAuthErrorMessage(connectedStatus)) return 'authError'
+  if (GONE_PATTERNS.some((p) => p.test(connectedStatus))) return 'unavailable'
+  return 'unknown'
+}
+
+/** Maps username → availability from `sf org list --json` with connection status. */
+export function toAvailability(result: OrgListResult): Map<string, OrgAvailability> {
+  const map = new Map<string, OrgAvailability>()
+  for (const o of result.nonScratchOrgs ?? []) {
+    if (o.username) map.set(o.username, availabilityFromStatus(o.connectedStatus))
+  }
+  return map
+}
+
+/**
+ * Checks every org's connection. Slow (about 12 seconds with 50 orgs) and
+ * calls each org's API, so it runs once at startup and when the user asks.
+ */
+export async function checkOrgConnections(cwd: string): Promise<Map<string, OrgAvailability>> {
+  const result = await runSfJson<OrgListResult>(['org', 'list'], { cwd, timeoutMs: 300_000 })
+  return toAvailability(result)
 }
 
 export async function listOrgs(cwd: string): Promise<Org[]> {
