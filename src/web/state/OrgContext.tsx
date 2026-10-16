@@ -93,6 +93,10 @@ export type OrgContextValue = State & {
   reportApiUsage: (username: string, usage: ApiUsage | undefined) => void
   /** Handles org-specific API errors. Returns true when handled. */
   handleOrgError: (username: string, e: unknown) => boolean
+  /** Like handleOrgError, but notifies any other error too (for loads with no place to show it). */
+  reportOrgError: (username: string, e: unknown) => void
+  /** Marks the org as needing login again without a notification (the caller shows the error). */
+  markAuthError: (username: string, reloginCommand: string | undefined) => void
   /** The --query/--run given at launch, returned once (for the SOQL editor). */
   takeLaunchQuery: () => { query: string; run: boolean } | undefined
 }
@@ -166,6 +170,20 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
     },
     [handleCommonError, loadOrgs, notify],
   )
+
+  const reportOrgError = useCallback(
+    (username: string, e: unknown) => {
+      if (handleOrgError(username, e)) return
+      if (e instanceof ApiRequestError && e.code === 'ABORTED') return
+      const details = e instanceof ApiRequestError && e.code === 'SALESFORCE_ERROR' ? e.body?.details : undefined
+      notify({ message: e instanceof Error ? e.message : String(e), details })
+    },
+    [handleOrgError, notify],
+  )
+
+  const markAuthError = useCallback((username: string, reloginCommand: string | undefined) => {
+    dispatch({ type: 'status', username, status: { state: 'authError', reloginCommand } })
+  }, [])
 
   const selectOrg = useCallback(
     (username: string) => {
@@ -283,17 +301,30 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
       setPickerOpen,
       reportApiUsage,
       handleOrgError,
+      reportOrgError,
+      markAuthError,
       takeLaunchQuery,
     }
-  }, [state, loadOrgs, recheckConnections, selectOrg, setPickerOpen, reportApiUsage, handleOrgError, takeLaunchQuery])
+  }, [state, loadOrgs, recheckConnections, selectOrg, setPickerOpen, reportApiUsage, handleOrgError, reportOrgError, markAuthError, takeLaunchQuery])
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>
 }
 
-// The hook lives next to its provider; this file is not hot-reloaded as a component.
+// The hooks live next to their provider; this file is not hot-reloaded as a component.
 // oxlint-disable-next-line react/only-export-components
 export function useOrgs(): OrgContextValue {
   const value = useContext(OrgContext)
   if (!value) throw new Error('useOrgs must be used inside OrgProvider')
   return value
+}
+
+/** Reports a failed load (such as a describe) once per error. */
+// oxlint-disable-next-line react/only-export-components
+export function useReportOrgError(username: string, error: unknown): void {
+  const { reportOrgError } = useOrgs()
+  useEffect(() => {
+    if (error !== undefined) reportOrgError(username, error)
+    // Report each error once, not again when the callback changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [username, error])
 }

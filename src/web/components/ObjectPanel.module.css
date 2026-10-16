@@ -1,0 +1,28 @@
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.item {
+  /* The label, and below it the API name, so that neither hides the other. */
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: var(--space-1) var(--space-3);
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  line-height: 18px;
+}
+
+.line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item:hover {
+  background: var(--color-panel-muted);
+}

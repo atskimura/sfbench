@@ -14,7 +14,7 @@ import styles from './SettingsDialog.module.css'
 
 
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
-  const { handleCommonError, notify } = useApp()
+  const { handleCommonError, notify, setSettings: setAppSettings } = useApp()
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [settings, setSettings] = useState<Settings>()
   const [timeoutText, setTimeoutText] = useState('')
@@ -56,7 +56,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     if (!settings || !timeoutValid) return
     setSaving(true)
     try {
-      await api.saveSettings({ omitNamespace: settings.omitNamespace, requestTimeoutSeconds: timeout })
+      setAppSettings(await api.saveSettings({ omitNamespace: settings.omitNamespace, requestTimeoutSeconds: timeout }))
       onClose()
     } catch (e) {
       if (!handleCommonError(e)) notify({ message: (e as Error).message })

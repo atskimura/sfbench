@@ -14,6 +14,12 @@ vi.mock('./api/client.ts', async (importOriginal) => {
       openOrg: vi.fn(),
       settings: vi.fn(),
       saveSettings: vi.fn(),
+      sobjects: vi.fn(),
+      describe: vi.fn(),
+      history: vi.fn(),
+      query: vi.fn(),
+      nextPage: vi.fn(),
+      checkConnections: vi.fn(),
     },
   }
 })
@@ -50,6 +56,9 @@ const summary = (organizationType: string): OrgSummary & { apiUsage: { used: num
 beforeEach(() => {
   sessionStorage.clear()
   mocked.orgs.mockResolvedValue({ orgs: [prod, dev], connectionCheck: 'done' })
+  mocked.settings.mockResolvedValue({ omitNamespace: true, requestTimeoutSeconds: 120 })
+  mocked.sobjects.mockResolvedValue({ sobjects: [], fetchedAt: new Date().toISOString() })
+  mocked.history.mockResolvedValue({ entries: [] })
   mocked.summary.mockImplementation(async (username) =>
     summary(username === prod.username ? 'Enterprise Edition' : 'Developer Edition'),
   )

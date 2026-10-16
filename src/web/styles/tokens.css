@@ -30,6 +30,11 @@
   --color-badge-neutral: #4a5558;
   --color-code-bg: #f2f4f3;
   --color-scrim: rgb(14 24 28 / 45%);
+  --color-syntax-keyword: #0b5fa5;
+  --color-syntax-builtin: #6b3fa0;
+  --color-syntax-string: #8a4b00;
+  --color-syntax-literal: #0a7468;
+  --color-selection: #cfe3f6;
   --shadow-popover: 0 12px 32px rgb(15 30 36 / 22%);
 
   --font-sans: system-ui, -apple-system, 'Segoe UI', 'Hiragino Sans', 'Yu Gothic UI', sans-serif;
@@ -79,6 +84,11 @@
     --color-badge-neutral: #b6c0bc;
     --color-code-bg: #222b28;
     --color-scrim: rgb(0 0 0 / 55%);
+    --color-syntax-keyword: #7fb4e8;
+    --color-syntax-builtin: #c7a6f2;
+    --color-syntax-string: #e3b25a;
+    --color-syntax-literal: #5cc4ae;
+    --color-selection: #2b4560;
 
     color-scheme: dark;
   }

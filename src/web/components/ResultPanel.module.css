@@ -1,0 +1,66 @@
+.result {
+  flex: 1;
+}
+
+.count {
+  font-weight: 600;
+}
+
+.error {
+  margin: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  background: var(--color-danger-soft);
+  border: 1px solid var(--color-danger-line);
+  color: var(--color-danger);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.message {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.details {
+  max-height: 200px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--color-panel);
+  color: var(--color-ink);
+  padding: var(--space-2);
+  border-radius: var(--radius);
+  margin: var(--space-1) 0 0;
+}
+
+.table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  min-width: 100%;
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+  background: var(--color-panel-muted);
+  text-align: left;
+  font-weight: 600;
+  font-size: var(--font-size-small);
+  padding: var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--color-line);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--color-line);
+  white-space: nowrap;
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

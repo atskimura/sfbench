@@ -17,6 +17,9 @@ export default defineConfig({
   build: {
     outDir: '../../dist/web',
     emptyOutDir: true,
+    // Served from the local machine, so one large bundle (mostly the SOQL
+    // parser and CodeMirror) costs nothing worth splitting for.
+    chunkSizeWarningLimit: 2000,
   },
   server: {
     host: 'localhost',

@@ -1,6 +1,7 @@
 // App-wide state: whether the server is reachable, a fatal problem, and notifications.
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
-import { ApiRequestError } from '../api/client.ts'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import type { Settings } from '../../shared/api.ts'
+import { ApiRequestError, api } from '../api/client.ts'
 
 export type Notification = {
   id: number
@@ -12,6 +13,9 @@ export type Notification = {
 }
 
 type AppState = {
+  /** The server's settings; undefined until loaded. */
+  settings: Settings | undefined
+  setSettings: (settings: Settings) => void
   sessionLost: boolean
   sfNotFound: boolean
   notifications: Notification[]
@@ -32,9 +36,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sessionLost, setSessionLost] = useState(false)
   const [sfNotFound, setSfNotFound] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
+  const [settings, setSettings] = useState<Settings>()
 
   const notify = useCallback((n: Omit<Notification, 'id'>) => {
-    setNotifications((list) => [...list.slice(-4), { ...n, id: nextId++ }])
+    setNotifications((list) => {
+      // The same error from several places (such as describes of one object) is shown once.
+      if (list.some((x) => x.message === n.message && x.command === n.command)) return list
+      return [...list.slice(-4), { ...n, id: nextId++ }]
+    })
   }, [])
   const dismiss = useCallback((id: number) => setNotifications((list) => list.filter((n) => n.id !== id)), [])
 
@@ -58,9 +67,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [notify],
   )
 
+  useEffect(() => {
+    api.settings().then(setSettings, (e: unknown) => {
+      // Without settings, the defaults apply (omit the namespace).
+      handleCommonError(e)
+    })
+  }, [handleCommonError])
+
   const value = useMemo(
-    () => ({ sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError }),
-    [sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError],
+    () => ({ settings, setSettings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError }),
+    [settings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError],
   )
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }
