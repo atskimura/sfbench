@@ -1,0 +1,28 @@
+HTTP/1.1 200
+date: Fri, 16 Oct 2026 08:32:08 GMT
+vary: Accept-Encoding
+x-content-type-options: nosniff
+strict-transport-security: max-age=63072000; includeSubDomains
+permissions-policy: unload=*
+x-robots-tag: none
+x-sfdc-trace-flags: 01
+cache-control: no-cache,must-revalidate,max-age=0,no-store,private
+sforce-limit-info: api-usage=39/50000
+content-type: application/json;charset=UTF-8
+content-encoding: gzip
+connection: close
+transfer-encoding: chunked
+{
+  "totalSize": 1,
+  "done": true,
+  "records": [
+    {
+      "attributes": {
+        "type": "Account",
+        "url": "/services/data/v62.0/sobjects/Account/001000000000001AAA"
+      },
+      "Id": "001000000000001AAA",
+      "Name": "Edge Communications"
+    }
+  ]
+}
