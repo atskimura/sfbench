@@ -24,3 +24,9 @@ export function nameKey(name: string, ns: string | null | undefined): string {
 export function soqlName(name: string, ns: string | null | undefined, omitNamespace: boolean): string {
   return omitNamespace ? stripNamespace(name, ns) : name
 }
+
+/** The item named in SOQL (matching case and namespace loosely), such as an object in the describeGlobal list. */
+export function findByName<T extends { name: string }>(items: T[], name: string, ns: string | null | undefined): T | undefined {
+  const key = nameKey(name, ns)
+  return items.find((item) => nameKey(item.name, ns) === key)
+}

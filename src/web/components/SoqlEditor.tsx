@@ -43,7 +43,7 @@ const editorTheme = EditorView.theme({
 const SETTLE_MS = 300
 /** Safari can deliver the Enter that commits IME conversion after compositionend. */
 const COMPOSITION_ENTER_MS = 100
-/** After a describe fails, completion offers keywords only for this long instead of asking again on every key. */
+/** After a describe fails, completion does not ask for it again for this long (it runs on every key). */
 const RETRY_AFTER_MS = 30_000
 
 /** The icon CodeMirror shows next to each candidate. */
@@ -68,7 +68,17 @@ export function SoqlEditor() {
     if (!host.current) return
     let settleTimer: ReturnType<typeof setTimeout> | undefined
     let compositionEndedAt = 0
-    let failedAt = { key: '', time: 0 }
+    /** When each describe (per org, API and object) last failed. */
+    const failedAt = new Map<string, number>()
+    const guarded = async <T,>(key: string, load: () => Promise<T>): Promise<T> => {
+      if (Date.now() - (failedAt.get(key) ?? 0) < RETRY_AFTER_MS) throw new Error('failed recently')
+      try {
+        return await load()
+      } catch (e) {
+        failedAt.set(key, Date.now())
+        throw e
+      }
+    }
 
     const completionSource = async (context: CompletionContext): Promise<CompletionResult | null> => {
       const info = cursorInfo(context.state.doc.toString(), context.pos)
@@ -76,19 +86,18 @@ export function SoqlEditor() {
       // Open while typing a word or right after a dot (`Account.`), or on Ctrl+Space.
       if (!info.word && !info.afterDot && !context.explicit) return null
       const { soql: s, selected: username } = latest.current
-      let candidates = keywordCandidates(info.word)
-      const failureKey = `${username}\n${s.tooling}`
-      const recentlyFailed = failedAt.key === failureKey && Date.now() - failedAt.time < RETRY_AFTER_MS
-      if (username && !recentlyFailed) {
+      // Without describes: keywords, except after a dot where only fields fit.
+      let candidates = info.dotted ? [] : keywordCandidates(info.word)
+      if (username) {
+        const prefix = `${username}\n${s.tooling}\n`
         const describer: Describer = {
-          objects: async () => (await describeGlobal(username, s.tooling)).sobjects,
-          describe: (name) => describeSObject(username, name, s.tooling),
+          objects: async () => (await guarded(prefix, () => describeGlobal(username, s.tooling))).sobjects,
+          describe: (name) => guarded(prefix + name.toLowerCase(), () => describeSObject(username, name, s.tooling)),
         }
         try {
           candidates = await contextCandidates(info, describer, s.names)
         } catch {
-          // Keywords only, without a notification: completion runs on every key.
-          failedAt = { key: failureKey, time: Date.now() }
+          // The fallback above, without a notification: completion runs on every key.
         }
       }
       if (candidates.length === 0) return null

@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { HistoryEntry, QueryResponse } from '../../shared/api.ts'
 import { ApiRequestError, api } from '../api/client.ts'
 import { t } from '../i18n/i18n.ts'
-import { fromObjectOf } from '../soql/completion.ts'
+import { fromObjectOf } from '../soql/context.ts'
 import {
   clearAllFields,
   formatSoql,

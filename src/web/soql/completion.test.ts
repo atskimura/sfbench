@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FieldDescribe, SObjectDescribe } from '../api/client.ts'
-import { contextCandidates, fieldCandidates, fromObjectOf, keywordCandidates, type Describer } from './completion.ts'
+import { contextCandidates, fieldCandidates, keywordCandidates, type Describer } from './completion.ts'
 import { cursorInfo } from './context.ts'
 
 const field = (name: string, label: string, ref?: { relationshipName: string; referenceTo: string[] }): FieldDescribe => ({
@@ -9,14 +9,6 @@ const field = (name: string, label: string, ref?: { relationshipName: string; re
   type: ref ? 'reference' : 'string',
   relationshipName: ref?.relationshipName ?? null,
   referenceTo: ref?.referenceTo ?? [],
-})
-
-describe('fromObjectOf', () => {
-  it('finds the outer FROM even while typing and with subqueries', () => {
-    expect(fromObjectOf('SELECT Id, (SELECT Id FROM Contacts) FROM Account WHERE')).toBe('Account')
-    expect(fromObjectOf('SELECT Name, ')).toBeUndefined()
-    expect(fromObjectOf("SELECT Id FROM Opportunity WHERE Name = 'from Lead'")).toBe('Opportunity')
-  })
 })
 
 describe('fieldCandidates', () => {
@@ -94,6 +86,10 @@ describe('contextCandidates', () => {
     expect(await labels('SELECT Id, (SELECT Id FROM | ) FROM Account')).toEqual(['Contacts / Contact', 'Invoices__r / acme__Invoice__c'])
     expect(await labels('SELECT Id, (SELECT 姓| FROM Contacts) FROM Account')).toEqual(['LastName / 姓'])
     expect(await labels('SELECT Id, (SELECT 合| FROM Invoices__r) FROM Account')).toEqual(['Total__c / 合計'])
+  })
+
+  it('lists only fields after the FROM alias and a dot', async () => {
+    expect(await labels('SELECT a.| FROM Account a')).toEqual(['Name / 取引先名', 'OwnerId / 所有者 ID'])
   })
 
   it('puts names, then labels, that start with the word first', () => {

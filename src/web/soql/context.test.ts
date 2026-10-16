@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cursorInfo } from './context.ts'
+import { cursorInfo, fromObjectOf } from './context.ts'
 
 /** cursorInfo with the cursor at `|`. */
 const at = (text: string) => cursorInfo(text.replace('|', ''), text.indexOf('|'))
@@ -76,5 +76,31 @@ describe('cursorInfo', () => {
 
   it('finds a word typed in Japanese', () => {
     expect(at('SELECT 取引| FROM Account')).toMatchObject({ word: '取引', context: { kind: 'field' } })
+  })
+
+  it('closes a subquery whose parenthesis is not closed yet at the next FROM', () => {
+    const info = at('SELECT Id, (SELECT Id FROM | FROM Account')
+    expect(info.context).toMatchObject({ kind: 'from', scope: { child: true, parent: { from: 'Account', alias: undefined } } })
+  })
+
+  it('does not take a relationship named like a clause word as a clause', () => {
+    expect(at('SELECT Order.OrderNumber, (SELECT Id FROM |) FROM OrderItem').context).toMatchObject({
+      kind: 'from',
+      scope: { child: true, parent: { from: 'OrderItem' } },
+    })
+  })
+
+  it('marks a word after a dotted path, including the alias', () => {
+    expect(at('SELECT a.| FROM Account a')).toMatchObject({ dotted: true, context: { kind: 'field', path: [] } })
+    expect(at('SELECT Na| FROM Account a').dotted).toBe(false)
+  })
+})
+
+describe('fromObjectOf', () => {
+  it('finds the outer FROM even while typing and with subqueries', () => {
+    expect(fromObjectOf('SELECT Id, (SELECT Id FROM Contacts) FROM Account WHERE')).toBe('Account')
+    expect(fromObjectOf('SELECT Name, ')).toBeUndefined()
+    expect(fromObjectOf("SELECT Id FROM Opportunity WHERE Name = 'from Lead'")).toBe('Opportunity')
+    expect(fromObjectOf('SELECT Id FROM 請求書__c')).toBe('請求書__c')
   })
 })

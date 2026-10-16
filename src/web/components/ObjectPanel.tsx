@@ -3,8 +3,9 @@
 import { useMemo, useState } from 'react'
 import { t } from '../i18n/i18n.ts'
 import { matches } from '../soql/completion.ts'
+import { findByName } from '../soql/namespace.ts'
 import type { DescribeGlobal } from '../api/client.ts'
-import { describeGlobal, findObject, useLoadable, type Loadable } from '../state/describeCache.ts'
+import { describeGlobal, useLoadable, type Loadable } from '../state/describeCache.ts'
 import { useReportOrgError } from '../state/OrgContext.tsx'
 import { useSoql } from '../state/SoqlContext.tsx'
 import { FieldPanel } from './FieldPanel.tsx'
@@ -19,7 +20,7 @@ export function ObjectPanel({ username }: { username: string }) {
   useReportOrgError(username, globals.error)
 
   // The FROM object, if the org has it (matching case and namespace loosely).
-  const found = soql.panelObject && globals.data ? findObject(globals.data, soql.panelObject, soql.names.ns) : undefined
+  const found = soql.panelObject && globals.data ? findByName(globals.data.sobjects, soql.panelObject, soql.names.ns) : undefined
 
   // While FROM names an object the org does not have (such as a half-typed
   // name), the last object found stays shown (docs/web.md).

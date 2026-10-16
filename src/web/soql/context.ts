@@ -27,6 +27,8 @@ export type CursorInfo = {
   word: string
   /** Where the word starts; the completion replaces from here. */
   from: number
+  /** A dotted path comes before the word (`Account.Na`); then only fields fit. */
+  dotted: boolean
   /** The cursor is right after a dot (`Account.`). */
   afterDot: boolean
 }
@@ -66,31 +68,38 @@ type Frame = {
   clause: string | undefined
   /** Words seen in the current clause (to find the name right after FROM, and the alias). */
   clauseWords: number
+  /** A FROM has started in this query. */
+  sawFrom: boolean
   /** The query frame this frame is in. */
   query: Frame | undefined
 }
 
-export function cursorInfo(text: string, pos: number): CursorInfo {
-  // The word and the dotted path before the cursor, such as `Account.Owner.Na`.
-  let pathStart = pos
-  while (pathStart > 0 && (WORD.test(text[pathStart - 1]) || text[pathStart - 1] === '.')) pathStart--
-  const parts = text.slice(pathStart, pos).split('.')
-  const word = parts[parts.length - 1]
-  const path = parts.slice(0, -1)
-  const info = { word, from: pos - word.length, afterDot: path.length > 0 && word === '' }
+type Snapshot = { frame: Frame; clause: string | undefined; clauseWords: number }
 
+/**
+ * Follows clauses and subqueries through the whole text. Returns the root
+ * scope, and the state just before `stopAt` (where the dotted path at the
+ * cursor starts). Reading to the end fills in FROM names that come after the
+ * cursor, as in the SELECT clause.
+ */
+function scan(text: string, stopAt: number, pos: number): { root: Scope; atCursor: Snapshot; inString: boolean } {
   const tokens = tokenize(text)
-  const root: Frame = { scope: { from: undefined, alias: undefined, child: false, parent: undefined }, clause: undefined, clauseWords: 0, query: undefined }
+  const rootScope: Scope = { from: undefined, alias: undefined, child: false, parent: undefined }
+  const root: Frame = { scope: rootScope, clause: undefined, clauseWords: 0, sawFrom: false, query: undefined }
   root.query = root
   const stack: Frame[] = [root]
-  let atCursor: { frame: Frame; clause: string | undefined; clauseWords: number } | undefined
+  const snapshot = (): Snapshot => {
+    const frame = stack[stack.length - 1]
+    return { frame, clause: frame.query?.clause, clauseWords: frame.query?.clauseWords ?? 0 }
+  }
+  let atCursor: Snapshot | undefined
+  let inString = false
 
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]
-    if (!atCursor && token.end > pathStart) {
-      if (token.type === 'string' && token.start < pos) return { ...info, context: { kind: 'none' } }
-      const frame = stack[stack.length - 1]
-      atCursor = { frame, clause: frame.query?.clause, clauseWords: frame.query?.clauseWords ?? 0 }
+    if (!atCursor && token.end > stopAt) {
+      inString = token.type === 'string' && token.start < pos
+      atCursor = snapshot()
     }
     const frame = stack[stack.length - 1]
     if (token.type === 'punct') {
@@ -100,7 +109,7 @@ export function cursorInfo(text: string, pos: number): CursorInfo {
         const scope: Scope | undefined = isSubquery
           ? { from: undefined, alias: undefined, child: parentQuery?.clause === 'select', parent: parentQuery?.scope }
           : undefined
-        const next: Frame = { scope, clause: undefined, clauseWords: 0, query: undefined }
+        const next: Frame = { scope, clause: undefined, clauseWords: 0, sawFrom: false, query: undefined }
         next.query = scope ? next : frame.query
         stack.push(next)
       } else if (token.text === ')' && stack.length > 1) {
@@ -112,10 +121,24 @@ export function cursorInfo(text: string, pos: number): CursorInfo {
     const query = frame.query
     if (!query) continue
     const lower = token.text.toLowerCase()
-    // Only words directly in the query (not inside a function's parentheses) change clauses.
-    if (frame === query && CLAUSES.has(lower) && !(query.clause === 'from' && query.clauseWords === 0)) {
+    if (frame === query && lower === 'from' && query.sawFrom && query !== root) {
+      // A second FROM in a subquery: its `(` has not been closed yet (the
+      // editor does not close brackets). Close it and read this FROM again.
+      while (stack.pop() !== query);
+      i--
+      continue
+    }
+    // Only words directly in the query (not inside a function's parentheses)
+    // change clauses; so do not names around a dot (`Order.OrderNumber`), or
+    // the name right after FROM (objects named Group or Order).
+    // Touching the dot: in `SELECT a. FROM`, FROM after the typed `a.` is still a clause.
+    const nearDot =
+      (tokens[i + 1]?.text === '.' && tokens[i + 1].start === token.end) ||
+      (tokens[i - 1]?.text === '.' && tokens[i - 1].end === token.start)
+    if (frame === query && CLAUSES.has(lower) && !nearDot && !(query.clause === 'from' && query.clauseWords === 0)) {
       query.clause = lower
       query.clauseWords = 0
+      if (lower === 'from') query.sawFrom = true
       continue
     }
     if (frame === query && query.clause === 'from' && query.scope) {
@@ -126,11 +149,20 @@ export function cursorInfo(text: string, pos: number): CursorInfo {
     }
     if (frame === query) query.clauseWords++
   }
-  if (!atCursor) {
-    const frame = stack[stack.length - 1]
-    atCursor = { frame, clause: frame.query?.clause, clauseWords: frame.query?.clauseWords ?? 0 }
-  }
+  return { root: rootScope, atCursor: atCursor ?? snapshot(), inString }
+}
 
+export function cursorInfo(text: string, pos: number): CursorInfo {
+  // The word and the dotted path before the cursor, such as `Account.Owner.Na`.
+  let pathStart = pos
+  while (pathStart > 0 && (WORD.test(text[pathStart - 1]) || text[pathStart - 1] === '.')) pathStart--
+  const parts = text.slice(pathStart, pos).split('.')
+  const word = parts[parts.length - 1]
+  const path = parts.slice(0, -1)
+  const info = { word, from: pos - word.length, dotted: path.length > 0, afterDot: path.length > 0 && word === '' }
+
+  const { atCursor, inString } = scan(text, pathStart, pos)
+  if (inString) return { ...info, context: { kind: 'none' } }
   const scope = atCursor.frame.query?.scope
   if (!scope) return { ...info, context: { kind: 'keyword' } }
   if (atCursor.clause === 'from') {
@@ -142,4 +174,9 @@ export function cursorInfo(text: string, pos: number): CursorInfo {
     return { ...info, context: { kind: 'field', scope, path: withoutAlias } }
   }
   return { ...info, context: { kind: 'keyword' } }
+}
+
+/** The FROM object of the outermost query, read so that it works while typing. */
+export function fromObjectOf(text: string): string | undefined {
+  return scan(text, text.length, text.length).root.from
 }
