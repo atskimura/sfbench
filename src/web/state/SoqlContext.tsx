@@ -75,7 +75,7 @@ const ResultContext = createContext<ResultState | undefined>(undefined)
 
 export function SoqlProvider({ children }: { children: ReactNode }) {
   const { settings, notify } = useApp()
-  const { selected, selectedSummary, handleOrgError, reportApiUsage, takeLaunchQuery } = useOrgs()
+  const { selected, selectedSummary, handleOrgError, markAuthError, reportApiUsage, takeLaunchQuery } = useOrgs()
   const editor = useRef<EditorHandle | null>(null)
   const [selection, setSelection] = useState<Selection>()
   const [panelObject, setPanelObject] = useState<string>()
@@ -85,6 +85,8 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
   const [result, setResult] = useState<QueryResult>({ state: 'idle' })
   const runGeneration = useRef(0)
   const runAbort = useRef<AbortController | undefined>(undefined)
+  // The org whose history may be shown; a late response for another org is dropped.
+  const historyOrg = useRef<string | undefined>(undefined)
 
   const names = useMemo<NameContext>(
     () => ({ ns: selectedSummary?.namespacePrefix, omitNamespace: settings?.omitNamespace ?? true }),
@@ -105,6 +107,11 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
       current?.toLowerCase() === next.object.toLowerCase() ? current : next.object,
     )
   }, [names.ns])
+
+  // The namespace arrives with the org summary; parse the text again with it.
+  useEffect(() => {
+    if (editor.current) applyText(editor.current.getText())
+  }, [applyText])
 
   const setText = useCallback(
     (text: string) => {
@@ -130,8 +137,12 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
   const loadHistoryFor = useCallback(
     (username: string) => {
       api.history(username).then(
-        (h) => setHistory(h.entries),
-        (e: unknown) => handleOrgError(username, e),
+        (h) => {
+          if (historyOrg.current === username) setHistory(h.entries)
+        },
+        (e: unknown) => {
+          if (historyOrg.current === username) handleOrgError(username, e)
+        },
       )
     },
     [handleOrgError],
@@ -167,7 +178,8 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
         if (generation !== runGeneration.current) return
         if (e instanceof ApiRequestError && e.code === 'ABORTED') return
         if (e instanceof ApiRequestError && e.code === 'ORG_AUTH_ERROR') {
-          handleOrgError(selected, e)
+          // Shown in the result area only, not also as a notification.
+          markAuthError(selected, e.body?.reloginCommand)
           setResult({ state: 'error', message: t.orgAuthError, reloginCommand: e.body?.reloginCommand })
           return
         }
@@ -182,7 +194,7 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
         setResult({ state: 'error', message: (e as Error).message })
       },
     )
-  }, [selected, tooling, queryAll, reportApiUsage, handleOrgError, loadHistoryFor])
+  }, [selected, tooling, queryAll, reportApiUsage, handleOrgError, markAuthError, loadHistoryFor])
 
   // When the org changes: drop the result, reload the history, and run the
   // query given at launch (docs/web.md "起動から作業画面まで").
@@ -191,6 +203,7 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
     runGeneration.current++
     setResult({ state: 'idle' })
     setHistory([])
+    historyOrg.current = selected
     if (!selected) return
     loadHistoryFor(selected)
     const launch = takeLaunchQuery()

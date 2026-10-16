@@ -1,11 +1,12 @@
 // The fields and child relationships of the object in FROM
 // (docs/screens.md "オブジェクトと項目の一覧（左）", docs/parity.md).
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { ChildRelationship, FieldDescribe } from '../api/client.ts'
 import { t } from '../i18n/i18n.ts'
 import { nameKey } from '../soql/namespace.ts'
 import { refKey } from '../soql/selection.ts'
 import { describeGlobal, describeSObject, useLoadable } from '../state/describeCache.ts'
+import { useReportOrgError } from '../state/OrgContext.tsx'
 import { useSoql } from '../state/SoqlContext.tsx'
 import styles from './FieldPanel.module.css'
 import panel from './Panel.module.css'
@@ -27,6 +28,7 @@ export function FieldPanel({ username, objectName }: { username: string; objectN
   const describe = useLoadable(`${username}\n${objectName}\n${soql.tooling}`, (refresh) =>
     describeSObject(username, objectName, soql.tooling, refresh),
   )
+  useReportOrgError(username, describe.error)
   const d = describe.data
 
   return (
@@ -95,12 +97,31 @@ export function FieldPanel({ username, objectName }: { username: string; objectN
 function FieldMenu({ fields, onSort }: { fields: FieldDescribe[]; onSort: (s: Sort) => void }) {
   const soql = useSoql()
   const [open, setOpen] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+  // Close on a click outside the menu or on Escape.
+  useEffect(() => {
+    if (!open) return
+    const onPointer = (e: PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setOpen(false)
+      root.current?.querySelector('button')?.focus()
+    }
+    document.addEventListener('pointerdown', onPointer)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onPointer)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
   const choose = (action: () => void) => () => {
     action()
     setOpen(false)
   }
   return (
-    <div className={styles.menuRoot}>
+    <div className={styles.menuRoot} ref={root}>
       <button type="button" className={panel.button} aria-label={t.fieldMenu} title={t.fieldMenu} aria-expanded={open} onClick={() => setOpen(!open)}>
         ⋯
       </button>
@@ -253,6 +274,7 @@ function ReferenceFields({
 }) {
   const soql = useSoql()
   const describe = useLoadable(`${username}\n${objectName}\n${soql.tooling}`, () => describeSObject(username, objectName, soql.tooling))
+  useReportOrgError(username, describe.error)
   if (describe.error !== undefined) return <p className={panel.empty}>{t.loadFailed}</p>
   if (!describe.data) return <p className={panel.empty} aria-busy="true">…</p>
   return <FieldList username={username} fields={describe.data.fields} relationships={relationships} childRelationship={childRelationship} />

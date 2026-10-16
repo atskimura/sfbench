@@ -24,8 +24,9 @@ vi.mock('./api/client.ts', async (importOriginal) => {
   }
 })
 
-const { api } = await import('./api/client.ts')
+const { api, ApiRequestError } = await import('./api/client.ts')
 const { App } = await import('./App.tsx')
+const { t } = await import('./i18n/i18n.ts')
 const mocked = vi.mocked(api)
 
 const org: Org = {
@@ -101,5 +102,38 @@ describe('SOQL workspace', () => {
     const queryAll = await screen.findByLabelText('Query All')
     await userEvent.click(queryAll)
     expect((screen.getByLabelText('Tooling API') as HTMLInputElement).disabled).toBe(true)
+  })
+
+  it('keeps the fields shown while FROM names an object the org does not have', async () => {
+    mocked.history.mockResolvedValue({ entries: [{ soql: 'SELECT Id FROM Acco', tooling: false, queryAll: false, executedAt: now }] })
+    render(<App launch={{ org: 'demo', query: 'SELECT Id FROM Account' }} />)
+    await screen.findByRole('region', { name: 'Account' })
+    await userEvent.click(await screen.findByTitle('SELECT Id FROM Acco'))
+    await waitFor(() => expect(editorText()).toContain('SELECT Id FROM Acco'))
+    await new Promise((r) => setTimeout(r, 400))
+    expect(screen.getByRole('region', { name: 'Account' })).toBeTruthy()
+    expect(mocked.describe.mock.calls.map((c) => c[1])).not.toContain('Acco')
+  })
+
+  it('shows a login error from a query in the result area only', async () => {
+    mocked.query.mockRejectedValue(
+      new ApiRequestError(401, 'ORG_AUTH_ERROR', 'expired', { code: 'ORG_AUTH_ERROR', message: 'expired', reloginCommand: 'sf org login web' }),
+    )
+    render(<App launch={{ org: 'demo', query: 'SELECT Id FROM Account', run: true }} />)
+    expect(await screen.findByText(t.orgAuthError)).toBeTruthy()
+    expect(screen.getAllByText(t.orgAuthError)).toHaveLength(1)
+  })
+
+  it('closes the field menu on Escape and on a click outside', async () => {
+    render(<App launch={{ org: 'demo', query: 'SELECT Id FROM Account' }} />)
+    const fields = await screen.findByRole('region', { name: 'Account' })
+    const menu = await within(fields).findByRole('button', { name: t.fieldMenu })
+    await userEvent.click(menu)
+    expect(screen.getByRole('menu')).toBeTruthy()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).toBeNull()
+    await userEvent.click(menu)
+    await userEvent.click(document.body)
+    expect(screen.queryByRole('menu')).toBeNull()
   })
 })

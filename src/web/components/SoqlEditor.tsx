@@ -3,14 +3,16 @@
 import { autocompletion, startCompletion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { sql, SQLDialect } from '@codemirror/lang-sql'
-import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { tags } from '@lezer/highlight'
 import { EditorState, Prec } from '@codemirror/state'
 import { EditorView, keymap, placeholder } from '@codemirror/view'
 import { useEffect, useRef } from 'react'
 import { t } from '../i18n/i18n.ts'
 import { fieldCandidates, fromObjectOf, keywordCandidates } from '../soql/completion.ts'
 import { useOrgs } from '../state/OrgContext.tsx'
-import { describeSObject } from '../state/describeCache.ts'
+import { nameKey } from '../soql/namespace.ts'
+import { describeGlobal, describeSObject } from '../state/describeCache.ts'
 import { saveEditorText, savedEditorText } from '../state/editorStorage.ts'
 import { useSoql } from '../state/SoqlContext.tsx'
 import styles from './SoqlEditor.module.css'
@@ -20,6 +22,22 @@ const SOQL = SQLDialect.define({
     'select from where and or not in like includes excludes null true false order by asc desc nulls first last group having limit offset for view reference update with security_enforced user_mode system_mode using scope typeof when then else end rollup cube',
   builtin:
     'count count_distinct sum avg min max fields all standard custom today yesterday tomorrow last_week this_week next_week last_month this_month next_month last_90_days next_90_days this_quarter last_quarter next_quarter this_year last_year next_year',
+})
+
+/** Syntax colors from tokens.css, so that they follow dark mode. */
+const soqlHighlight = HighlightStyle.define([
+  { tag: tags.keyword, color: 'var(--color-syntax-keyword)', fontWeight: '600' },
+  { tag: [tags.standard(tags.name), tags.function(tags.variableName)], color: 'var(--color-syntax-builtin)' },
+  { tag: tags.string, color: 'var(--color-syntax-string)' },
+  { tag: [tags.number, tags.bool, tags.null], color: 'var(--color-syntax-literal)' },
+  { tag: tags.comment, color: 'var(--color-muted)' },
+])
+
+const editorTheme = EditorView.theme({
+  '.cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection': {
+    backgroundColor: 'var(--color-selection) !important',
+  },
+  '.cm-cursor': { borderLeftColor: 'var(--color-ink)' },
 })
 
 const SETTLE_MS = 300
@@ -50,10 +68,16 @@ export function SoqlEditor() {
       if (context.state.sliceDoc(from - 1, from) === '.') return null
       const { soql: s, selected: username } = latest.current
       const options = keywordCandidates(text).map((c) => ({ label: c.label, apply: c.insert, type: 'keyword' }))
-      const object = fromObjectOf(context.state.doc.toString())
-      if (object && username) {
+      const written = fromObjectOf(context.state.doc.toString())
+      if (written && username) {
         try {
-          const describe = await describeSObject(username, object, s.tooling)
+          // Describe only objects the org has, so that a half-typed FROM name
+          // does not send a request on every keystroke.
+          const objects = (await describeGlobal(username, s.tooling)).sobjects
+          const key = nameKey(written, s.names.ns)
+          const object = objects.find((o) => nameKey(o.name, s.names.ns) === key)
+          if (!object) return options.length ? { from, options, filter: false } : null
+          const describe = await describeSObject(username, object.name, s.tooling)
           const fields = fieldCandidates(describe.fields, text, s.names).map((c) => ({
             label: c.label,
             apply: c.insert,
@@ -74,19 +98,25 @@ export function SoqlEditor() {
         extensions: [
           history(),
           sql({ dialect: SOQL }),
-          syntaxHighlighting(defaultHighlightStyle),
+          syntaxHighlighting(soqlHighlight),
+          editorTheme,
           placeholder(t.editorPlaceholder),
           EditorView.lineWrapping,
           EditorView.contentAttributes.of({ 'aria-label': t.editorLabel }),
+          // Before autocompletion, so that it runs before the completion's Enter.
+          Prec.highest(
+            EditorView.domEventHandlers({
+              keydown: (e) => {
+                if (e.key !== 'Enter') return false
+                // The Enter that commits IME conversion must not also accept a
+                // completion. Safari can deliver it just after compositionend.
+                return e.isComposing || e.keyCode === 229 || Date.now() - compositionEndedAt < COMPOSITION_ENTER_MS
+              },
+            }),
+          ),
           autocompletion({ override: [completionSource], activateOnTyping: true }),
           Prec.highest(
             keymap.of([
-              {
-                key: 'Enter',
-                // Swallow the Enter that commits IME conversion, so that it
-                // does not also accept the first completion.
-                run: () => Date.now() - compositionEndedAt < COMPOSITION_ENTER_MS,
-              },
               {
                 key: 'Mod-Enter',
                 run: () => {
@@ -104,7 +134,6 @@ export function SoqlEditor() {
               setTimeout(() => startCompletion(v), 0)
               return false
             },
-            keydown: (e) => e.keyCode === 229,
           }),
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return

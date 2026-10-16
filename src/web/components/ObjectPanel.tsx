@@ -5,6 +5,7 @@ import { t } from '../i18n/i18n.ts'
 import { nameKey } from '../soql/namespace.ts'
 import type { DescribeGlobal } from '../api/client.ts'
 import { describeGlobal, useLoadable, type Loadable } from '../state/describeCache.ts'
+import { useReportOrgError } from '../state/OrgContext.tsx'
 import { useSoql } from '../state/SoqlContext.tsx'
 import { FieldPanel } from './FieldPanel.tsx'
 import panel from './Panel.module.css'
@@ -14,15 +15,26 @@ import { ReloadButton } from './ReloadButton.tsx'
 export function ObjectPanel({ username }: { username: string }) {
   const soql = useSoql()
   const globals = useLoadable(`${username}\n${soql.tooling}`, (refresh) => describeGlobal(username, soql.tooling, refresh))
+  useReportOrgError(username, globals.error)
 
   // The FROM object, if the org has it (matching case and namespace loosely).
-  const current = useMemo(() => {
+  const found = useMemo(() => {
     if (!soql.panelObject || !globals.data) return undefined
     const key = nameKey(soql.panelObject, soql.names.ns)
     return globals.data.sobjects.find((o) => nameKey(o.name, soql.names.ns) === key)
   }, [soql.panelObject, soql.names.ns, globals.data])
 
-  if (current) return <FieldPanel key={`${current.name}\n${soql.tooling}`} username={username} objectName={current.name} />
+  // While FROM names an object the org does not have (such as a half-typed
+  // name), the last object found stays shown (docs/web.md).
+  const [last, setLast] = useState<{ data: DescribeGlobal; name: string }>()
+  if (found && (last?.name !== found.name || last.data !== globals.data)) {
+    setLast({ data: globals.data!, name: found.name })
+  } else if (!soql.panelObject && last) {
+    setLast(undefined)
+  }
+  const current = found?.name ?? (soql.panelObject && last?.data === globals.data ? last?.name : undefined)
+
+  if (current) return <FieldPanel key={`${current}\n${soql.tooling}`} username={username} objectName={current} />
   return <ObjectList globals={globals} />
 }
 
