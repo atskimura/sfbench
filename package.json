@@ -1,0 +1,39 @@
+{
+  "name": "sfbench",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A local workbench for Salesforce: SOQL, Apex and REST API, powered by your sf CLI auth",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "sfbench": "dist/server/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev:web": "vite",
+    "dev:server": "node --watch src/server/cli.ts --dev",
+    "typecheck": "tsc -b",
+    "lint": "oxlint",
+    "test": "vitest run --passWithNoTests",
+    "build:web": "vite build",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build": "npm run typecheck && npm run build:web && npm run build:server"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "oxlint": "^1.81.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.5"
+  }
+}
