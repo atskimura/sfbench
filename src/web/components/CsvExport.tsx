@@ -61,8 +61,16 @@ export function CsvExport({ result, pages }: { result: Done; pages: Pages }) {
     else void save()
   }
 
+  // The rest of the result can no longer be fetched: the table asks to run the query again.
+  const expired = pages.failure?.kind === 'rerun'
   const button = (
-    <button type="button" className={panel.button} onClick={start} disabled={state.step === 'confirm'}>
+    <button
+      type="button"
+      className={panel.button}
+      onClick={start}
+      disabled={state.step === 'confirm' || expired}
+      title={expired ? t.locatorExpired : undefined}
+    >
       {t.exportCsv}
     </button>
   )

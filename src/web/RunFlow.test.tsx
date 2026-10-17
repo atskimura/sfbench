@@ -25,7 +25,7 @@ vi.mock('./apiClient.ts', async (importOriginal) => {
   }
 })
 
-const { api } = await import('./apiClient.ts')
+const { api, ApiRequestError } = await import('./apiClient.ts')
 const { App } = await import('./App.tsx')
 const { t } = await import('./i18n/i18n.ts')
 const mocked = vi.mocked(api)
@@ -194,5 +194,15 @@ describe('CSV export', () => {
     await new Promise((r) => setTimeout(r, 20))
     expect(screen.queryByText('Late 2')).toBeNull()
     expect(downloads).not.toHaveBeenCalled()
+  })
+
+  it('cannot start when the rest of the result has expired', async () => {
+    mocked.query.mockResolvedValue({ totalSize: 6, done: false, nextRecordsUrl: '/next/1', records: rows(0, 2) })
+    mocked.nextPage.mockRejectedValue(
+      new ApiRequestError(400, 'SALESFORCE_ERROR', 'invalid', { code: 'SALESFORCE_ERROR', message: 'invalid', details: [{ errorCode: 'INVALID_QUERY_LOCATOR' }] }),
+    )
+    render(<App launch={launch} />)
+    expect(await screen.findByText(t.locatorExpired)).toBeTruthy()
+    expect((screen.getByRole('button', { name: t.exportCsv }) as HTMLButtonElement).disabled).toBe(true)
   })
 })
