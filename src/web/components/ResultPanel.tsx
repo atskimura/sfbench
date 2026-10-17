@@ -95,9 +95,12 @@ function useNextPage(result: Done) {
   const [failed, setFailed] = useState<false | 'retry' | 'rerun'>(false)
   const load = useCallback(
     async (retry = false) => {
+      // Decided from one render: in it, either a page is loading (with the URL
+      // it continues) or it has been added (with the next URL). So a load
+      // called with this render's values never fetches a page already added.
       const url = result.nextRecordsUrl
-      if (!url || (failed && !retry)) return
-      // 'ignore': scroll events while a page loads do not load it twice.
+      if (!url || running || (failed && !retry)) return
+      // 'ignore' as well: calls before the next render do not load it twice.
       const outcome = await start((signal) => api.nextPage(result.username, url, signal), 'ignore')
       if (outcome.kind === 'done') {
         const page = outcome.value
@@ -110,7 +113,7 @@ function useNextPage(result: Done) {
         if (!gone) reportOrgError(result.username, outcome.error)
       }
     },
-    [result, failed, start, appendPage, reportApiUsage, reportOrgError],
+    [result, running, failed, start, appendPage, reportApiUsage, reportOrgError],
   )
   return { load, loading: running, failed }
 }

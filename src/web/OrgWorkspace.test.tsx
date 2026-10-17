@@ -187,4 +187,17 @@ describe('org workspace', () => {
     expect(await screen.findByText('Acme')).toBeTruthy()
     expect(mocked.query).toHaveBeenCalledTimes(1)
   })
+
+  it('stops loading the next page when the org changes', async () => {
+    let signal: AbortSignal | undefined
+    mocked.query.mockResolvedValue({ totalSize: 4, done: false, nextRecordsUrl: '/next/1', records: [{ Id: '001', Name: 'Acme' }] })
+    mocked.nextPage.mockImplementation((_username, _url, s) => {
+      signal = s
+      return new Promise(() => {})
+    })
+    render(<App launch={{ org: 'one', query: 'SELECT Id FROM Account', run: true }} />)
+    await waitFor(() => expect(signal).toBeDefined())
+    await switchTo('two', 'one')
+    expect(signal?.aborted).toBe(true)
+  })
 })

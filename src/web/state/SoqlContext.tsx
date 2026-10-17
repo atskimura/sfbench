@@ -93,11 +93,12 @@ type ResultState = {
   result: QueryResult
   /** A query is running: decided by the run's task only (docs/web.md "流れごとの指定"). */
   running: boolean
-  /** Stops the running query and empties the result. */
+  /** Stops the running query. The result is already empty: a run empties it when it starts. */
   cancel: () => void
   /**
    * Adds a page loaded by the result table to the shown result. The table is
-   * remade for each run, so the page belongs to this result.
+   * remade for each result and goes away while a query runs, so the page
+   * belongs to the shown result.
    */
   appendPage: (result: Extract<QueryResult, { state: 'done' }>, page: { records: SObjectRecord[]; nextRecordsUrl: string | undefined }) => void
 }
@@ -179,17 +180,21 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
 
   /**
    * Runs the given text: the editor's, or the launch query before the editor
-   * may exist. While a query runs, another run does nothing (the Run button is
-   * disabled, and Cmd+Enter is ignored here).
+   * may exist. While a query runs, a run by the user does nothing (the Run
+   * button is disabled, and Cmd+Enter is ignored here); AI's Replace & Run
+   * replaces it.
    */
   const runSoql = useCallback(
-    async (soql: string) => {
+    async (soql: string, whileRunning: 'ignore' | 'replace' = 'ignore') => {
       if (!soql.trim()) return
       const started = performance.now()
       const useTooling = tooling
+      // Emptied when a run starts, so that Cancel needs to touch only the run.
+      // An ignored run empties nothing that shows: the running query sets the result.
+      setResult({ state: 'idle' })
       const outcome = await startRun(
         (signal) => api.query(username, { soql, tooling: useTooling, queryAll: !useTooling && queryAll }, signal),
-        'ignore',
+        whileRunning,
       )
       if (outcome.kind === 'stale') return
       if (outcome.kind === 'done') {
@@ -284,22 +289,15 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
     }),
     [names, selection, firstLine, panelObject, tooling, queryAll, history, applyText, setText, edit, run],
   )
-  const cancel = useCallback(() => {
-    cancelRun()
-    setResult({ state: 'idle' })
-  }, [cancelRun])
   const appendPage = useCallback<ResultState['appendPage']>((shown, page) => {
-    // The records array of that result grows in place (docs/web.md); `loaded`
-    // says how much of it the result covers. Only that result takes the page.
+    // The records array grows in place (docs/web.md); `loaded` says how much of it the result covers.
     shown.records.push(...page.records)
     const loaded = shown.records.length
     setResult((prev) =>
-      prev.state === 'done' && prev.id === shown.id
-        ? { ...prev, loaded, columns: addColumns(prev.columns, page.records), nextRecordsUrl: page.nextRecordsUrl }
-        : prev,
+      prev.state === 'done' ? { ...prev, loaded, columns: addColumns(prev.columns, page.records), nextRecordsUrl: page.nextRecordsUrl } : prev,
     )
   }, [])
-  const resultValue = useMemo<ResultState>(() => ({ result, running, cancel, appendPage }), [result, running, cancel, appendPage])
+  const resultValue = useMemo<ResultState>(() => ({ result, running, cancel: cancelRun, appendPage }), [result, running, cancelRun, appendPage])
 
   return (
     <SoqlContext.Provider value={soqlValue}>
