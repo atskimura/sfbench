@@ -17,20 +17,13 @@ import styles from './SettingsDialog.module.css'
 
 
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
-  const { handleCommonError, notify, setSettings: setAppSettings } = useApp()
+  const { handleCommonError, notify, saveSettings, savingSettings } = useApp()
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [settings, setSettings] = useState<Settings>()
   const [timeoutText, setTimeoutText] = useState('')
   const [aiDraft, setAiDraft] = useState<AiDraft>(initialAiDraft(undefined))
-  // Loading and saving share one task: saving waits for the settings to load,
-  // and a second click while saving does nothing. Its progress marks a save,
-  // which the dialog cannot be closed during: closing would drop the saved
-  // settings that the server has already written.
-  const { start, running, progress } = useTask<'save'>()
-  const saving = progress === 'save'
-  const close = () => {
-    if (!saving) onClose()
-  }
+  // Saving runs in AppContext, so that closing the dialog does not drop it.
+  const { start } = useTask()
   const namespaceId = useId()
   const timeoutId = useId()
   const timeoutNoteId = useId()
@@ -68,22 +61,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       // Only when changed: saving other settings keeps "not set up" (docs/ai.md "API").
       ...(aiDraft.touched ? { ai: aiInput(aiDraft) } : {}),
     }
-    const outcome = await start((signal, progress) => {
-      progress('save')
-      return api.saveSettings(update, signal)
-    }, 'ignore')
-    if (outcome.kind === 'done') {
-      setAppSettings(outcome.value)
-      onClose()
-    }
-    if (outcome.kind === 'error' && !handleCommonError(outcome.error)) notify({ message: (outcome.error as Error).message })
+    if (await saveSettings(update)) onClose()
   }
 
   return (
-    <dialog ref={dialogRef} className={styles.dialog} aria-label={t.settings} onCancel={(e) => {
-        e.preventDefault()
-        close()
-      }}>
+    <dialog ref={dialogRef} className={styles.dialog} aria-label={t.settings} onCancel={onClose}>
       <form
         method="dialog"
         onSubmit={(e) => {
@@ -93,7 +75,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       >
         <div className={styles.head}>
           <h2 className={styles.title}>{t.settings}</h2>
-          <button type="button" className={styles.close} aria-label={t.close} disabled={saving} onClick={close}>
+          <button type="button" className={styles.close} aria-label={t.close} onClick={onClose}>
             ×
           </button>
         </div>
@@ -138,10 +120,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           </>
         )}
         <div className={styles.actions}>
-          <button type="button" className={styles.button} disabled={saving} onClick={close}>
+          <button type="button" className={styles.button} onClick={onClose}>
             {t.cancel}
           </button>
-          <button type="submit" className={`${styles.button} ${styles.primary}`} disabled={!settings || !timeoutValid || !(aiDraftValid(aiDraft) || !aiDraft.touched) || running}>
+          <button type="submit" className={`${styles.button} ${styles.primary}`} disabled={!settings || !timeoutValid || !(aiDraftValid(aiDraft) || !aiDraft.touched) || savingSettings}>
             {t.save}
           </button>
         </div>

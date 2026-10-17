@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./apiClient.ts', async (importOriginal) => {
@@ -9,7 +10,7 @@ vi.mock('./apiClient.ts', async (importOriginal) => {
 })
 
 const { api, ApiRequestError } = await import('./apiClient.ts')
-const { AppProvider } = await import('./state/AppContext.tsx')
+const { AppProvider, useApp } = await import('./state/AppContext.tsx')
 const { SettingsDialog } = await import('./components/SettingsDialog.tsx')
 const { t } = await import('./i18n/i18n.ts')
 const mocked = vi.mocked(api)
@@ -102,8 +103,9 @@ describe('AI settings', () => {
 })
 
 describe('loading and saving', () => {
-  it('cannot save until the settings load, and saves once and stays open while saving', async () => {
+  it('cannot save until the settings load, and saves once while saving', async () => {
     let loaded: (s: typeof base) => void = () => {}
+    // The dialog loads before AppProvider (children's effects run first).
     mocked.settings.mockImplementationOnce(() => new Promise((resolve) => (loaded = resolve)))
     let saved: (s: typeof base) => void = () => {}
     mocked.saveSettings.mockImplementationOnce(() => new Promise((resolve) => (saved = resolve)))
@@ -115,11 +117,40 @@ describe('loading and saving', () => {
     await userEvent.click(save)
     expect(save.disabled).toBe(true)
     await userEvent.click(save)
-    await userEvent.click(screen.getByRole('button', { name: t.cancel }))
-    expect(onClose).not.toHaveBeenCalled()
     saved(base)
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(mocked.saveSettings).toHaveBeenCalledTimes(1)
+  })
+
+  it('applies a save that ends after the dialog is closed', async () => {
+    mocked.settings.mockResolvedValue(base)
+    let saved: (s: typeof base) => void = () => {}
+    mocked.saveSettings.mockImplementationOnce(() => new Promise((resolve) => (saved = resolve)))
+    function Probe() {
+      const { settings } = useApp()
+      return <output>{settings ? String(settings.omitNamespace) : ''}</output>
+    }
+    function Host() {
+      const [opened, setOpened] = useState(true)
+      return (
+        <>
+          <Probe />
+          {opened && <SettingsDialog onClose={() => setOpened(false)} />}
+        </>
+      )
+    }
+    render(
+      <AppProvider>
+        <Host />
+      </AppProvider>,
+    )
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('true'))
+    await userEvent.click(await screen.findByLabelText(t.settingsOmitNamespace, { exact: false }))
+    await userEvent.click(screen.getByRole('button', { name: t.save }))
+    await userEvent.click(screen.getByRole('button', { name: t.cancel }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    saved({ ...base, omitNamespace: false })
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('false'))
   })
 
   it('tells and closes when the settings cannot be loaded', async () => {

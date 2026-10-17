@@ -187,9 +187,13 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
       return response
     }).then((outcome) => {
       if (outcome.kind === 'done') dispatch({ type: 'loaded', ...outcome.value })
-      if (outcome.kind === 'error') dispatch({ type: 'waitFailed' })
+      if (outcome.kind === 'error') {
+        // Not shown, apart from a lost session or a missing sf CLI.
+        if (outcome.error instanceof ApiRequestError) handleCommonError(outcome.error)
+        dispatch({ type: 'waitFailed' })
+      }
     })
-  }, [waitNeeded, runList])
+  }, [waitNeeded, runList, handleCommonError])
 
   const recheckConnections = useCallback(async () => {
     const outcome = await runList('check', (signal) => api.checkConnections(signal))
