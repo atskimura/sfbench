@@ -82,6 +82,9 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
     if ((e as Error).name === 'AbortError') throw new ApiRequestError(0, 'ABORTED', 'Aborted')
     return undefined
   })) as unknown
+  // An aborted request never answers, even if its response arrived: a late
+  // success or failure must not reach the caller (docs/web.md "非同期の流れ").
+  if (signal?.aborted) throw new ApiRequestError(0, 'ABORTED', 'Aborted')
   if (!res.ok) {
     const error = (json as ApiError | undefined)?.error
     throw new ApiRequestError(res.status, error?.code ?? 'INTERNAL_ERROR', error?.message ?? `HTTP ${res.status}`, error)
