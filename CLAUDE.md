@@ -88,10 +88,12 @@ npm への公開は、手元で次の順に行う。
 
 1. `package.json` の `version` を上げる PR を main にマージする。
 2. `git switch main && git pull` で、手元の main を最新にする。未コミットの変更や追跡していないファイルがない状態にする。
-3. `git tag v<バージョン> && git push origin v<バージョン>` で、公開するコミットにタグを付ける。
-4. `npm pack` で中身を確かめる。`prepack` がビルドするので、公開物はその時点の手元のソースから作られる。
-5. `npm publish` を実行する。`prepublishOnly` は、main にいること、変更がないこと、origin/main と一致すること、HEAD にバージョンのタグがあることを確かめ（`scripts/check-release.mjs`）、続けて lint とテストを実行する。どれかが通らなければ公開しない。型チェックは `prepack` のビルドで行う。
+3. `npm run typecheck && npm run lint && npm test && npm pack --dry-run` で、検査を通し、公開物の中身を確かめる。`--dry-run` を付けるのは、tarball を残すと手順5の検査が「追跡していないファイルがある」として止まるからである（`*.tgz` は `.gitignore` に入れてある）。
+4. `git tag v<バージョン> && git push origin v<バージョン>` で、公開するコミットにタグを付ける。検査を先に済ませるのは、失敗したときに公開されない版のタグを残さないためである。
+5. `npm publish` を実行する。`prepack` がビルドし、`prepublishOnly` が次を確かめてから lint とテストを実行する（`scripts/check-release.mjs`）。どれかが通らなければ公開しない。
+   - main にいて、未コミットの変更がなく、origin/main と一致する
+   - HEAD にバージョンのタグがあり、origin の同じタグも HEAD を指す
 6. GitHub のリリースをタグから作る。
 
-タグを先に付けるのは、公開した版がどのコミットから作られたかを、あとから必ずたどれるようにするためである。
+タグを公開より先に付けるのは、公開した版がどのコミットから作られたかを、あとから必ずたどれるようにするためである。
 画面の「?」と設定画面のリンクは GitHub の README を開くので、リポジトリは公開しておく。

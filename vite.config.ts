@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
@@ -21,23 +21,42 @@ function packageDir(file: string): string | undefined {
 function licenses(): Plugin {
   return {
     name: 'sfbench-licenses',
-    apply: 'build',
+    // In development, serve the file of the last `npm run build`, if any.
+    configureServer(server) {
+      server.middlewares.use('/licenses.txt', (_req, res) => {
+        const built = new URL('./dist/web/licenses.txt', import.meta.url)
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+        if (existsSync(built)) res.end(readFileSync(built))
+        else {
+          res.statusCode = 404
+          res.end('licenses.txt is written by `npm run build`.')
+        }
+      })
+    },
     generateBundle(_options, bundle) {
       const dirs = new Set<string>()
-      for (const chunk of Object.values(bundle)) {
-        if (chunk.type !== 'chunk') continue
-        for (const id of chunk.moduleIds) {
-          // Only modules with code left after tree shaking.
-          if (!chunk.modules[id]?.renderedLength) continue
-          const dir = packageDir(id.replace(/\\/g, '/').replace(/^\0/, ''))
-          if (dir && existsSync(join(dir, 'package.json'))) dirs.add(dir)
+      const add = (id: string) => {
+        const dir = packageDir(id.replace(/\\/g, '/').replace(/^\0/, ''))
+        if (dir && existsSync(join(dir, 'package.json'))) dirs.add(dir)
+      }
+      for (const output of Object.values(bundle)) {
+        if (output.type === 'asset') {
+          // Stylesheets, fonts and images copied from packages.
+          for (const file of (output as { originalFileNames?: string[] }).originalFileNames ?? []) add(file)
+          continue
+        }
+        for (const id of output.moduleIds) {
+          // Modules with code left after tree shaking; CSS goes to the stylesheet instead.
+          if (output.modules[id]?.renderedLength || /\.css(\?|$)/.test(id)) add(id)
         }
       }
       const sections = [...dirs]
         .map((dir) => {
           const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { name: string; version: string }
-          // LICENSE, LICENSE.md, LICENSE-MIT, COPYING and the like.
-          const files = readdirSync(dir).filter((f) => /^(licen[cs]e|copying)([.-]|$)/i.test(f))
+          // LICENSE, LICENSE.md, LICENSE-MIT, COPYING, and NOTICE (which Apache-2.0 requires to be passed on).
+          const files = readdirSync(dir)
+            .filter((f) => /^(licen[cs]e|copying|notice)([.-]|$)/i.test(f))
+            .filter((f) => statSync(join(dir, f)).isFile())
           // Most licenses (MIT among them) require their text and copyright notice to be included.
           if (files.length === 0) this.error(`${pkg.name} has no license file to include in licenses.txt`)
           const text = files.map((f) => readFileSync(join(dir, f), 'utf8').trim()).join('\n\n')
@@ -80,8 +99,6 @@ export default defineConfig({
       // server checks against the Origin. The string shorthand would set
       // changeOrigin and send Host 127.0.0.1:17717 instead.
       '/api/': { target: 'http://127.0.0.1:17717', changeOrigin: false },
-      // Written by the build only: the local server has it once `npm run build` has run.
-      '/licenses.txt': { target: 'http://127.0.0.1:17717', changeOrigin: false },
     },
   },
 })
