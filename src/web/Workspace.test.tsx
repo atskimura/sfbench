@@ -57,6 +57,11 @@ for (const [name, size] of [['offsetHeight', 600], ['offsetWidth', 1000]] as con
   Object.defineProperty(HTMLElement.prototype, name, { configurable: true, get: () => size })
 }
 
+// jsdom has no modal dialogs; opening one only needs to show it.
+HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+  this.setAttribute('open', '')
+}
+
 beforeEach(() => {
   sessionStorage.clear()
   mocked.orgs.mockResolvedValue({ orgs: [org], connectionCheck: 'done' })
@@ -185,8 +190,10 @@ describe('SOQL workspace', () => {
     render(<App launch={{ org: 'demo', query: 'SELECT Id, Name FROM Account', run: true }} />)
     await userEvent.click(await screen.findByRole('button', { name: t.exportCsv }))
     // The API calls are estimated from the size of the first page.
-    expect(screen.getByText(t.csvConfirm(18_000, 9), { exact: false })).toBeTruthy()
-    await userEvent.click(screen.getByRole('button', { name: t.cancel }))
+    const dialog = screen.getByRole('dialog', { name: t.exportCsv })
+    expect(within(dialog).getByText(t.csvConfirm(18_000, 9))).toBeTruthy()
+    await userEvent.click(within(dialog).getByRole('button', { name: t.cancel }))
+    expect(screen.queryByRole('dialog')).toBeNull()
     expect(screen.getByRole('button', { name: t.exportCsv })).toBeTruthy()
   })
 

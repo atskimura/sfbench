@@ -7,6 +7,7 @@ import { addColumns, type SObjectRecord } from '../results/columns.ts'
 import { csvFileName, toCsv } from '../results/csv.ts'
 import { useOrgs } from '../state/OrgContext.tsx'
 import type { QueryResult } from '../state/SoqlContext.tsx'
+import { ConfirmDialog } from './ConfirmDialog.tsx'
 import panel from './Panel.module.css'
 import styles from './ResultPanel.module.css'
 
@@ -57,18 +58,24 @@ export function CsvExport({ result }: { result: Done }) {
     else void save()
   }
 
+  const button = (
+    <button type="button" className={panel.button} onClick={start} disabled={state.step === 'confirm'}>
+      {t.exportCsv}
+    </button>
+  )
   if (state.step === 'confirm') {
     return (
-      <span className={styles.csvStatus} role="alert">
-        {/* Pages are as large as the first one (Salesforce sends smaller ones for wide rows). */}
-        {t.csvConfirm(state.remaining, Math.ceil(state.remaining / result.pageSize))}
-        <button type="button" className={panel.button} onClick={() => void save()}>
-          {t.csvContinue}
-        </button>
-        <button type="button" className={panel.button} onClick={() => setState({ step: 'idle' })}>
-          {t.cancel}
-        </button>
-      </span>
+      <>
+        {button}
+        <ConfirmDialog
+          title={t.exportCsv}
+          // Pages are as large as the first one (Salesforce sends smaller ones for wide rows).
+          message={t.csvConfirm(state.remaining, Math.ceil(state.remaining / result.pageSize))}
+          confirmLabel={t.csvContinue}
+          onConfirm={() => void save()}
+          onCancel={() => setState({ step: 'idle' })}
+        />
+      </>
     )
   }
   if (state.step === 'loading') {
@@ -81,11 +88,7 @@ export function CsvExport({ result }: { result: Done }) {
       </span>
     )
   }
-  return (
-    <button type="button" className={panel.button} onClick={start}>
-      {t.exportCsv}
-    </button>
-  )
+  return button
 }
 
 function download(text: string, fileName: string): void {
