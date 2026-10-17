@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { SoqlOutput } from '../../shared/api.ts'
 import { availabilityOf, type AiAvailability } from '../ai/availability.ts'
 import { ApiRequestError, api, type SObjectDescribe } from '../apiClient.ts'
-import { objectInfo, objectList } from '../ai/objectInfo.ts'
+import { budgetLeft, objectInfo, objectList } from '../ai/objectInfo.ts'
 import { t, uiLanguage } from '../i18n/i18n.ts'
 import { fromObjectOf } from '../soql/context.ts'
 import { findByName } from '../soql/namespace.ts'
@@ -43,7 +43,8 @@ type AiState = {
   status: AiStatus
   proposal: Proposal | undefined
   generate: () => void
-  fix: (error: string) => void
+  /** Asks the AI to fix a query that Salesforce rejected, as it was run. */
+  fix: (error: string, soql: string, tooling: boolean) => void
   cancel: () => void
   discard: () => void
   apply: (run: boolean) => void
@@ -71,7 +72,7 @@ export function AiProvider({ children }: { children: ReactNode }) {
   const flow = useRef<AbortController | undefined>(undefined)
 
   const ai = settings?.ai
-  const availability = availabilityOf(ai)
+  const availability = availabilityOf(settings)
   const label = ai && ai.provider !== 'off' ? `${t.aiProviderName[ai.provider]} · ${ai.model}` : ''
   const objectChip = soql.panelObject && soql.panelObject !== removedObject ? soql.panelObject : undefined
   const editorChip = soql.firstLine.trim() !== '' && !editorRemoved
@@ -79,13 +80,18 @@ export function AiProvider({ children }: { children: ReactNode }) {
   // Another org: the flow for the old one stops (what it showed is hidden by the org tags above).
   useEffect(() => () => flow.current?.abort(), [selected])
 
-  /** Runs one flow; a newer flow or Cancel stops the older one. */
+  /**
+   * Runs one flow; a newer flow or Cancel stops the older one. The first step
+   * shows at once, so that Generate cannot be pressed twice meanwhile.
+   */
   const start = useCallback(
-    (body: (signal: AbortSignal) => Promise<Proposal>) => {
+    (firstStep: AiStep, body: (signal: AbortSignal) => Promise<Proposal>) => {
       flow.current?.abort()
       const abort = new AbortController()
       flow.current = abort
+      const org = selected
       setProposal(undefined)
+      setStatus({ state: 'running', step: firstStep })
       body(abort.signal).then(
         (p) => {
           if (abort.signal.aborted) return
@@ -93,7 +99,13 @@ export function AiProvider({ children }: { children: ReactNode }) {
           setStatus({ state: 'idle' })
         },
         (e: unknown) => {
-          if (abort.signal.aborted || (e instanceof ApiRequestError && e.code === 'ABORTED')) return
+          if (abort.signal.aborted || (e instanceof ApiRequestError && e.code === 'ABORTED')) {
+            // Stopped by switching orgs (not by a newer flow): that org must not stay "running".
+            if (flow.current === abort) {
+              setStatusOf((prev) => (prev.org === org && prev.status.state === 'running' ? { org, status: { state: 'idle' } } : prev))
+            }
+            return
+          }
           // A lost session or a missing sf CLI is shown app-wide; everything else under the AI input.
           if (e instanceof ApiRequestError && handleCommonError(e)) {
             setStatus({ state: 'idle' })
@@ -104,7 +116,7 @@ export function AiProvider({ children }: { children: ReactNode }) {
         },
       )
     },
-    [handleCommonError, setStatus, setProposal],
+    [handleCommonError, setStatus, setProposal, selected],
   )
 
   const generate = useCallback(() => {
@@ -113,7 +125,7 @@ export function AiProvider({ children }: { children: ReactNode }) {
     if (!username || !text || availability !== 'ready') return
     const { tooling, names } = soql
     const sendEditor = editorChip
-    start(async (signal) => {
+    start(objectChip ? 'loadFields' : 'chooseObjects', async (signal) => {
       const globals = (await describeGlobal(username, tooling)).sobjects
       const chosen = objectChip ? findByName(globals, objectChip, names.ns) : undefined
       let objects = chosen ? [chosen.name] : []
@@ -126,15 +138,17 @@ export function AiProvider({ children }: { children: ReactNode }) {
         )
         objects = output.objects.map((o) => findByName(globals, o, names.ns)?.name).filter((o): o is string => Boolean(o))
         if (objects.length === 0) throw new Notice(t.aiNoObjects)
+        setStatus({ state: 'running', step: 'loadFields' })
       }
-      setStatus({ state: 'running', step: 'loadFields' })
       const describes: SObjectDescribe[] = await Promise.all(objects.map((o) => describeSObject(username, o, tooling)))
       setStatus({ state: 'running', step: 'generate' })
       const before = soql.getText()
+      const editorText = sendEditor ? before : ''
       const { output } = await api.aiGenerate(
         {
           task: 'generateSoql',
-          input: { request: text, objectInfo: objectInfo(describes, names), editorText: sendEditor ? before : '', tooling, language: uiLanguage },
+          // The budget counts the request and the editor text too.
+          input: { request: text, objectInfo: objectInfo(describes, names, budgetLeft(text, editorText)), editorText, tooling, language: uiLanguage },
         },
         signal,
       )
@@ -143,13 +157,12 @@ export function AiProvider({ children }: { children: ReactNode }) {
   }, [selected, request, availability, soql, editorChip, objectChip, start, setStatus])
 
   const fix = useCallback(
-    (error: string) => {
+    (error: string, before: string, tooling: boolean) => {
       const username = selected
       if (!username || availability !== 'ready') return
-      const { tooling, names } = soql
-      start(async (signal) => {
-        setStatus({ state: 'running', step: 'fix' })
-        const before = soql.getText()
+      const { names } = soql
+      // The query and API of the run that failed, not what the editor holds now.
+      start('fix', async (signal) => {
         const globals = (await describeGlobal(username, tooling)).sobjects
         const from = fromObjectOf(before)
         // An object the org does not have may be the error itself: then no fields are sent.
@@ -158,7 +171,13 @@ export function AiProvider({ children }: { children: ReactNode }) {
         const { output } = await api.aiGenerate(
           {
             task: 'fixSoql',
-            input: { soql: before, error, objectInfo: describes.length ? objectInfo(describes, names) : '', tooling, language: uiLanguage },
+            input: {
+              soql: before,
+              error,
+              objectInfo: describes.length ? objectInfo(describes, names, budgetLeft(before, error)) : '',
+              tooling,
+              language: uiLanguage,
+            },
           },
           signal,
         )
@@ -166,7 +185,7 @@ export function AiProvider({ children }: { children: ReactNode }) {
         return { ...output, before, prompt: soql.promptFor(before) }
       })
     },
-    [selected, availability, soql, start, setStatus],
+    [selected, availability, soql, start],
   )
 
   const value = useMemo<AiState>(

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { SObjectDescribe } from '../apiClient.ts'
 import { diffWords } from './diff.ts'
-import { objectInfo, objectList } from './objectInfo.ts'
+import { budgetLeft, objectInfo, objectList } from './objectInfo.ts'
 
 const opportunity: SObjectDescribe = {
   name: 'acme__Deal__c',
@@ -46,7 +46,14 @@ describe('objectInfo', () => {
     const noPicklists = objectInfo([opportunity], acme, new TextEncoder().encode(full).length - 5)
     expect(noPicklists).not.toContain('[Open')
     expect(noPicklists).toContain('フェーズ')
-    expect(objectInfo([opportunity], acme, 10)).toBe('Object Deal__c\nFields:\nId\nStage__c\nAccountId')
+    expect(objectInfo([opportunity], acme, 44)).toBe('Object Deal__c\nFields:\nId\nStage__c\nAccountId')
+  })
+})
+
+describe('budget', () => {
+  it('counts the other texts sent, and cuts whole lines when names alone do not fit', () => {
+    expect(budgetLeft('a'.repeat(99_990))).toBe(10)
+    expect(objectInfo([opportunity], acme, 25)).toBe('Object Deal__c\nFields:\nId')
   })
 })
 

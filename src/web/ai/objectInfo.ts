@@ -50,14 +50,32 @@ function describeText(d: SObjectDescribe, names: NameContext, detail: Detail): s
   return lines.join('\n')
 }
 
-/** The fields of the objects, cut down until they fit the budget. */
+/** What is left of the budget after the other texts sent with the object information. */
+export function budgetLeft(...others: string[]): number {
+  return Math.max(0, AI_BUDGET_BYTES - others.reduce((sum, text) => sum + bytes(text), 0))
+}
+
+/** Whole lines from the start of the text, within the budget. */
+function cutLines(text: string, budget: number): string {
+  const kept: string[] = []
+  let used = 0
+  for (const line of text.split('\n')) {
+    // A line break goes between lines only.
+    used += bytes(line) + (kept.length > 0 ? 1 : 0)
+    if (used > budget) break
+    kept.push(line)
+  }
+  return kept.join('\n')
+}
+
+/** The fields of the objects, with less detail until they fit the budget, and cut as a last resort. */
 export function objectInfo(describes: SObjectDescribe[], names: NameContext, budget = AI_BUDGET_BYTES): string {
   let text = ''
   for (const detail of DETAILS) {
     text = describes.map((d) => describeText(d, names, detail)).join('\n\n')
     if (bytes(text) <= budget) return text
   }
-  return text
+  return cutLines(text, budget)
 }
 
 /** The org's objects for the AI to choose from: `ApiName (Label)` per line, without the noise. */
@@ -65,5 +83,5 @@ export function objectList(sobjects: SObjectSummary[], names: NameContext, budge
   const kept = sobjects.filter((o) => o.queryable !== false && !NOISE.test(o.name))
   const name = (n: string) => soqlName(n, names.ns, names.omitNamespace)
   const withLabels = kept.map((o) => `${name(o.name)} (${o.label})`).join('\n')
-  return bytes(withLabels) <= budget ? withLabels : kept.map((o) => name(o.name)).join('\n')
+  return bytes(withLabels) <= budget ? withLabels : cutLines(kept.map((o) => name(o.name)).join('\n'), budget)
 }

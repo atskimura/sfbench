@@ -1,6 +1,6 @@
 // The AI input above the editor, and the proposal card below it
 // (docs/screens.md "AI の入力欄", "AI の提案カード"; docs/ai.md "画面").
-import type { KeyboardEvent } from 'react'
+import { useMemo, type KeyboardEvent } from 'react'
 import { diffWords } from '../ai/diff.ts'
 import { t } from '../i18n/i18n.ts'
 import { useApp } from '../state/AppContext.tsx'
@@ -106,8 +106,9 @@ function Chip({ text, onRemove }: { text: string; onRemove: () => void }) {
 export function ProposalCard() {
   const ai = useAi()
   const p = ai.proposal
+  // The card redraws as the request is typed; the diff is worked out once per proposal.
+  const parts = useMemo(() => (p && p.before.trim() ? diffWords(p.before, p.soql) : undefined), [p])
   if (!p) return null
-  const parts = p.before.trim() ? diffWords(p.before, p.soql) : undefined
   return (
     <section className={styles.card} aria-label={t.aiProposal}>
       <pre className={styles.proposal}>
@@ -137,11 +138,11 @@ export function ProposalCard() {
 }
 
 /** "Fix with AI" under a query that Salesforce rejected. */
-export function FixWithAi({ error }: { error: string }) {
+export function FixWithAi({ error, soql, tooling }: { error: string; soql: string; tooling: boolean }) {
   const ai = useAi()
   if (ai.availability !== 'ready') return null
   return (
-    <button type="button" className={panel.button} disabled={ai.status.state === 'running'} onClick={() => ai.fix(error)}>
+    <button type="button" className={panel.button} disabled={ai.status.state === 'running'} onClick={() => ai.fix(error, soql, tooling)}>
       {t.aiFix}
     </button>
   )

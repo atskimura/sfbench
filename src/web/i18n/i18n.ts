@@ -12,5 +12,5 @@ const browserLanguage = typeof navigator === 'undefined' ? undefined : navigator
 
 export const t: Messages = pickMessages(browserLanguage)
 
-/** The UI language, also given to the AI for its explanations. */
-export const uiLanguage: 'en' | 'ja' = browserLanguage?.toLowerCase().startsWith('ja') ? 'ja' : 'en'
+/** The UI language, also given to the AI for its explanations; follows the messages chosen above. */
+export const uiLanguage: 'en' | 'ja' = t === ja ? 'ja' : 'en'

@@ -24,9 +24,9 @@ export function ResultPanel() {
         <div className={styles.error} role="alert">
           <p className={styles.message}>{result.message}</p>
           {result.reloginCommand && <CopyCommand command={result.reloginCommand} />}
-          {result.salesforce && (
+          {result.rejected && (
             <div>
-              <FixWithAi error={result.message} />
+              <FixWithAi error={result.message} soql={result.rejected.soql} tooling={result.rejected.tooling} />
             </div>
           )}
           {result.details !== undefined && (

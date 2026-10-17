@@ -274,6 +274,14 @@ describe('SOQL workspace', () => {
       expect(screen.queryByRole('button', { name: t.aiSetUp })).toBeNull()
     })
 
+    it('shows nothing about AI while the settings are loading', async () => {
+      mocked.settings.mockReturnValue(new Promise(() => {}))
+      render(<App launch={{ org: 'demo' }} />)
+      await screen.findByRole('button', { name: /Account/ })
+      expect(screen.queryByRole('button', { name: t.aiSetUp })).toBeNull()
+      expect(screen.queryByLabelText(t.aiRequestLabel)).toBeNull()
+    })
+
     it('sends the open object, shows the proposal, and records the request when the proposal runs', async () => {
       mocked.aiGenerate.mockResolvedValue({ output: { soql: 'SELECT Id, Name FROM Account LIMIT 5', explanation: '5件です。' } })
       render(<App launch={{ org: 'demo', query: 'SELECT Id FROM Account' }} />)
@@ -321,7 +329,10 @@ describe('SOQL workspace', () => {
       render(<App launch={{ org: 'demo', query: 'SELECT Nmae FROM Account', run: true }} />)
       await userEvent.click(await screen.findByRole('button', { name: t.aiFix }))
       await screen.findByRole('region', { name: t.aiProposal })
-      expect(mocked.aiGenerate.mock.calls[0][0]).toMatchObject({ task: 'fixSoql', input: { soql: 'SELECT Nmae FROM Account', error: "No such column 'Nmae'" } })
+      expect(mocked.aiGenerate.mock.calls[0][0]).toMatchObject({
+        task: 'fixSoql',
+        input: { soql: 'SELECT Nmae FROM Account', error: "No such column 'Nmae'", tooling: false },
+      })
     })
   })
 })

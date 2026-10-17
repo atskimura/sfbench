@@ -105,8 +105,8 @@ export type QueryResult =
       message: string
       details?: unknown
       reloginCommand?: string
-      /** Salesforce rejected the query (Fix with AI is offered only then). */
-      salesforce?: boolean
+      /** Salesforce rejected the query (Fix with AI is offered only then), as it was run. */
+      rejected?: { soql: string; tooling: boolean }
     }
 
 type ResultState = {
@@ -265,7 +265,7 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
           return
         }
         if (e instanceof ApiRequestError && e.code === 'SALESFORCE_ERROR') {
-          setResult({ state: 'error', message: e.message, details: e.body?.details, salesforce: true })
+          setResult({ state: 'error', message: e.message, details: e.body?.details, rejected: { soql, tooling: useTooling } })
           return
         }
         if (handleOrgError(selected, e)) {
