@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { ApiRequestError, api } from '../apiClient.ts'
+import { api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
 import { DOCUMENTATION_URL } from '../links.ts'
 import { useApp } from '../state/AppContext.tsx'
 import { useOrgs } from '../state/OrgContext.tsx'
+import { useTask } from '../state/useTask.ts'
 import styles from './Header.module.css'
 import { ExternalIcon, GearIcon, HelpIcon, LogoIcon } from './icons.tsx'
 import { OrgSwitcher } from './OrgSwitcher.tsx'
@@ -45,21 +46,19 @@ export function Header() {
   )
 }
 
-/** Opens the org's home page, logged in, so that record links work in this browser (docs/web.md "組織を開く"). */
+/**
+ * Opens the org's home page, logged in, so that record links work in this
+ * browser (docs/web.md "組織を開く"). Keyed by the org, so that a failure
+ * arriving after a switch is stale.
+ */
 function OpenOrgButton() {
   const { selected, handleOrgError } = useOrgs()
   const { notify } = useApp()
-  const [opening, setOpening] = useState(false)
+  const { start, running: opening } = useTask()
   if (!selected) return null
   const open = async () => {
-    setOpening(true)
-    try {
-      await api.openOrg(selected)
-    } catch (e) {
-      if (!handleOrgError(selected, e)) notify({ message: (e as ApiRequestError).message })
-    } finally {
-      setOpening(false)
-    }
+    const outcome = await start((signal) => api.openOrg(selected, signal), 'ignore')
+    if (outcome.kind === 'error' && !handleOrgError(selected, outcome.error)) notify({ message: (outcome.error as Error).message })
   }
   return (
     <button
@@ -69,7 +68,7 @@ function OpenOrgButton() {
       title={opening ? t.openingOrg : t.openOrg}
       aria-busy={opening}
       disabled={opening}
-      onClick={open}
+      onClick={() => void open()}
     >
       <ExternalIcon />
     </button>

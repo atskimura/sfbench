@@ -26,6 +26,7 @@ vi.mock('./apiClient.ts', async (importOriginal) => {
 
 const { api, ApiRequestError } = await import('./apiClient.ts')
 const { App } = await import('./App.tsx')
+const { t } = await import('./i18n/i18n.ts')
 const mocked = vi.mocked(api)
 
 const prod: Org = {
@@ -100,7 +101,7 @@ describe('App', () => {
   it('switches orgs from the list, which is reloaded when opened', async () => {
     render(<App launch={{ org: 'demo' }} />)
     await userEvent.click(await screen.findByRole('button', { name: /demo/ }))
-    expect(mocked.orgs).toHaveBeenLastCalledWith(true)
+    expect(mocked.orgs).toHaveBeenLastCalledWith(true, false, expect.any(AbortSignal))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /acme-prod/ }))
     await waitFor(() => expect(screen.getByRole('button', { name: /acme-prod/ }).getAttribute('aria-expanded')).toBe('false'))
   })
@@ -162,5 +163,99 @@ describe('App', () => {
     const folded = within(dialog).getByText(/new login|再ログイン/, { selector: 'summary' })
     expect(folded.textContent).toContain('1')
     expect(dialog.textContent).toContain('sf org login web --instance-url https://relogin.my.salesforce.com -a relogin')
+  })
+})
+
+/** A promise to settle by hand. */
+function deferred<T>() {
+  let resolve: (value: T) => void = () => {}
+  let reject: (error: unknown) => void = () => {}
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+// The flows in docs/web.md "流れごとの指定" that run outside the workspace.
+describe('org list, summary and opening an org', () => {
+  it('keeps a newer list when an older load arrives later', async () => {
+    const first = deferred<{ orgs: Org[]; connectionCheck: 'done' }>()
+    mocked.orgs.mockImplementationOnce(() => first.promise).mockResolvedValueOnce({ orgs: [dev], connectionCheck: 'done' })
+    render(<App launch={undefined} />)
+    await userEvent.click(screen.getByRole('button', { name: t.selectOrg }))
+    const dialog = screen.getByRole('dialog')
+    await waitFor(() => expect(within(dialog).getByText('demo')).toBeTruthy())
+    first.resolve({ orgs: [prod, dev], connectionCheck: 'done' })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(within(dialog).queryByText('acme-prod')).toBeNull()
+  })
+
+  it('waits for the background check and hides orgs it found unavailable', async () => {
+    const unknown = { ...prod, availability: 'unknown' as const }
+    mocked.orgs.mockImplementation(async (_refresh, waitForCheck) =>
+      waitForCheck
+        ? { orgs: [{ ...prod, availability: 'unavailable' }, dev], connectionCheck: 'done' }
+        : { orgs: [unknown, dev], connectionCheck: 'pending' },
+    )
+    render(<App launch={undefined} />)
+    const dialog = await screen.findByRole('dialog')
+    await waitFor(() => expect(within(dialog).queryByText('acme-prod')).toBeNull())
+    expect(mocked.orgs).toHaveBeenCalledWith(false, true, expect.any(AbortSignal))
+    expect(within(dialog).getByRole('button', { name: t.checkConnections })).toBeTruthy()
+  })
+
+  it('offers to check again when waiting for the check fails, without an error', async () => {
+    mocked.orgs.mockImplementation(async (_refresh, waitForCheck) => {
+      if (waitForCheck) throw new ApiRequestError(500, 'INTERNAL_ERROR', 'boom')
+      return { orgs: [prod, dev], connectionCheck: 'pending' }
+    })
+    render(<App launch={undefined} />)
+    const dialog = await screen.findByRole('dialog')
+    expect(await within(dialog).findByRole('button', { name: t.checkConnections })).toBeTruthy()
+    expect(mocked.orgs).toHaveBeenCalledTimes(2)
+    expect(screen.queryByText('boom')).toBeNull()
+  })
+
+  it('says it is checking while checking again, and goes back when that fails', async () => {
+    const check = deferred<never>()
+    mocked.checkConnections.mockReturnValue(check.promise)
+    render(<App launch={undefined} />)
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: t.checkConnections }))
+    expect(within(dialog).getByText(t.checkingConnections)).toBeTruthy()
+    check.reject(new ApiRequestError(502, 'SF_CLI_ERROR', 'sf org list failed'))
+    expect(await screen.findByText('sf org list failed')).toBeTruthy()
+    expect(within(dialog).getByRole('button', { name: t.checkConnections })).toBeTruthy()
+  })
+
+  it('drops the summary of the previous org after switching', async () => {
+    const late = deferred<never>()
+    mocked.summary.mockImplementation(async (username) => {
+      if (username === dev.username) return late.promise
+      return summary('Enterprise Edition')
+    })
+    render(<App launch={{ org: 'demo' }} />)
+    await userEvent.click(await screen.findByRole('button', { name: /demo/ }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /acme-prod/ }))
+    late.reject(new ApiRequestError(409, 'ORG_AUTH_ERROR', 'expired', { code: 'ORG_AUTH_ERROR', message: 'expired', reloginCommand: 'sf org login web -a demo' }))
+    expect(await screen.findByText(/API 12/)).toBeTruthy()
+    expect(screen.queryByText(/sf org login web -a demo/)).toBeNull()
+  })
+
+  it('opens the org once while opening, and drops a failure that arrives after a switch', async () => {
+    const opening = deferred<never>()
+    mocked.openOrg.mockReturnValue(opening.promise)
+    render(<App launch={{ org: 'demo' }} />)
+    const button = await screen.findByRole('button', { name: t.openOrg })
+    await userEvent.click(button)
+    expect(screen.getByRole('button', { name: t.openingOrg })).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: /demo/ }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /acme-prod/ }))
+    opening.reject(new ApiRequestError(502, 'SF_CLI_ERROR', 'open failed'))
+    expect(await screen.findByRole('button', { name: t.openOrg })).toBeTruthy()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(screen.queryByText('open failed')).toBeNull()
+    expect(mocked.openOrg).toHaveBeenCalledTimes(1)
   })
 })

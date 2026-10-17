@@ -9,23 +9,27 @@ import {
   useRef,
   type ReactNode,
 } from 'react'
-import type { ApiUsage, LaunchOptions, Org, OrgSummary } from '../../shared/api.ts'
+import type { ApiUsage, LaunchOptions, Org, OrgsResponse, OrgSummary } from '../../shared/api.ts'
 import { ApiRequestError, api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
 import { isProductionBySummary } from '../orgs/production.ts'
 import { useApp } from './AppContext.tsx'
 import { initialState, isNamed, reducer, type State } from './orgState.ts'
+import { useTask } from './useTask.ts'
 
 const SELECTED_KEY = 'sfbench.selectedOrg'
 
 export type { OrgStatus, Seed } from './orgState.ts'
 
+/** Which of the requests that write the org list is running. */
+type ListRequest = 'load' | 'wait' | 'check'
+
 export type OrgContextValue = State & {
+  /** The list is being loaded (not waiting for or running the connection check). */
+  loading: boolean
   selectedOrg: Org | undefined
   selectedSummary: OrgSummary | undefined
   isProduction: boolean
-  /** Loads the org list. Resolves to the list, or undefined if it failed or a newer load replaced it. */
-  loadOrgs: (refresh: boolean) => Promise<Org[] | undefined>
   /** Runs the connection check again (the "check again" button). */
   recheckConnections: () => Promise<void>
   selectOrg: (username: string) => void
@@ -40,6 +44,17 @@ export type OrgContextValue = State & {
 }
 
 const OrgContext = createContext<OrgContextValue | undefined>(undefined)
+
+/** Waits, or rejects when the signal aborts. */
+function delay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms)
+    signal.addEventListener('abort', () => {
+      clearTimeout(timer)
+      reject(signal.reason)
+    }, { once: true })
+  })
+}
 
 function readSelected(): string | undefined {
   try {
@@ -60,31 +75,36 @@ function saveSelected(username: string): void {
 export function OrgProvider({ launch, children }: { launch: LaunchOptions | undefined; children: ReactNode }) {
   const { handleCommonError, notify } = useApp()
   const [state, dispatch] = useReducer(reducer, launch, initialState)
-  const started = useRef(false)
-  const loadGeneration = useRef(0)
+  // Loading the list, waiting for the background check and checking again
+  // all write the list, so they share one task: the newest replaces the rest
+  // (docs/web.md "流れごとの指定"). Its progress says which one runs.
+  const list = useTask<ListRequest>()
+  const { start: startList } = list
+  const { start: startSummary } = useTask()
 
   const reportApiUsage = useCallback((username: string, usage: ApiUsage | undefined) => {
     if (usage) dispatch({ type: 'apiUsage', username, usage })
   }, [])
 
+  const runList = useCallback(
+    (request: ListRequest, call: (signal: AbortSignal) => Promise<OrgsResponse>) =>
+      startList((signal, progress) => {
+        progress(request)
+        return call(signal)
+      }, 'replace'),
+    [startList],
+  )
+
   const loadOrgs = useCallback(
     async (refresh: boolean) => {
-      // A newer load wins: an older `sf org list` result arriving later is dropped.
-      const generation = ++loadGeneration.current
-      dispatch({ type: 'loading' })
-      try {
-        const { orgs, connectionCheck } = await api.orgs(refresh)
-        if (generation !== loadGeneration.current) return undefined
-        dispatch({ type: 'loaded', orgs, connectionCheck })
-        return orgs
-      } catch (e) {
-        if (generation !== loadGeneration.current) return undefined
-        const handled = handleCommonError(e)
-        dispatch({ type: 'loadFailed', message: handled ? '' : (e as Error).message })
-        return undefined
+      const outcome = await runList('load', (signal) => api.orgs(refresh, false, signal))
+      if (outcome.kind === 'done') dispatch({ type: 'loaded', ...outcome.value })
+      if (outcome.kind === 'error') {
+        const handled = handleCommonError(outcome.error)
+        dispatch({ type: 'loadFailed', message: handled ? '' : (outcome.error as Error).message })
       }
     },
-    [handleCommonError],
+    [runList, handleCommonError],
   )
 
   const handleOrgError = useCallback(
@@ -126,59 +146,51 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
       saveSelected(username)
       // Without a summary, production is judged from the org list and no
       // namespace is assumed; a failure here is not shown (docs/web.md).
-      api.summary(username).then(
-        (summary) => {
-          dispatch({ type: 'summary', username, summary })
+      void startSummary((signal) => api.summary(username, signal), 'replace').then((outcome) => {
+        if (outcome.kind === 'done') {
+          dispatch({ type: 'summary', username, summary: outcome.value })
           dispatch({ type: 'status', username, status: { state: 'ok' } })
-          reportApiUsage(username, summary.apiUsage)
-        },
-        (e: unknown) => {
+          reportApiUsage(username, outcome.value.apiUsage)
+        }
+        if (outcome.kind === 'error') {
           // Other failures (such as a user who cannot read Organization) are not shown.
+          const e = outcome.error
           const shown = ['ORG_AUTH_ERROR', 'NOT_FOUND', 'SF_CLI_NOT_FOUND']
           if (e instanceof ApiRequestError && (shown.includes(e.code) || e.isSessionLost)) handleOrgError(username, e)
-        },
-      )
+        }
+      })
     },
-    [handleOrgError, reportApiUsage],
+    [startSummary, handleOrgError, reportApiUsage],
   )
 
-  // Startup: load the org list once (docs/web.md "起動から作業画面まで").
+  // Startup: load the org list (docs/web.md "起動から作業画面まで"). Under
+  // StrictMode the first load is cancelled and this runs again.
   useEffect(() => {
-    if (started.current) return
-    started.current = true
     void loadOrgs(false)
   }, [loadOrgs])
 
   // While the server's background connection check runs, wait for it and
   // update the list, so that unavailable orgs disappear (docs/screens.md).
-  const waiting = useRef(false)
+  // A wait that ends with the check still pending makes this true again.
+  const waitNeeded = state.orgs !== undefined && state.connectionCheck === 'pending' && !list.running
   useEffect(() => {
-    if (state.orgs === undefined || state.connectionCheck !== 'pending' || waiting.current) return
-    waiting.current = true
-    const generation = loadGeneration.current
-    api.orgs(false, true).then(
-      async ({ orgs, connectionCheck }) => {
-        // The check may not have started yet; ask again a little later.
-        if (connectionCheck === 'pending') await new Promise((resolve) => setTimeout(resolve, 2000))
-        waiting.current = false
-        if (generation === loadGeneration.current) dispatch({ type: 'loaded', orgs, connectionCheck })
-      },
-      () => {
-        waiting.current = false
-      },
-    )
-  }, [state.orgs, state.connectionCheck])
+    if (!waitNeeded) return
+    void runList('wait', async (signal) => {
+      const response = await api.orgs(false, true, signal)
+      // The check may not have started yet; ask again a little later.
+      if (response.connectionCheck === 'pending') await delay(2000, signal)
+      return response
+    }).then((outcome) => {
+      if (outcome.kind === 'done') dispatch({ type: 'loaded', ...outcome.value })
+      if (outcome.kind === 'error') dispatch({ type: 'waitFailed' })
+    })
+  }, [waitNeeded, runList])
 
   const recheckConnections = useCallback(async () => {
-    const generation = ++loadGeneration.current
-    dispatch({ type: 'checking' })
-    try {
-      const { orgs, connectionCheck } = await api.checkConnections()
-      if (generation === loadGeneration.current) dispatch({ type: 'loaded', orgs, connectionCheck })
-    } catch (e) {
-      if (!handleCommonError(e)) notify({ message: (e as Error).message })
-    }
-  }, [handleCommonError, notify])
+    const outcome = await runList('check', (signal) => api.checkConnections(signal))
+    if (outcome.kind === 'done') dispatch({ type: 'loaded', ...outcome.value })
+    if (outcome.kind === 'error' && !handleCommonError(outcome.error)) notify({ message: (outcome.error as Error).message })
+  }, [runList, handleCommonError, notify])
 
   // Choose the org once, when the first org list arrives, whichever load
   // delivered it (the user may open the list while the first load runs).
@@ -215,15 +227,18 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
   )
 
 
+  const listRequest = list.progress
   const value = useMemo<OrgContextValue>(() => {
     const selectedOrg = state.orgs?.find((o) => o.username === state.selected)
     const selectedSummary = state.selected ? state.summaries[state.selected] : undefined
     return {
       ...state,
+      // Until the first list or failure arrives, the list counts as loading.
+      loading: listRequest === 'load' || (state.orgs === undefined && state.loadError === undefined),
+      connectionCheck: listRequest === 'check' ? 'pending' : state.connectionCheck,
       selectedOrg,
       selectedSummary,
       isProduction: selectedOrg ? isProductionBySummary(selectedOrg, selectedSummary) : false,
-      loadOrgs,
       recheckConnections,
       selectOrg,
       setPickerOpen,
@@ -232,7 +247,7 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
       reportOrgError,
       markAuthError,
     }
-  }, [state, loadOrgs, recheckConnections, selectOrg, setPickerOpen, reportApiUsage, handleOrgError, reportOrgError, markAuthError])
+  }, [state, listRequest, recheckConnections, selectOrg, setPickerOpen, reportApiUsage, handleOrgError, reportOrgError, markAuthError])
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>
 }

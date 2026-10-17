@@ -85,4 +85,44 @@ describe('AI settings', () => {
     await userEvent.click(screen.getByRole('button', { name: t.aiTest }))
     expect(await screen.findByText('invalid x-api-key')).toBeTruthy()
   })
+
+  it('drops a test still running when the settings change', async () => {
+    mocked.settings.mockResolvedValue({ ...base, ai: { provider: 'anthropic', model: 'claude-x', hasApiKey: true, keyProvider: 'anthropic' } })
+    let finish: (v: { elapsedMs: number }) => void = () => {}
+    mocked.aiTest.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)))
+    open()
+    await userEvent.click(await screen.findByRole('button', { name: t.aiTest }))
+    expect(screen.getByRole('button', { name: t.aiTesting })).toBeTruthy()
+    await userEvent.type(screen.getByLabelText(t.aiModel), '-2')
+    expect(screen.getByRole('button', { name: t.aiTest })).toBeTruthy()
+    finish({ elapsedMs: 1000 })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(screen.queryByText(t.aiTestOk('1.0'))).toBeNull()
+  })
+})
+
+describe('loading and saving', () => {
+  it('cannot save until the settings load, and saves once while saving', async () => {
+    let loaded: (s: typeof base) => void = () => {}
+    mocked.settings.mockImplementationOnce(() => new Promise((resolve) => (loaded = resolve)))
+    let saved: (s: typeof base) => void = () => {}
+    mocked.saveSettings.mockImplementationOnce(() => new Promise((resolve) => (saved = resolve)))
+    const onClose = open()
+    const save = screen.getByRole('button', { name: t.save }) as HTMLButtonElement
+    expect(save.disabled).toBe(true)
+    loaded(base)
+    await waitFor(() => expect(save.disabled).toBe(false))
+    await userEvent.click(save)
+    expect(save.disabled).toBe(true)
+    await userEvent.click(save)
+    saved(base)
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(mocked.saveSettings).toHaveBeenCalledTimes(1)
+  })
+
+  it('tells and closes when the settings cannot be loaded', async () => {
+    mocked.settings.mockRejectedValue(new ApiRequestError(500, 'INTERNAL_ERROR', 'cannot read settings'))
+    const onClose = open()
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+  })
 })

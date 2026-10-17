@@ -2,6 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Settings } from '../../shared/api.ts'
 import { ApiRequestError, api } from '../apiClient.ts'
+import { useTask } from './useTask.ts'
 
 export type Notification = {
   id: number
@@ -67,12 +68,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [notify],
   )
 
+  // Without settings, the defaults apply (omit the namespace), and nothing is shown.
+  const { start } = useTask()
   useEffect(() => {
-    api.settings().then(setSettings, (e: unknown) => {
-      // Without settings, the defaults apply (omit the namespace).
-      handleCommonError(e)
+    void start((signal) => api.settings(signal), 'ignore').then((outcome) => {
+      if (outcome.kind === 'done') setSettings(outcome.value)
     })
-  }, [handleCommonError])
+  }, [start])
 
   const value = useMemo(
     () => ({ settings, setSettings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError }),
