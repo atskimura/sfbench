@@ -5,6 +5,7 @@ import { t } from '../i18n/i18n.ts'
 import { addColumns, cellText, cellValue, type ChildRecords, type Column, type SObjectRecord } from '../results/columns.ts'
 import { useOrgs } from '../state/OrgContext.tsx'
 import { useResult, type QueryResult } from '../state/SoqlContext.tsx'
+import { FixWithAi } from './AiBar.tsx'
 import { CopyCommand } from './CopyCommand.tsx'
 import { CsvExport } from './CsvExport.tsx'
 import panel from './Panel.module.css'
@@ -23,6 +24,11 @@ export function ResultPanel() {
         <div className={styles.error} role="alert">
           <p className={styles.message}>{result.message}</p>
           {result.reloginCommand && <CopyCommand command={result.reloginCommand} />}
+          {result.salesforce && (
+            <div>
+              <FixWithAi error={result.message} />
+            </div>
+          )}
           {result.details !== undefined && (
             <details>
               <summary>{t.errorDetails}</summary>

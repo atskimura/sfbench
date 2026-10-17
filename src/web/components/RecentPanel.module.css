@@ -38,3 +38,12 @@
   background: var(--color-badge-neutral-bg);
   color: var(--color-badge-neutral);
 }
+
+/* The request to the AI that wrote the query (docs/screens.md). */
+.prompt {
+  font-size: var(--font-size-small);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

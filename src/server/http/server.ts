@@ -334,6 +334,7 @@ export class App {
         tooling,
         queryAll,
         executedAt: new Date().toISOString(),
+        ...(typeof q.prompt === 'string' && q.prompt.trim() ? { prompt: q.prompt.trim().slice(0, 2000) } : {}),
       })
       sendJson(res, 200, withUsage(result.body as object))
       return

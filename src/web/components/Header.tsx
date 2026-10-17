@@ -13,7 +13,7 @@ const numberFormat = new Intl.NumberFormat()
 
 export function Header() {
   const { selected, apiUsage } = useOrgs()
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const { settingsOpen, setSettingsOpen } = useApp()
   const usage = selected ? apiUsage[selected] : undefined
 
   return (

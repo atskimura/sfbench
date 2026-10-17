@@ -140,11 +140,17 @@ export function loadHistory(dir: string, username: string): HistoryEntry[] {
   return Array.isArray(stored) ? (stored as HistoryEntry[]) : []
 }
 
-/** Adds a successful query. The same query moves to the top instead of being added twice. */
+/**
+ * Adds a successful query. The same query moves to the top instead of being
+ * added twice, keeping the request to the AI that wrote it if this run has none.
+ */
 export function addHistory(dir: string, username: string, entry: HistoryEntry): HistoryEntry[] {
   const sameQuery = (e: HistoryEntry) =>
     e.soql.trim() === entry.soql.trim() && e.tooling === entry.tooling && e.queryAll === entry.queryAll
-  const entries = [entry, ...loadHistory(dir, username).filter((e) => !sameQuery(e))].slice(0, MAX_HISTORY)
+  const previous = loadHistory(dir, username)
+  const prompt = entry.prompt ?? previous.find(sameQuery)?.prompt
+  const added = prompt ? { ...entry, prompt } : entry
+  const entries = [added, ...previous.filter((e) => !sameQuery(e))].slice(0, MAX_HISTORY)
   writeFileAtomic(historyFile(dir, username), JSON.stringify(entries, null, 2))
   return entries
 }

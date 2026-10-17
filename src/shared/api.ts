@@ -46,6 +46,8 @@ export type QueryRequest = {
   soql: string
   tooling?: boolean
   queryAll?: boolean
+  /** The request to the AI that wrote this query, kept in the history (docs/ai.md "最近のクエリへの記録"). */
+  prompt?: string
 }
 
 export type NextPageRequest = { nextRecordsUrl: string }

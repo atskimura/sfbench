@@ -42,6 +42,15 @@ type SoqlState = {
   queryAll: boolean
   history: HistoryEntry[]
   registerEditor: (handle: EditorHandle | null) => void
+  /** The editor text now (not the 300 ms settled text). */
+  getText: () => string
+  /**
+   * Replaces the editor text with an AI proposal. With a prompt, the next run
+   * of this text records it in the history (docs/ai.md "最近のクエリへの記録").
+   */
+  applyProposal: (text: string, prompt: string | undefined) => void
+  /** The request to the AI behind this text, if the text is still what the AI wrote. */
+  promptFor: (text: string) => string | undefined
   /** Called by the editor when its text settles (300 ms after typing stops). */
   onTextSettled: (text: string) => void
   setTooling: (on: boolean) => void
@@ -91,7 +100,14 @@ export type QueryResult =
       elapsedMs: number
       executedAt: Date
     }
-  | { state: 'error'; message: string; details?: unknown; reloginCommand?: string }
+  | {
+      state: 'error'
+      message: string
+      details?: unknown
+      reloginCommand?: string
+      /** Salesforce rejected the query (Fix with AI is offered only then). */
+      salesforce?: boolean
+    }
 
 type ResultState = {
   result: QueryResult
@@ -105,6 +121,12 @@ type ResultState = {
 /** The query locator behind nextRecordsUrl expired or was dropped: the same request can never succeed. */
 function isLocatorGone(e: unknown): boolean {
   return e instanceof ApiRequestError && e.code === 'SALESFORCE_ERROR' && JSON.stringify(e.body?.details ?? '').includes('INVALID_QUERY_LOCATOR')
+}
+
+/** The same text apart from spaces and line breaks. */
+function sameText(a: string, b: string): boolean {
+  const squash = (s: string) => s.trim().replace(/\s+/g, ' ')
+  return squash(a) === squash(b)
 }
 
 const SoqlContext = createContext<SoqlState | undefined>(undefined)
@@ -123,6 +145,13 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
   const [result, setResult] = useState<QueryResult>({ state: 'idle' })
   const runGeneration = useRef(0)
   const runAbort = useRef<AbortController | undefined>(undefined)
+  /** The text an AI proposal put in the editor, with the request behind it. */
+  const applied = useRef<{ text: string; prompt: string } | undefined>(undefined)
+  const promptFor = useCallback((text: string) => {
+    const current = applied.current
+    // Spaces do not count, so that Format keeps the request; any other edit drops it.
+    return current && sameText(current.text, text) ? current.prompt : undefined
+  }, [])
   /** The page being loaded, so that scroll events in one render do not load it twice. */
   const nextInFlight = useRef<string | undefined>(undefined)
   // The org whose history may be shown; a late response for another org is dropped.
@@ -202,7 +231,8 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
     const started = performance.now()
     const useTooling = tooling
     setResult({ state: 'running' })
-    api.query(selected, { soql, tooling: useTooling, queryAll: !useTooling && queryAll }, abort.signal).then(
+    const prompt = promptFor(soql)
+    api.query(selected, { soql, tooling: useTooling, queryAll: !useTooling && queryAll, ...(prompt ? { prompt } : {}) }, abort.signal).then(
       (response) => {
         if (generation !== runGeneration.current) return
         reportApiUsage(selected, response.apiUsage)
@@ -235,7 +265,7 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
           return
         }
         if (e instanceof ApiRequestError && e.code === 'SALESFORCE_ERROR') {
-          setResult({ state: 'error', message: e.message, details: e.body?.details })
+          setResult({ state: 'error', message: e.message, details: e.body?.details, salesforce: true })
           return
         }
         if (handleOrgError(selected, e)) {
@@ -245,7 +275,7 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
         setResult({ state: 'error', message: (e as Error).message })
       },
     )
-  }, [selected, tooling, queryAll, reportApiUsage, handleOrgError, markAuthError, loadHistoryFor])
+  }, [selected, tooling, queryAll, reportApiUsage, handleOrgError, markAuthError, loadHistoryFor, promptFor])
 
   // When the org changes: drop the result, reload the history, and run the
   // query given at launch (docs/web.md "起動から作業画面まで").
@@ -279,6 +309,12 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
         editor.current = handle
         if (handle) applyText(handle.getText())
       },
+      getText: () => editor.current?.getText() ?? '',
+      applyProposal: (text, prompt) => {
+        setText(text)
+        applied.current = prompt ? { text, prompt } : undefined
+      },
+      promptFor,
       onTextSettled: (text) => applyText(text),
       setTooling: (on) => {
         setToolingState(on)
@@ -297,12 +333,13 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
       format: () => edit(formatSoql),
       loadHistory: (entry) => {
         setText(entry.soql)
+        applied.current = entry.prompt ? { text: entry.soql, prompt: entry.prompt } : undefined
         setToolingState(entry.tooling)
         setQueryAllState(!entry.tooling && entry.queryAll)
       },
       run,
     }),
-    [names, selection, firstLine, panelObject, tooling, queryAll, history, applyText, setText, edit, run],
+    [names, selection, firstLine, panelObject, tooling, queryAll, history, applyText, setText, edit, run, promptFor],
   )
   const loadNext = useCallback((retry = false) => {
     const current = result

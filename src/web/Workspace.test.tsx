@@ -20,6 +20,7 @@ vi.mock('./apiClient.ts', async (importOriginal) => {
       query: vi.fn(),
       nextPage: vi.fn(),
       checkConnections: vi.fn(),
+      aiGenerate: vi.fn(),
     },
   }
 })
@@ -253,5 +254,74 @@ describe('SOQL workspace', () => {
     ;(table.parentElement as HTMLElement).focus()
     await userEvent.keyboard('{ArrowDown}{ArrowRight}{ArrowDown}')
     expect(screen.getAllByText('Second')).toHaveLength(2)
+  })
+
+  describe('AI', () => {
+    const ready = { provider: 'anthropic' as const, model: 'claude-x', hasApiKey: true, keyProvider: 'anthropic' as const }
+    beforeEach(() => {
+      mocked.settings.mockResolvedValue({ omitNamespace: true, requestTimeoutSeconds: 120, ai: ready })
+    })
+
+    it('offers to set up AI until it is set up, and hides it when Off', async () => {
+      mocked.settings.mockResolvedValue({ omitNamespace: true, requestTimeoutSeconds: 120 })
+      const { unmount } = render(<App launch={{ org: 'demo' }} />)
+      expect(await screen.findByRole('button', { name: t.aiSetUp })).toBeTruthy()
+      unmount()
+      mocked.settings.mockResolvedValue({ omitNamespace: true, requestTimeoutSeconds: 120, ai: { ...ready, provider: 'off' } })
+      render(<App launch={{ org: 'demo' }} />)
+      await screen.findByRole('button', { name: /Account/ })
+      expect(screen.queryByLabelText(t.aiRequestLabel)).toBeNull()
+      expect(screen.queryByRole('button', { name: t.aiSetUp })).toBeNull()
+    })
+
+    it('sends the open object, shows the proposal, and records the request when the proposal runs', async () => {
+      mocked.aiGenerate.mockResolvedValue({ output: { soql: 'SELECT Id, Name FROM Account LIMIT 5', explanation: '5件です。' } })
+      render(<App launch={{ org: 'demo', query: 'SELECT Id FROM Account' }} />)
+      await screen.findByRole('region', { name: 'Account' })
+      await userEvent.type(await screen.findByLabelText(t.aiRequestLabel), '5件だけ')
+      expect(screen.getByText(t.aiObjectChip('Account'))).toBeTruthy()
+      await userEvent.click(screen.getByRole('button', { name: t.aiGenerate }))
+      const card = await screen.findByRole('region', { name: t.aiProposal })
+      expect(within(card).getByText('5件です。')).toBeTruthy()
+      const req = mocked.aiGenerate.mock.calls[0][0]
+      expect(req.task).toBe('generateSoql')
+      expect(req.input).toMatchObject({ request: '5件だけ', editorText: 'SELECT Id FROM Account' })
+      expect((req.input as { objectInfo: string }).objectInfo).toContain('Object Account (Account)')
+      await userEvent.click(within(card).getByRole('button', { name: t.aiReplaceRun }))
+      await waitFor(() => expect(mocked.query).toHaveBeenCalled())
+      expect(mocked.query.mock.calls[0][1]).toMatchObject({ soql: 'SELECT Id, Name FROM Account LIMIT 5', prompt: '5件だけ' })
+      expect(screen.queryByRole('region', { name: t.aiProposal })).toBeNull()
+    })
+
+    it('lets the AI choose the objects when none is open', async () => {
+      mocked.aiGenerate
+        .mockResolvedValueOnce({ output: { objects: ['Account'] } })
+        .mockResolvedValueOnce({ output: { soql: 'SELECT Name FROM Account', explanation: 'x' } })
+      render(<App launch={{ org: 'demo' }} />)
+      await screen.findByRole('button', { name: /Account/ })
+      await userEvent.type(screen.getByLabelText(t.aiRequestLabel), '取引先の名前{Enter}')
+      await screen.findByRole('region', { name: t.aiProposal })
+      expect(mocked.aiGenerate.mock.calls.map((c) => c[0].task)).toEqual(['chooseObjects', 'generateSoql'])
+      expect((mocked.aiGenerate.mock.calls[0][0].input as { objects: string }).objects).toBe('Account (Account)')
+    })
+
+    it('shows when the AI could not choose an object', async () => {
+      mocked.aiGenerate.mockResolvedValueOnce({ output: { objects: ['Nothing'] } })
+      render(<App launch={{ org: 'demo' }} />)
+      await screen.findByRole('button', { name: /Account/ })
+      await userEvent.type(screen.getByLabelText(t.aiRequestLabel), 'x{Enter}')
+      expect(await screen.findByText(t.aiNoObjects)).toBeTruthy()
+    })
+
+    it('fixes a query that Salesforce rejected', async () => {
+      mocked.query.mockRejectedValue(
+        new ApiRequestError(400, 'SALESFORCE_ERROR', "No such column 'Nmae'", { code: 'SALESFORCE_ERROR', message: "No such column 'Nmae'" }),
+      )
+      mocked.aiGenerate.mockResolvedValue({ output: { soql: 'SELECT Name FROM Account', explanation: 'Nmae を Name に直しました。' } })
+      render(<App launch={{ org: 'demo', query: 'SELECT Nmae FROM Account', run: true }} />)
+      await userEvent.click(await screen.findByRole('button', { name: t.aiFix }))
+      await screen.findByRole('region', { name: t.aiProposal })
+      expect(mocked.aiGenerate.mock.calls[0][0]).toMatchObject({ task: 'fixSoql', input: { soql: 'SELECT Nmae FROM Account', error: "No such column 'Nmae'" } })
+    })
   })
 })

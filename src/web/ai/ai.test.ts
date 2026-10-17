@@ -1,0 +1,92 @@
+import { describe, expect, it } from 'vitest'
+import type { SObjectDescribe } from '../apiClient.ts'
+import { diffWords } from './diff.ts'
+import { objectInfo, objectList } from './objectInfo.ts'
+
+const opportunity: SObjectDescribe = {
+  name: 'acme__Deal__c',
+  label: '商談',
+  fields: [
+    { name: 'Id', label: 'ID', type: 'id', relationshipName: null, referenceTo: [] },
+    {
+      name: 'acme__Stage__c',
+      label: 'フェーズ',
+      type: 'picklist',
+      relationshipName: null,
+      referenceTo: [],
+      picklistValues: [
+        { value: 'Open', active: true },
+        { value: 'Old', active: false },
+        { value: 'Won', active: true },
+      ],
+    },
+    { name: 'AccountId', label: '取引先 ID', type: 'reference', relationshipName: 'Account', referenceTo: ['Account'] },
+  ],
+  childRelationships: [{ childSObject: 'acme__Line__c', field: 'acme__Deal__c', relationshipName: 'acme__Lines__r' }],
+}
+const acme = { ns: 'acme', omitNamespace: true }
+
+describe('objectInfo', () => {
+  it('writes one line per field without the namespace, with active picklist values and child relationships', () => {
+    expect(objectInfo([opportunity], acme)).toBe(
+      [
+        'Object Deal__c (商談)',
+        'Fields:',
+        'Id id ID',
+        'Stage__c picklist フェーズ [Open, Won]',
+        'AccountId reference(Account) relationship Account 取引先 ID',
+        'Child relationships:',
+        'Lines__r -> Line__c',
+      ].join('\n'),
+    )
+  })
+
+  it('drops picklists, labels, child relationships, then types to fit the budget', () => {
+    const full = objectInfo([opportunity], acme)
+    const noPicklists = objectInfo([opportunity], acme, new TextEncoder().encode(full).length - 5)
+    expect(noPicklists).not.toContain('[Open')
+    expect(noPicklists).toContain('フェーズ')
+    expect(objectInfo([opportunity], acme, 10)).toBe('Object Deal__c\nFields:\nId\nStage__c\nAccountId')
+  })
+})
+
+describe('objectList', () => {
+  it('lists queryable objects without sharing, history, feed and change event objects', () => {
+    const list = objectList(
+      [
+        { name: 'Account', label: '取引先', queryable: true },
+        { name: 'AccountShare', label: '共有', queryable: true },
+        { name: 'AccountHistory', label: '履歴', queryable: true },
+        { name: 'acme__Deal__c', label: '商談', queryable: true },
+        { name: 'Hidden', label: 'x', queryable: false },
+      ],
+      acme,
+    )
+    expect(list).toBe('Account (取引先)\nDeal__c (商談)')
+  })
+})
+
+describe('diffWords', () => {
+  it('marks removed and added words, ignoring case and keeping the spacing', () => {
+    expect(diffWords('select Id from Account', 'SELECT Id, Name FROM Account LIMIT 10')).toEqual([
+      { text: 'SELECT Id', kind: 'same' },
+      { text: ', Name', kind: 'added' },
+      { text: ' FROM Account', kind: 'same' },
+      { text: ' LIMIT 10', kind: 'added' },
+    ])
+    expect(diffWords("SELECT Id FROM Account WHERE Name = 'a b'", "SELECT Id FROM Account WHERE Name = 'a c'")).toEqual([
+      { text: 'SELECT Id FROM Account WHERE Name =', kind: 'same' },
+      { text: " 'a b'", kind: 'removed' },
+      { text: " 'a c'", kind: 'added' },
+    ])
+  })
+
+  it('shows no diff when little is in common', () => {
+    expect(diffWords('SELECT Id FROM Account', 'SELECT StageName, COUNT(Id) cnt FROM Opportunity GROUP BY StageName')).toBeUndefined()
+  })
+
+  it('gives up on texts too long to compare', () => {
+    const long = Array.from({ length: 1100 }, (_, i) => `F${i}`).join(' ')
+    expect(diffWords(long, long)).toBeUndefined()
+  })
+})

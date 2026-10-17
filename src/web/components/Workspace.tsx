@@ -3,6 +3,7 @@
 // The object list, the editor area and the recent queries can be closed
 // (docs/screens.md "パネルの開閉").
 import { t } from '../i18n/i18n.ts'
+import { AiProvider } from '../state/AiContext.tsx'
 import { useOrgs } from '../state/OrgContext.tsx'
 import { PanelsProvider, usePanels } from '../state/PanelsContext.tsx'
 import { SoqlProvider, useSoql } from '../state/SoqlContext.tsx'
@@ -16,9 +17,11 @@ import styles from './Workspace.module.css'
 export function Workspace() {
   return (
     <SoqlProvider>
-      <PanelsProvider>
-        <Layout />
-      </PanelsProvider>
+      <AiProvider>
+        <PanelsProvider>
+          <Layout />
+        </PanelsProvider>
+      </AiProvider>
     </SoqlProvider>
   )
 }

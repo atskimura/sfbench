@@ -112,6 +112,8 @@ export type FieldDescribe = {
   relationshipName: string | null
   referenceTo: string[]
   updateable?: boolean
+  /** For picklists: the values defined (the describe has more fields; only these are read). */
+  picklistValues?: { value: string; active: boolean }[]
 }
 export type ChildRelationship = { childSObject: string; field: string; relationshipName: string | null }
 

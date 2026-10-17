@@ -26,6 +26,9 @@ type AppState = {
    * error was handled app-wide, so callers only handle the rest.
    */
   handleCommonError: (e: unknown) => boolean
+  /** The settings dialog, opened from the header or from the AI input's notice. */
+  settingsOpen: boolean
+  setSettingsOpen: (open: boolean) => void
 }
 
 const AppContext = createContext<AppState | undefined>(undefined)
@@ -37,6 +40,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sfNotFound, setSfNotFound] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [settings, setSettings] = useState<Settings>()
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const notify = useCallback((n: Omit<Notification, 'id'>) => {
     setNotifications((list) => {
@@ -75,8 +79,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [handleCommonError])
 
   const value = useMemo(
-    () => ({ settings, setSettings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError }),
-    [settings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError],
+    () => ({ settings, setSettings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError, settingsOpen, setSettingsOpen }),
+    [settings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError, settingsOpen],
   )
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }
