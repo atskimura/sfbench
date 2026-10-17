@@ -87,6 +87,7 @@ export const ja: Messages = {
   noMatchingFields: '一致する項目はありません',
   noChildRelationships: '一致する子リレーションはありません',
   loadFailed: '読み込めませんでした。',
+  loading: '読み込んでいます…',
   run: '実行',
   queryAll: 'Query All',
   queryAllTitle: '削除済みとアーカイブ済みのレコードも返す',

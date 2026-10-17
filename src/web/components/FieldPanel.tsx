@@ -78,6 +78,7 @@ export function FieldPanel({ username, objectName }: { username: string; objectN
       <FilterInput label={t.filterFields} value={filter} onChange={setFilter} />
       <div className={panel.body} role="tabpanel" aria-labelledby={`${tabsId}-${tab === 'fields' ? 'fields' : 'rels'}`} aria-busy={describe.loading}>
         {describe.error !== undefined && <p className={panel.empty}>{t.loadFailed}</p>}
+        {!d && describe.error === undefined && <p className={panel.empty}>{t.loading}</p>}
         {d && tab === 'fields' && (
           <FieldList username={username} fields={d.fields} relationships={[]} filter={filter} sort={sort} />
         )}

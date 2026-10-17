@@ -101,6 +101,27 @@ describe('SOQL workspace', () => {
     await waitFor(() => expect(mocked.history).toHaveBeenCalledTimes(2))
   })
 
+  it('says the object and field lists are loading until they arrive', async () => {
+    let objectsLoaded: (value: Awaited<ReturnType<typeof api.sobjects>>) => void = () => {}
+    mocked.sobjects.mockReturnValue(new Promise((resolve) => (objectsLoaded = resolve)))
+    // An org of its own: describes are cached per org for the whole session.
+    mocked.orgs.mockResolvedValue({ orgs: [{ ...org, username: 'fresh@example.com', alias: 'fresh' }], connectionCheck: 'done' })
+    render(<App launch={{ org: 'fresh' }} />)
+    // Before the org is chosen, the panel says the org list is loading.
+    await waitFor(() => expect(within(screen.getByRole('region', { name: t.sObjects })).getByText(t.loading)).toBeTruthy())
+    const objects = screen.getByRole('region', { name: t.sObjects })
+    objectsLoaded({ sobjects: [{ name: 'Account', label: 'Account', queryable: true }], fetchedAt: now })
+    await waitFor(() => expect(within(objects).queryByText(t.loading)).toBeNull())
+
+    let describeLoaded: (value: Awaited<ReturnType<typeof api.describe>>) => void = () => {}
+    mocked.describe.mockReturnValue(new Promise((resolve) => (describeLoaded = resolve)))
+    await userEvent.click(within(objects).getByRole('button', { name: /Account/ }))
+    const fields = await screen.findByRole('region', { name: 'Account' })
+    expect(within(fields).getByText(t.loading)).toBeTruthy()
+    describeLoaded({ name: 'Account', label: 'Account', fields: [field('Id', 'Account ID', { type: 'id' })], childRelationships: [], fetchedAt: now })
+    await waitFor(() => expect(within(fields).queryByText(t.loading)).toBeNull())
+  })
+
   it('runs the query given at launch', async () => {
     render(<App launch={{ org: 'demo', query: 'SELECT Id FROM Account', run: true }} />)
     await waitFor(() => expect(mocked.query).toHaveBeenCalled())
