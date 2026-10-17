@@ -1,5 +1,6 @@
-// The editor text survives a tab reload in the same org, and only that:
-// switching orgs clears it (docs/web.md "状態の持ち方", "非同期の流れ").
+// The editor text survives a tab reload in the same org, and only that: each
+// workspace saves its own text as soon as it is made, so the text of an org
+// left earlier is gone (docs/web.md "状態の持ち方", "非同期の流れ").
 const EDITOR_KEY = 'sfbench.editor'
 
 type Saved = { org: string; text: string }
@@ -18,13 +19,5 @@ export function saveEditorText(org: string, text: string): void {
     sessionStorage.setItem(EDITOR_KEY, JSON.stringify({ org, text } satisfies Saved))
   } catch {
     // Only the reload convenience is lost.
-  }
-}
-
-export function clearEditorText(): void {
-  try {
-    sessionStorage.removeItem(EDITOR_KEY)
-  } catch {
-    // Nothing was kept.
   }
 }

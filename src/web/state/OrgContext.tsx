@@ -14,7 +14,6 @@ import { ApiRequestError, api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
 import { isProductionBySummary } from '../orgs/production.ts'
 import { useApp } from './AppContext.tsx'
-import { clearEditorText } from './editorStorage.ts'
 
 const SELECTED_KEY = 'sfbench.selectedOrg'
 
@@ -98,11 +97,10 @@ export type OrgContextValue = State & {
   reportOrgError: (username: string, e: unknown) => void
   /** Marks the org as needing login again without a notification (the caller shows the error). */
   markAuthError: (username: string, reloginCommand: string | undefined) => void
-  /** The --query/--run given at launch, returned once (for the SOQL editor). */
   /**
    * The --query/--run given at launch, for the workspace shown first. Reading
-   * does not take it (StrictMode shows the workspace twice); it goes on
-   * discardLaunchQuery or when switching away (docs/web.md "起動時のクエリ").
+   * does not take it (StrictMode shows the workspace twice); the workspace
+   * discards it once it has run or put it in the editor (docs/web.md "起動時のクエリ").
    */
   launchQuery: () => { query: string; run: boolean } | undefined
   discardLaunchQuery: () => void
@@ -192,18 +190,8 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
     dispatch({ type: 'status', username, status: { state: 'authError', reloginCommand } })
   }, [])
 
-  // The org whose workspace is shown; choosing the first one is not a switch.
-  const shownOrg = useRef<string | undefined>(undefined)
-
   const selectOrg = useCallback(
     (username: string) => {
-      const previous = shownOrg.current
-      shownOrg.current = username
-      if (previous !== undefined && previous !== username) {
-        // Switching orgs resets the workspace: nothing of the old one comes back.
-        clearEditorText()
-        launchQuery.current = undefined
-      }
       dispatch({ type: 'select', username })
       saveSelected(username)
       // Without a summary, production is judged from the org list and no

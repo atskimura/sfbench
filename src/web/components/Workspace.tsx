@@ -26,14 +26,14 @@ export function Workspace() {
   }
   // Remade for each org: switching orgs resets everything in it and stops
   // what it was running (docs/web.md "非同期の流れ").
-  return <OrgWorkspace key={selected} />
+  return <OrgWorkspace key={selected} username={selected} />
 }
 
-function OrgWorkspace() {
+function OrgWorkspace({ username }: { username: string }) {
   return (
-    <SoqlProvider>
+    <SoqlProvider username={username}>
       <PanelsProvider>
-        <Layout />
+        <Layout username={username} />
       </PanelsProvider>
     </SoqlProvider>
   )
@@ -41,8 +41,7 @@ function OrgWorkspace() {
 
 // Layout does not read the SOQL state, so that typing (which changes it)
 // does not draw the result table again; only the small parts below do.
-function Layout() {
-  const { selected } = useOrgs()
+function Layout({ username }: { username: string }) {
   const { open, setOpen } = usePanels()
   return (
     <div className={styles.workspace}>
@@ -50,13 +49,13 @@ function Layout() {
         {!open.objects && <ObjectsStrip onClick={() => setOpen('objects', true)} />}
         {/* Kept mounted while closed, so that the loaded lists stay. */}
         <div className={styles.fill} hidden={!open.objects}>
-          <ObjectPanel username={selected!} />
+          <ObjectPanel username={username} />
         </div>
       </div>
       <div className={styles.right}>
         {/* The editor stays mounted while closed: CodeMirror keeps the text and its undo history. */}
         <div className={styles.top} hidden={!open.editor}>
-          <EditorPanel />
+          <EditorPanel username={username} />
           {open.recent ? (
             <RecentPanel />
           ) : (

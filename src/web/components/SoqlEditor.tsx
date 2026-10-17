@@ -11,7 +11,6 @@ import { useEffect, useRef } from 'react'
 import { t } from '../i18n/i18n.ts'
 import { contextCandidates, keywordCandidates, type Candidate, type Describer } from '../soql/completion.ts'
 import { cursorInfo } from '../soql/context.ts'
-import { useOrgs } from '../state/OrgContext.tsx'
 import { describeGlobal, describeSObject } from '../state/describeCache.ts'
 import { saveEditorText, savedEditorText } from '../state/editorStorage.ts'
 import { useSoql } from '../state/SoqlContext.tsx'
@@ -54,20 +53,18 @@ const OPTION_TYPE: Record<Candidate['kind'], string> = {
   keyword: 'keyword',
 }
 
-export function SoqlEditor() {
+/** The editor of the workspace for `org`, which is remade for each org. */
+export function SoqlEditor({ org }: { org: string }) {
   const host = useRef<HTMLDivElement>(null)
   const soql = useSoql()
-  const { selected } = useOrgs()
   // CodeMirror is created once; it reads the latest values through these refs.
-  const latest = useRef({ soql, selected })
+  const latest = useRef({ soql })
   useEffect(() => {
-    latest.current = { soql, selected }
+    latest.current = { soql }
   })
 
   useEffect(() => {
     if (!host.current) return
-    // The workspace, and so this editor, is made for one org.
-    const org = latest.current.selected ?? ''
     let settleTimer: ReturnType<typeof setTimeout> | undefined
     let compositionEndedAt = 0
     /** When each describe (per org, API and object) last failed. */
@@ -87,30 +84,32 @@ export function SoqlEditor() {
       if (info.context.kind === 'none') return null
       // Open while typing a word or right after a dot (`Account.`), or on Ctrl+Space.
       if (!info.word && !info.afterDot && !context.explicit) return null
-      const { soql: s, selected: username } = latest.current
+      const { soql: s } = latest.current
       // Without describes: keywords, except after a dot where only fields fit.
       let candidates = info.dotted ? [] : keywordCandidates(info.word)
-      if (username) {
-        const prefix = `${username}\n${s.tooling}\n`
-        const describer: Describer = {
-          objects: async () => (await guarded(prefix, () => describeGlobal(username, s.tooling))).sobjects,
-          describe: (name) => guarded(prefix + name.toLowerCase(), () => describeSObject(username, name, s.tooling)),
-        }
-        try {
-          candidates = await contextCandidates(info, describer, s.names)
-        } catch {
-          // The fallback above, without a notification: completion runs on every key.
-        }
+      const prefix = `${org}\n${s.tooling}\n`
+      const describer: Describer = {
+        objects: async () => (await guarded(prefix, () => describeGlobal(org, s.tooling))).sobjects,
+        describe: (name) => guarded(prefix + name.toLowerCase(), () => describeSObject(org, name, s.tooling)),
+      }
+      try {
+        candidates = await contextCandidates(info, describer, s.names)
+      } catch {
+        // The fallback above, without a notification: completion runs on every key.
       }
       if (candidates.length === 0) return null
       const options = candidates.map((c) => ({ label: c.label, apply: c.insert, type: OPTION_TYPE[c.kind] }))
       return { from: info.from, options, filter: false }
     }
 
+    // Saved at once, so that the text of an org left earlier cannot come back.
+    const initialText = savedEditorText(org)
+    saveEditorText(org, initialText)
+
     const view = new EditorView({
       parent: host.current,
       state: EditorState.create({
-        doc: savedEditorText(org),
+        doc: initialText,
         extensions: [
           history(),
           sql({ dialect: SOQL }),
@@ -165,8 +164,8 @@ export function SoqlEditor() {
     latest.current.soql.registerEditor({
       getText: () => view.state.doc.toString(),
       setText: (text) => {
+        // Saved by the update listener.
         view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } })
-        saveEditorText(org, text)
       },
       focus: () => view.focus(),
     })
@@ -176,7 +175,7 @@ export function SoqlEditor() {
       latest.current.soql.registerEditor(null)
       view.destroy()
     }
-  }, [])
+  }, [org])
 
   return <div ref={host} className={styles.editor} />
 }
