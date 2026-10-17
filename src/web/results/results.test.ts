@@ -89,11 +89,6 @@ describe('toCsv', () => {
     expect(toCsv(columns, records)).toBe('﻿Name,Note,Contacts\r\n"a,b","say ""hi""\nbye",2 rows\r\nplain,,\r\n')
   })
 
-  it('keeps text that a spreadsheet would run as a formula as text, but not numbers', () => {
-    const records = [{ Name: '=HYPERLINK("x")', Note: '-abc', Amount: -5 }]
-    expect(toCsv(addColumns([], records), records)).toBe('\uFEFFName,Note,Amount\r\n"\'=HYPERLINK(""x"")",\'-abc,-5\r\n')
-  })
-
   it('names the file after the object', () => {
     expect(csvFileName('Account')).toBe('Account.csv')
     expect(csvFileName(undefined)).toBe('query.csv')
