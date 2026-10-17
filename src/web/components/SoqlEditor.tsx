@@ -8,6 +8,7 @@ import { tags } from '@lezer/highlight'
 import { EditorState, Prec } from '@codemirror/state'
 import { EditorView, keymap, placeholder } from '@codemirror/view'
 import { useEffect, useRef } from 'react'
+import { isImeEnter } from '../ime.ts'
 import { t } from '../i18n/i18n.ts'
 import { contextCandidates, keywordCandidates, type Candidate, type Describer } from '../soql/completion.ts'
 import { cursorInfo } from '../soql/context.ts'
@@ -40,8 +41,6 @@ const editorTheme = EditorView.theme({
 })
 
 const SETTLE_MS = 300
-/** Safari can deliver the Enter that commits IME conversion after compositionend. */
-const COMPOSITION_ENTER_MS = 100
 /** After a describe fails, completion does not ask for it again for this long (it runs on every key). */
 const RETRY_AFTER_MS = 30_000
 
@@ -122,7 +121,7 @@ export function SoqlEditor({ org, initialText }: { org: string; initialText: str
                 if (e.key !== 'Enter') return false
                 // The Enter that commits IME conversion must not also accept a
                 // completion. Safari can deliver it just after compositionend.
-                return e.isComposing || e.keyCode === 229 || Date.now() - compositionEndedAt < COMPOSITION_ENTER_MS
+                return isImeEnter(e, compositionEndedAt)
               },
             }),
           ),

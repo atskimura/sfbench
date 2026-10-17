@@ -13,12 +13,14 @@ const MIN_COMMON = 0.5
 
 type Token = { text: string; key: string }
 
-const tokens = (text: string): Token[] => [...text.matchAll(TOKEN)].map((m) => ({ text: m[0], key: m[1].toLowerCase() }))
+// Case counts inside quoted strings: values such as 15-character Ids are case-sensitive.
+const tokens = (text: string): Token[] =>
+  [...text.matchAll(TOKEN)].map((m) => ({ text: m[0], key: m[1].startsWith("'") ? m[1] : m[1].toLowerCase() }))
 
 /**
  * The proposal word by word, with the words only in `before` as removed and
  * the words only in `after` as added, keeping the spacing of each text. Case
- * differences (select, SELECT) are not differences. Undefined when the texts
+ * differences (select, SELECT) are not differences, except inside quoted strings. Undefined when the texts
  * are too long to compare or have too little in common to read as a diff.
  */
 export function diffWords(before: string, after: string): DiffPart[] | undefined {

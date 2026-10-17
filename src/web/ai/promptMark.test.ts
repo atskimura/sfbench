@@ -13,6 +13,12 @@ describe('prompt mark', () => {
     expect(promptForRun(mark, 'SELECT\n  Id,\n  Name\nFROM Account\n', false)).toBe('list accounts')
   })
 
+  it('still records it after Format changes case, symbols and a subquery', () => {
+    const subquery = markFor("select Name, (select LastName from Contacts) from Account where Name IN ('a','b')", false, 'with contacts')
+    const formatted = "SELECT Name, (\n\t\tSELECT LastName\n\t\tFROM Contacts\n\t)\nFROM Account\nWHERE Name IN ('a', 'b')"
+    expect(promptForRun(subquery, formatted, false)).toBe('with contacts')
+  })
+
   it('does not record it once a word changes', () => {
     expect(promptForRun(mark, 'SELECT Id FROM Account', false)).toBeUndefined()
   })

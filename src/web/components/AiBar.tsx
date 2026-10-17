@@ -1,7 +1,8 @@
 // The AI input above the editor, and the proposal card below it
 // (docs/screens.md "AI の入力欄", "AI の提案カード"; docs/ai.md "画面").
-import { useMemo, type KeyboardEvent } from 'react'
+import { useMemo, useRef, type KeyboardEvent } from 'react'
 import { diffWords } from '../ai/diff.ts'
+import { isImeEnter } from '../ime.ts'
 import { t } from '../i18n/i18n.ts'
 import { useApp } from '../state/AppContext.tsx'
 import { useAi, type Rejected } from '../state/AiContext.tsx'
@@ -12,6 +13,7 @@ import panel from './Panel.module.css'
 export function AiBar() {
   const ai = useAi()
   const { setSettingsOpen } = useApp()
+  const compositionEndedAt = useRef(0)
   if (ai.availability === 'hidden') return null
   if (ai.availability === 'setup') {
     return (
@@ -28,9 +30,9 @@ export function AiBar() {
   }
 
   const { running, step, failure } = ai
-  // The Enter that commits IME conversion must not send the request (Safari sends it as keyCode 229).
+  // The Enter that commits IME conversion must not send the request.
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && (e.nativeEvent.isComposing || e.keyCode === 229)) e.preventDefault()
+    if (e.key === 'Enter' && isImeEnter({ isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }, compositionEndedAt.current)) e.preventDefault()
   }
   return (
     <div className={styles.bar} data-ai-bar>
@@ -49,6 +51,7 @@ export function AiBar() {
           value={ai.request}
           onChange={(e) => ai.setRequest(e.target.value)}
           onKeyDown={onKeyDown}
+          onCompositionEnd={() => (compositionEndedAt.current = Date.now())}
         />
         {running ? (
           <button type="button" className={panel.button} onClick={ai.cancel}>
@@ -105,7 +108,8 @@ function Chip({ text, onRemove }: { text: string; onRemove: () => void }) {
 export function ProposalCard() {
   const ai = useAi()
   const { settledText } = useSoql()
-  const p = ai.proposal
+  // Not while the AI is Off or not set up (docs/ai.md "既知の弱点").
+  const p = ai.availability === 'ready' ? ai.proposal : undefined
   // Against the editor as it is now, which Replace replaces (docs/ai.md "画面の状態と遷移").
   // The card redraws as the request is typed; the diff is worked out again only when these change.
   const parts = useMemo(() => (p && settledText.trim() ? diffWords(settledText, p.soql) : undefined), [p, settledText])

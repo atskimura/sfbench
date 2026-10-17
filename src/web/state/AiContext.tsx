@@ -73,12 +73,15 @@ async function generateSoql(
   const chosen = object ? findByName(globals, object, names.ns) : undefined
   let objects = chosen ? [chosen.name] : []
   if (objects.length === 0) {
+    // Also when the open object is not in this API's list (such as after switching to the Tooling API).
+    progress('chooseObjects')
     // No object open: the AI picks from the org's objects first.
     const { output } = await api.aiGenerate(
       { task: 'chooseObjects', input: { request, objects: objectList(globals, names, budgetLeft(request)), tooling, language: uiLanguage } },
       signal,
     )
-    objects = output.objects.map((o) => findByName(globals, o, names.ns)?.name).filter((o): o is string => Boolean(o))
+    const found = output.objects.map((o) => findByName(globals, o, names.ns)?.name).filter((o): o is string => Boolean(o))
+    objects = [...new Set(found)]
     if (objects.length === 0) throw new Notice(t.aiNoObjects)
     progress('loadFields')
   }

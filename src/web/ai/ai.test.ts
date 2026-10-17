@@ -74,6 +74,11 @@ describe('objectList', () => {
 })
 
 describe('diffWords', () => {
+  it('shows a change of case inside a quoted string, such as a 15-character Id', () => {
+    const parts = diffWords("SELECT Id FROM Account WHERE Id = '001xx000003DGb2'", "SELECT Id FROM Account WHERE Id = '001xx000003dgb2'")
+    expect(parts?.filter((p) => p.kind !== 'same').map((p) => p.text.trim())).toEqual(["'001xx000003DGb2'", "'001xx000003dgb2'"])
+  })
+
   it('marks removed and added words, ignoring case and keeping the spacing', () => {
     expect(diffWords('select Id from Account', 'SELECT Id, Name FROM Account LIMIT 10')).toEqual([
       { text: 'SELECT Id', kind: 'same' },
