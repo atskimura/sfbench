@@ -72,6 +72,7 @@ const CONTENT_TYPES: Record<string, string> = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.json': 'application/json; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
   '.woff2': 'font/woff2',
 }
 
@@ -438,7 +439,8 @@ export class App {
     }
     res.writeHead(200, {
       'Content-Type': CONTENT_TYPES[extname(isPage ? '/index.html' : pathname)] ?? 'application/octet-stream',
-      'Cache-Control': isPage ? 'no-store' : 'public, max-age=31536000, immutable',
+      // Only the hashed files under /assets/ keep their content for good.
+      'Cache-Control': pathname.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-store',
       ...SECURITY_HEADERS,
     })
     res.end(req.method === 'HEAD' ? undefined : file)

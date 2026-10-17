@@ -135,6 +135,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           <a href={GITHUB_URL} target="_blank" rel="noreferrer">
             GitHub
           </a>
+          <a href="/licenses.txt" target="_blank" rel="noreferrer">
+            {t.licenses}
+          </a>
         </div>
       </form>
     </dialog>
