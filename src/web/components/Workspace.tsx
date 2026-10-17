@@ -3,7 +3,7 @@
 // The object list, the editor area and the recent queries can be closed
 // (docs/screens.md "パネルの開閉").
 import { t } from '../i18n/i18n.ts'
-import { useOrgs } from '../state/OrgContext.tsx'
+import { useOrgs, type Seed } from '../state/OrgContext.tsx'
 import { PanelsProvider, usePanels } from '../state/PanelsContext.tsx'
 import { SoqlProvider, useSoql } from '../state/SoqlContext.tsx'
 import { EditorPanel, RunButton } from './EditorPanel.tsx'
@@ -14,7 +14,7 @@ import { ResultPanel } from './ResultPanel.tsx'
 import styles from './Workspace.module.css'
 
 export function Workspace() {
-  const { selected, loading, orgs } = useOrgs()
+  const { selected, seed, loading, orgs } = useOrgs()
   // Nothing to work on before an org is chosen; typing then would be lost
   // on the first choice (docs/screens.md "既定の組織がないとき").
   if (!selected) {
@@ -26,12 +26,12 @@ export function Workspace() {
   }
   // Remade for each org: switching orgs resets everything in it and stops
   // what it was running (docs/web.md "非同期の流れ").
-  return <OrgWorkspace key={selected} username={selected} />
+  return <OrgWorkspace key={selected} username={selected} seed={seed} />
 }
 
-function OrgWorkspace({ username }: { username: string }) {
+function OrgWorkspace({ username, seed }: { username: string; seed: Seed | undefined }) {
   return (
-    <SoqlProvider username={username}>
+    <SoqlProvider username={username} seed={seed}>
       <PanelsProvider>
         <Layout username={username} />
       </PanelsProvider>

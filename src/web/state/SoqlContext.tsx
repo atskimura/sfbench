@@ -20,7 +20,7 @@ import {
 } from '../soql/selection.ts'
 import { addColumns, type Column, type SObjectRecord } from '../results/columns.ts'
 import { useApp } from './AppContext.tsx'
-import { useOrgs } from './OrgContext.tsx'
+import { useOrgs, type Seed } from './OrgContext.tsx'
 import { useTask } from './useTask.ts'
 
 /** What the SOQL editor component exposes to the rest of the app. */
@@ -33,6 +33,8 @@ export type EditorHandle = {
 
 type SoqlState = {
   names: NameContext
+  /** The launch query the editor starts with, if this workspace got one. */
+  seedQuery: string | undefined
   /** The parsed SOQL, or undefined while it cannot be parsed or is empty. */
   selection: Selection | undefined
   /** The first line of the editor text as last parsed (shown while the editor is closed). */
@@ -112,9 +114,12 @@ const SoqlContext = createContext<SoqlState | undefined>(undefined)
 const ResultContext = createContext<ResultState | undefined>(undefined)
 
 /** The workspace of one org: it is remade for each org (docs/web.md "非同期の流れ"). */
-export function SoqlProvider({ username, children }: { username: string; children: ReactNode }) {
+export function SoqlProvider({ username, seed: givenSeed, children }: { username: string; seed: Seed | undefined; children: ReactNode }) {
   const { settings, notify } = useApp()
-  const { selectedSummary, handleOrgError, reportOrgError, markAuthError, reportApiUsage, launchQuery, discardLaunchQuery } = useOrgs()
+  const { summaries, handleOrgError, reportOrgError, markAuthError, reportApiUsage, seedUsed } = useOrgs()
+  // What this workspace got when it was shown; the org's seed goes once it is taken.
+  const [seed] = useState(givenSeed)
+  const summary = summaries[username]
   const editor = useRef<EditorHandle | null>(null)
   const [selection, setSelection] = useState<Selection>()
   const [firstLine, setFirstLine] = useState('')
@@ -127,11 +132,11 @@ export function SoqlProvider({ username, children }: { username: string; childre
   const runAbort = useRef<AbortController | undefined>(undefined)
   /** The page being loaded, so that scroll events in one render do not load it twice. */
   const nextInFlight = useRef<string | undefined>(undefined)
-  const historyTask = useTask()
+  const { start: startHistory } = useTask()
 
   const names = useMemo<NameContext>(
-    () => ({ ns: selectedSummary?.namespacePrefix, omitNamespace: settings?.omitNamespace ?? true }),
-    [selectedSummary, settings],
+    () => ({ ns: summary?.namespacePrefix, omitNamespace: settings?.omitNamespace ?? true }),
+    [summary, settings],
   )
 
   /** Parses the text into the selection; with `switchPanel`, also shows the FROM object on the left. */
@@ -178,18 +183,15 @@ export function SoqlProvider({ username, children }: { username: string; childre
     [notify, setText],
   )
 
-  const { start: startHistory } = historyTask
-  const loadHistory = useCallback(async () => {
+  const refreshHistory = useCallback(async () => {
     const outcome = await startHistory((signal) => api.history(username, signal), 'replace')
+    // A failure shows nothing: the list stays as it was (docs/web.md "流れごとの指定").
     if (outcome.kind === 'done') setHistory(outcome.value.entries)
-    else if (outcome.kind === 'error') handleOrgError(username, outcome.error)
-  }, [startHistory, username, handleOrgError])
+  }, [startHistory, username])
 
   const run = useCallback(() => {
     const soql = editor.current?.getText() ?? ''
     if (!soql.trim()) return
-    // Any run, the launch one included, is newer than the launch query.
-    discardLaunchQuery()
     runAbort.current?.abort()
     const abort = new AbortController()
     runAbort.current = abort
@@ -218,7 +220,7 @@ export function SoqlProvider({ username, children }: { username: string; childre
           elapsedMs: performance.now() - started,
           executedAt: new Date(),
         })
-        void loadHistory()
+        void refreshHistory()
       },
       (e: unknown) => {
         if (generation !== runGeneration.current) return
@@ -240,21 +242,23 @@ export function SoqlProvider({ username, children }: { username: string; childre
         setResult({ state: 'error', message: (e as Error).message })
       },
     )
-  }, [username, tooling, queryAll, reportApiUsage, handleOrgError, markAuthError, loadHistory, discardLaunchQuery])
+  }, [username, tooling, queryAll, reportApiUsage, handleOrgError, markAuthError, refreshHistory])
 
   // The workspace is remade for each org (docs/web.md "非同期の流れ"): on
-  // mounting, load the history and take the query given at launch; on going
-  // away, stop the running query.
+  // mounting, load the history and take the seed; on going away, stop the
+  // running query.
   useEffect(() => {
-    void loadHistory()
-    const launch = launchQuery()
-    let timer: ReturnType<typeof setTimeout> | undefined
-    if (launch) {
-      setText(launch.query)
-      // Without --run, the text is in the editor (and its saved copy): done with it.
-      if (launch.run) timer = setTimeout(run, 0)
-      else discardLaunchQuery()
-    }
+    void refreshHistory()
+    // Taken just after rendering, not here: StrictMode runs this effect, its
+    // cleanup and the effect again, and the cleanup clears the first timer
+    // before it fires, so the launch query runs once (docs/web.md "起動時のクエリ").
+    // The editor already starts with the query.
+    const timer =
+      seed &&
+      setTimeout(() => {
+        seedUsed(seed.id)
+        if (seed.run) run()
+      }, 0)
     const abort = runAbort
     const generation = runGeneration
     return () => {
@@ -269,6 +273,7 @@ export function SoqlProvider({ username, children }: { username: string; childre
   const soqlValue = useMemo<SoqlState>(
     () => ({
       names,
+      seedQuery: seed?.query,
       selection,
       firstLine,
       panelObject,
@@ -302,7 +307,7 @@ export function SoqlProvider({ username, children }: { username: string; childre
       },
       run,
     }),
-    [names, selection, firstLine, panelObject, tooling, queryAll, history, applyText, setText, edit, run],
+    [names, seed, selection, firstLine, panelObject, tooling, queryAll, history, applyText, setText, edit, run],
   )
   const loadNext = useCallback((retry = false) => {
     const current = result

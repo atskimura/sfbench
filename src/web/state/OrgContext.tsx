@@ -19,6 +19,12 @@ const SELECTED_KEY = 'sfbench.selectedOrg'
 
 export type OrgStatus = { state: 'ok' } | { state: 'authError'; reloginCommand?: string }
 
+/** What the first workspace shown gets from the launch (docs/web.md "起動時のクエリ"). */
+export type Seed = { id: number; query: string; run: boolean }
+
+/** Who chose the org: the launch's --org found in the list, or the user. */
+type SelectSource = 'launch' | 'user'
+
 type State = {
   orgs: Org[] | undefined
   connectionCheck: OrgsResponse['connectionCheck']
@@ -31,6 +37,10 @@ type State = {
   pickerOpen: boolean
   /** A message at the top of the org list, such as "no default org". */
   notice: string | undefined
+  /** The --query/--run given at launch, until an org is selected. */
+  launch: { query: string; run: boolean } | undefined
+  seed: Seed | undefined
+  seedCount: number
 }
 
 type Action =
@@ -38,13 +48,16 @@ type Action =
   | { type: 'loaded'; orgs: Org[]; connectionCheck: OrgsResponse['connectionCheck'] }
   | { type: 'checking' }
   | { type: 'loadFailed'; message: string }
-  | { type: 'select'; username: string }
+  | { type: 'select'; username: string; source: SelectSource }
+  | { type: 'seedUsed'; id: number }
   | { type: 'summary'; username: string; summary: OrgSummary }
   | { type: 'status'; username: string; status: OrgStatus }
   | { type: 'apiUsage'; username: string; usage: ApiUsage }
   | { type: 'picker'; open: boolean; notice?: string }
 
-function reducer(state: State, action: Action): State {
+// Exported for its tests.
+// oxlint-disable-next-line react/only-export-components
+export function reducer(state: State, action: Action): State {
   switch (action.type) {
     case 'loading':
       return { ...state, loading: true, loadError: undefined }
@@ -54,8 +67,18 @@ function reducer(state: State, action: Action): State {
       return { ...state, connectionCheck: 'pending' }
     case 'loadFailed':
       return { ...state, loading: false, loadError: action.message }
-    case 'select':
-      return { ...state, selected: action.username, pickerOpen: false, notice: undefined }
+    case 'select': {
+      const closed = { ...state, pickerOpen: false, notice: undefined }
+      // The same org again: the workspace stays, and so does what it was given.
+      if (action.username === state.selected) return closed
+      // The only place that decides whether the launch query runs.
+      const { launch } = state
+      const seedCount = state.seedCount + (launch ? 1 : 0)
+      const seed = launch && { id: seedCount, query: launch.query, run: launch.run && action.source === 'launch' }
+      return { ...closed, selected: action.username, launch: undefined, seed, seedCount }
+    }
+    case 'seedUsed':
+      return state.seed?.id === action.id ? { ...state, seed: undefined } : state
     case 'summary':
       return { ...state, summaries: { ...state.summaries, [action.username]: action.summary } }
     case 'status':
@@ -67,17 +90,23 @@ function reducer(state: State, action: Action): State {
   }
 }
 
-const initialState: State = {
-  orgs: undefined,
-  connectionCheck: 'pending',
-  loading: true,
-  loadError: undefined,
-  selected: undefined,
-  summaries: {},
-  status: {},
-  apiUsage: {},
-  pickerOpen: false,
-  notice: undefined,
+// oxlint-disable-next-line react/only-export-components
+export function initialState(launch: LaunchOptions | undefined): State {
+  return {
+    orgs: undefined,
+    connectionCheck: 'pending',
+    loading: true,
+    loadError: undefined,
+    selected: undefined,
+    summaries: {},
+    status: {},
+    apiUsage: {},
+    pickerOpen: false,
+    notice: undefined,
+    launch: launch?.query ? { query: launch.query, run: launch.run === true } : undefined,
+    seed: undefined,
+    seedCount: 0,
+  }
 }
 
 export type OrgContextValue = State & {
@@ -97,13 +126,8 @@ export type OrgContextValue = State & {
   reportOrgError: (username: string, e: unknown) => void
   /** Marks the org as needing login again without a notification (the caller shows the error). */
   markAuthError: (username: string, reloginCommand: string | undefined) => void
-  /**
-   * The --query/--run given at launch, for the workspace shown first. Reading
-   * does not take it (StrictMode shows the workspace twice); the workspace
-   * discards it once it has run or put it in the editor (docs/web.md "起動時のクエリ").
-   */
-  launchQuery: () => { query: string; run: boolean } | undefined
-  discardLaunchQuery: () => void
+  /** The workspace has taken its seed (docs/web.md "起動時のクエリ"). */
+  seedUsed: (id: number) => void
 }
 
 const OrgContext = createContext<OrgContextValue | undefined>(undefined)
@@ -126,12 +150,9 @@ function saveSelected(username: string): void {
 
 export function OrgProvider({ launch, children }: { launch: LaunchOptions | undefined; children: ReactNode }) {
   const { handleCommonError, notify } = useApp()
-  const [state, dispatch] = useReducer(reducer, initialState)
+  const [state, dispatch] = useReducer(reducer, launch, initialState)
   const started = useRef(false)
   const loadGeneration = useRef(0)
-  const launchQuery = useRef<{ query: string; run: boolean } | undefined>(
-    launch?.query ? { query: launch.query, run: launch.run === true } : undefined,
-  )
 
   const reportApiUsage = useCallback((username: string, usage: ApiUsage | undefined) => {
     if (usage) dispatch({ type: 'apiUsage', username, usage })
@@ -190,9 +211,9 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
     dispatch({ type: 'status', username, status: { state: 'authError', reloginCommand } })
   }, [])
 
-  const selectOrg = useCallback(
-    (username: string) => {
-      dispatch({ type: 'select', username })
+  const choose = useCallback(
+    (username: string, source: SelectSource) => {
+      dispatch({ type: 'select', username, source })
       saveSelected(username)
       // Without a summary, production is judged from the org list and no
       // namespace is assumed; a failure here is not shown (docs/web.md).
@@ -211,6 +232,8 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
     },
     [handleOrgError, reportApiUsage],
   )
+  const selectOrg = useCallback((username: string) => choose(username, 'user'), [choose])
+  const seedUsed = useCallback((id: number) => dispatch({ type: 'seedUsed', id }), [])
 
   // Startup: load the org list once (docs/web.md "起動から作業画面まで").
   useEffect(() => {
@@ -268,14 +291,12 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
     const wanted = launch ? launch.org : readSelected()
     const found = wanted ? state.orgs.find((o) => o.alias === wanted || o.username === wanted) : undefined
     if (found) {
-      selectOrg(found.username)
+      choose(found.username, launch ? 'launch' : 'user')
       return
     }
-    // No org to run in: the query is put in the editor but not run (docs/web.md).
-    launchQuery.current = launchQuery.current && { ...launchQuery.current, run: false }
     const notice = launch?.org ? t.unknownLaunchOrg(launch.org) : launch ? t.noDefaultOrg : undefined
     dispatch({ type: 'picker', open: true, notice })
-  }, [state.orgs, state.loadError, launch, selectOrg])
+  }, [state.orgs, state.loadError, launch, choose])
 
   const setPickerOpen = useCallback(
     (open: boolean) => {
@@ -286,10 +307,6 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
     [loadOrgs],
   )
 
-  const peekLaunchQuery = useCallback(() => launchQuery.current, [])
-  const discardLaunchQuery = useCallback(() => {
-    launchQuery.current = undefined
-  }, [])
 
   const value = useMemo<OrgContextValue>(() => {
     const selectedOrg = state.orgs?.find((o) => o.username === state.selected)
@@ -307,10 +324,9 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
       handleOrgError,
       reportOrgError,
       markAuthError,
-      launchQuery: peekLaunchQuery,
-      discardLaunchQuery,
+      seedUsed,
     }
-  }, [state, loadOrgs, recheckConnections, selectOrg, setPickerOpen, reportApiUsage, handleOrgError, reportOrgError, markAuthError, peekLaunchQuery, discardLaunchQuery])
+  }, [state, loadOrgs, recheckConnections, selectOrg, setPickerOpen, reportApiUsage, handleOrgError, reportOrgError, markAuthError, seedUsed])
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>
 }
