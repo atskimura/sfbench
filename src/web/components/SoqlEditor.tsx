@@ -66,6 +66,8 @@ export function SoqlEditor() {
 
   useEffect(() => {
     if (!host.current) return
+    // The workspace, and so this editor, is made for one org.
+    const org = latest.current.selected ?? ''
     let settleTimer: ReturnType<typeof setTimeout> | undefined
     let compositionEndedAt = 0
     /** When each describe (per org, API and object) last failed. */
@@ -108,7 +110,7 @@ export function SoqlEditor() {
     const view = new EditorView({
       parent: host.current,
       state: EditorState.create({
-        doc: savedEditorText(),
+        doc: savedEditorText(org),
         extensions: [
           history(),
           sql({ dialect: SOQL }),
@@ -152,7 +154,7 @@ export function SoqlEditor() {
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return
             const text = update.state.doc.toString()
-            saveEditorText(text)
+            saveEditorText(org, text)
             clearTimeout(settleTimer)
             settleTimer = setTimeout(() => latest.current.soql.onTextSettled(text), SETTLE_MS)
           }),
@@ -164,7 +166,7 @@ export function SoqlEditor() {
       getText: () => view.state.doc.toString(),
       setText: (text) => {
         view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } })
-        saveEditorText(text)
+        saveEditorText(org, text)
       },
       focus: () => view.focus(),
     })
