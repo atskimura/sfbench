@@ -1,6 +1,6 @@
 // Query results: the result table with its later pages, the row filter, the
 // child records of a subquery cell, and CSV export (docs/web.md "結果の表").
-import { useDeferredValue, useMemo, useState } from 'react'
+import { useDeferredValue, useId, useMemo, useState } from 'react'
 import { t } from '../i18n/i18n.ts'
 import { addColumns, cellText, cellValue, type ChildRecords, type Column, type SObjectRecord } from '../results/columns.ts'
 import { useOrgs } from '../state/OrgContext.tsx'
@@ -63,6 +63,7 @@ function Records({ result }: { result: Done }) {
   const { orgs } = useOrgs()
   const instanceUrl = orgs?.find((o) => o.username === result.username)?.instanceUrl
   const [filter, setFilter] = useState('')
+  const filterId = useId()
   const deferredFilter = useDeferredValue(filter.trim().toLowerCase())
   const [selected, setSelected] = useState<CellRef>()
   const [child, setChild] = useState<OpenChild>()
@@ -87,15 +88,23 @@ function Records({ result }: { result: Done }) {
           {[result.object, t.elapsed((result.elapsedMs / 1000).toFixed(2)), timeFormat.format(result.executedAt)].filter(Boolean).join(' · ')}
         </span>
         <span className={panel.spacer} />
-        <input
-          className={`${panel.input} ${styles.filter}`}
-          type="search"
-          aria-label={t.filterRows}
-          placeholder={t.filterRows}
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-        {rows && <span className={panel.meta}>{t.matchedCount(rows.length)}</span>}
+        {/* The match count sits inside the box, so that the header does not shift while filtering. */}
+        <span className={styles.filter}>
+          <input
+            className={panel.input}
+            type="search"
+            aria-label={t.filterRows}
+            aria-describedby={rows ? `${filterId}-count` : undefined}
+            placeholder={t.filterRows}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+          {rows && (
+            <span id={`${filterId}-count`} className={styles.matchCount}>
+              {t.matchedCount(rows.length)}
+            </span>
+          )}
+        </span>
         <CsvExport result={result} />
       </div>
       <div className={styles.body}>
