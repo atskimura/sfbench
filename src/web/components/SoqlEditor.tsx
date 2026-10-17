@@ -172,7 +172,9 @@ export function SoqlEditor({ org }: { org: string }) {
       latest.current.soql.registerEditor(null)
       view.destroy()
     }
-  }, [org])
+    // Once per workspace: the workspace, and so `org`, is remade for each org.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return <div ref={host} className={styles.editor} />
 }

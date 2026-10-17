@@ -167,7 +167,7 @@ describe('org workspace', () => {
     expect(mocked.query).not.toHaveBeenCalled()
   })
 
-  it('does not run the launch query when the first org list fails', async () => {
+  it('runs the launch query only in the named org after the first org list fails', async () => {
     mocked.orgs.mockRejectedValueOnce(new ApiRequestError(500, 'SF_CLI_ERROR', 'sf failed'))
     render(<App launch={{ org: 'one', query: 'SELECT Id FROM Account', run: true }} />)
     expect(await screen.findByText('sf failed')).toBeTruthy()
@@ -175,7 +175,7 @@ describe('org workspace', () => {
     const switcher = screen.getByRole('button', { name: t.selectOrg })
     await userEvent.click(switcher)
     await userEvent.click(switcher)
-    await userEvent.click(await within(await screen.findByRole('dialog')).findByRole('button', { name: /one/ }))
+    await userEvent.click(await within(await screen.findByRole('dialog')).findByRole('button', { name: /two/ }))
     await waitFor(() => expect(editorText()).toContain('SELECT Id FROM Account'))
     await new Promise((r) => setTimeout(r, 50))
     expect(mocked.query).not.toHaveBeenCalled()

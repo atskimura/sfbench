@@ -20,10 +20,7 @@ const SELECTED_KEY = 'sfbench.selectedOrg'
 export type OrgStatus = { state: 'ok' } | { state: 'authError'; reloginCommand?: string }
 
 /** What the first workspace shown gets from the launch (docs/web.md "起動時のクエリ"). */
-export type Seed = { id: number; query: string; run: boolean }
-
-/** Who chose the org: the launch's --org found in the list, or the user. */
-type SelectSource = 'launch' | 'user'
+export type Seed = { query: string; run: boolean }
 
 type State = {
   orgs: Org[] | undefined
@@ -37,10 +34,10 @@ type State = {
   pickerOpen: boolean
   /** A message at the top of the org list, such as "no default org". */
   notice: string | undefined
-  /** The --query/--run given at launch, until an org is selected. */
-  launch: { query: string; run: boolean } | undefined
+  /** The --org/--query/--run given at launch, until an org is selected. */
+  launch: { org: string | undefined; query: string; run: boolean } | undefined
+  /** For the workspace of the selected org, until another org is selected. */
   seed: Seed | undefined
-  seedCount: number
 }
 
 type Action =
@@ -48,8 +45,7 @@ type Action =
   | { type: 'loaded'; orgs: Org[]; connectionCheck: OrgsResponse['connectionCheck'] }
   | { type: 'checking' }
   | { type: 'loadFailed'; message: string }
-  | { type: 'select'; username: string; source: SelectSource }
-  | { type: 'seedUsed'; id: number }
+  | { type: 'select'; username: string }
   | { type: 'summary'; username: string; summary: OrgSummary }
   | { type: 'status'; username: string; status: OrgStatus }
   | { type: 'apiUsage'; username: string; usage: ApiUsage }
@@ -71,14 +67,14 @@ export function reducer(state: State, action: Action): State {
       const closed = { ...state, pickerOpen: false, notice: undefined }
       // The same org again: the workspace stays, and so does what it was given.
       if (action.username === state.selected) return closed
-      // The only place that decides whether the launch query runs.
+      // The only place that decides whether the launch query runs: in the org
+      // the launch named, and nowhere else.
       const { launch } = state
-      const seedCount = state.seedCount + (launch ? 1 : 0)
-      const seed = launch && { id: seedCount, query: launch.query, run: launch.run && action.source === 'launch' }
-      return { ...closed, selected: action.username, launch: undefined, seed, seedCount }
+      const org = state.orgs?.find((o) => o.username === action.username)
+      const named = launch?.org !== undefined && (org?.alias === launch.org || org?.username === launch.org)
+      const seed = launch && { query: launch.query, run: launch.run && named }
+      return { ...closed, selected: action.username, launch: undefined, seed }
     }
-    case 'seedUsed':
-      return state.seed?.id === action.id ? { ...state, seed: undefined } : state
     case 'summary':
       return { ...state, summaries: { ...state.summaries, [action.username]: action.summary } }
     case 'status':
@@ -103,9 +99,8 @@ export function initialState(launch: LaunchOptions | undefined): State {
     apiUsage: {},
     pickerOpen: false,
     notice: undefined,
-    launch: launch?.query ? { query: launch.query, run: launch.run === true } : undefined,
+    launch: launch?.query ? { org: launch.org, query: launch.query, run: launch.run === true } : undefined,
     seed: undefined,
-    seedCount: 0,
   }
 }
 
@@ -126,8 +121,6 @@ export type OrgContextValue = State & {
   reportOrgError: (username: string, e: unknown) => void
   /** Marks the org as needing login again without a notification (the caller shows the error). */
   markAuthError: (username: string, reloginCommand: string | undefined) => void
-  /** The workspace has taken its seed (docs/web.md "起動時のクエリ"). */
-  seedUsed: (id: number) => void
 }
 
 const OrgContext = createContext<OrgContextValue | undefined>(undefined)
@@ -211,9 +204,9 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
     dispatch({ type: 'status', username, status: { state: 'authError', reloginCommand } })
   }, [])
 
-  const choose = useCallback(
-    (username: string, source: SelectSource) => {
-      dispatch({ type: 'select', username, source })
+  const selectOrg = useCallback(
+    (username: string) => {
+      dispatch({ type: 'select', username })
       saveSelected(username)
       // Without a summary, production is judged from the org list and no
       // namespace is assumed; a failure here is not shown (docs/web.md).
@@ -232,8 +225,6 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
     },
     [handleOrgError, reportApiUsage],
   )
-  const selectOrg = useCallback((username: string) => choose(username, 'user'), [choose])
-  const seedUsed = useCallback((id: number) => dispatch({ type: 'seedUsed', id }), [])
 
   // Startup: load the org list once (docs/web.md "起動から作業画面まで").
   useEffect(() => {
@@ -291,12 +282,12 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
     const wanted = launch ? launch.org : readSelected()
     const found = wanted ? state.orgs.find((o) => o.alias === wanted || o.username === wanted) : undefined
     if (found) {
-      choose(found.username, launch ? 'launch' : 'user')
+      selectOrg(found.username)
       return
     }
     const notice = launch?.org ? t.unknownLaunchOrg(launch.org) : launch ? t.noDefaultOrg : undefined
     dispatch({ type: 'picker', open: true, notice })
-  }, [state.orgs, state.loadError, launch, choose])
+  }, [state.orgs, state.loadError, launch, selectOrg])
 
   const setPickerOpen = useCallback(
     (open: boolean) => {
@@ -324,9 +315,8 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
       handleOrgError,
       reportOrgError,
       markAuthError,
-      seedUsed,
     }
-  }, [state, loadOrgs, recheckConnections, selectOrg, setPickerOpen, reportApiUsage, handleOrgError, reportOrgError, markAuthError, seedUsed])
+  }, [state, loadOrgs, recheckConnections, selectOrg, setPickerOpen, reportApiUsage, handleOrgError, reportOrgError, markAuthError])
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>
 }

@@ -116,8 +116,8 @@ const ResultContext = createContext<ResultState | undefined>(undefined)
 /** The workspace of one org: it is remade for each org (docs/web.md "非同期の流れ"). */
 export function SoqlProvider({ username, seed: givenSeed, children }: { username: string; seed: Seed | undefined; children: ReactNode }) {
   const { settings, notify } = useApp()
-  const { summaries, handleOrgError, reportOrgError, markAuthError, reportApiUsage, seedUsed } = useOrgs()
-  // What this workspace got when it was shown; the org's seed goes once it is taken.
+  const { summaries, handleOrgError, reportOrgError, markAuthError, reportApiUsage } = useOrgs()
+  // What this workspace got when it was shown.
   const [seed] = useState(givenSeed)
   const summary = summaries[username]
   const editor = useRef<EditorHandle | null>(null)
@@ -249,16 +249,11 @@ export function SoqlProvider({ username, seed: givenSeed, children }: { username
   // running query.
   useEffect(() => {
     void refreshHistory()
-    // Taken just after rendering, not here: StrictMode runs this effect, its
+    // Run just after rendering, not here: StrictMode runs this effect, its
     // cleanup and the effect again, and the cleanup clears the first timer
     // before it fires, so the launch query runs once (docs/web.md "起動時のクエリ").
     // The editor already starts with the query.
-    const timer =
-      seed &&
-      setTimeout(() => {
-        seedUsed(seed.id)
-        if (seed.run) run()
-      }, 0)
+    const timer = seed?.run ? setTimeout(run, 0) : undefined
     const abort = runAbort
     const generation = runGeneration
     return () => {

@@ -1,37 +1,50 @@
 // The launch query's states and transitions (docs/web.md "起動時のクエリ").
 import { describe, expect, it } from 'vitest'
+import type { LaunchOptions, Org } from '../../shared/api.ts'
 import { initialState, reducer } from './OrgContext.tsx'
 
-const launched = (run: boolean) => initialState({ org: 'one', query: 'SELECT Id FROM Account', run })
-const select = (username: string, source: 'launch' | 'user') => ({ type: 'select' as const, username, source })
+const org = (alias: string | undefined, username: string): Org => ({
+  username,
+  alias,
+  instanceUrl: 'https://example.my.salesforce.com',
+  kind: 'sandbox',
+  isExpired: false,
+  availability: 'ok',
+})
+const orgs = [org('one', 'one@example.com'), org('two', 'two@example.com'), org(undefined, 'bare@example.com')]
+const listed = (launch: LaunchOptions | undefined) =>
+  reducer(initialState(launch), { type: 'loaded', orgs, connectionCheck: 'done' })
+const launched = (run: boolean, launchOrg: string | undefined = 'one') =>
+  listed({ org: launchOrg, query: 'SELECT Id FROM Account', run })
+const select = (username: string) => ({ type: 'select' as const, username })
 
 describe('launch query', () => {
-  it('runs only when the launch org was found and chosen', () => {
-    expect(reducer(launched(true), select('one', 'launch')).seed).toEqual({ id: 1, query: 'SELECT Id FROM Account', run: true })
-    expect(reducer(launched(false), select('one', 'launch')).seed?.run).toBe(false)
+  it('runs in the org the launch named, by alias or username', () => {
+    expect(reducer(launched(true), select('one@example.com')).seed).toEqual({ query: 'SELECT Id FROM Account', run: true })
+    expect(reducer(launched(true, 'one@example.com'), select('one@example.com')).seed?.run).toBe(true)
+    expect(reducer(launched(false), select('one@example.com')).seed?.run).toBe(false)
   })
 
-  it('puts the query in without running when the user chose', () => {
-    const state = reducer(launched(true), select('two', 'user'))
-    expect(state.seed).toEqual({ id: 1, query: 'SELECT Id FROM Account', run: false })
+  it('puts the query in without running in another org', () => {
+    const state = reducer(launched(true), select('two@example.com'))
+    expect(state.seed).toEqual({ query: 'SELECT Id FROM Account', run: false })
     expect(state.launch).toBeUndefined()
   })
 
+  it('does not run without a launch org, even in an org without an alias', () => {
+    expect(reducer(launched(true, undefined), select('bare@example.com')).seed?.run).toBe(false)
+  })
+
   it('gives nothing to the next org, or after a reload', () => {
-    const first = reducer(launched(true), select('one', 'launch'))
-    expect(reducer(first, select('two', 'user')).seed).toBeUndefined()
-    expect(reducer(initialState(undefined), select('one', 'user')).seed).toBeUndefined()
-    expect(reducer(initialState({ org: 'one', run: true }), select('one', 'launch')).seed).toBeUndefined()
+    const first = reducer(launched(true), select('one@example.com'))
+    expect(reducer(first, select('two@example.com')).seed).toBeUndefined()
+    expect(reducer(reducer(first, select('two@example.com')), select('one@example.com')).seed).toBeUndefined()
+    expect(reducer(listed(undefined), select('one@example.com')).seed).toBeUndefined()
+    expect(reducer(listed({ org: 'one', run: true }), select('one@example.com')).seed).toBeUndefined()
   })
 
   it('keeps the seed when the same org is chosen again', () => {
-    const first = reducer(launched(true), select('one', 'launch'))
-    expect(reducer(first, select('one', 'user')).seed).toBe(first.seed)
-  })
-
-  it('drops the seed once taken, and only that seed', () => {
-    const first = reducer(launched(true), select('one', 'launch'))
-    expect(reducer(first, { type: 'seedUsed', id: 2 }).seed).toBe(first.seed)
-    expect(reducer(first, { type: 'seedUsed', id: 1 }).seed).toBeUndefined()
+    const first = reducer(launched(true), select('one@example.com'))
+    expect(reducer(first, select('one@example.com')).seed).toBe(first.seed)
   })
 })
