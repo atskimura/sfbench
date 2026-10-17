@@ -1,12 +1,15 @@
 // Export CSV: loads every remaining page, then saves the file
 // (docs/web.md "CSV"). The pages loaded here are not added to the table.
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
+import type { ApiUsage } from '../../shared/api.ts'
 import { api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
 import { addColumns, type SObjectRecord } from '../results/columns.ts'
 import { csvFileName, toCsv } from '../results/csv.ts'
 import { useOrgs } from '../state/OrgContext.tsx'
+import type { Pages } from '../results/pages.ts'
 import type { QueryResult } from '../state/SoqlContext.tsx'
+import { useTask } from '../state/useTask.ts'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import panel from './Panel.module.css'
 import styles from './ResultPanel.module.css'
@@ -15,51 +18,59 @@ import styles from './ResultPanel.module.css'
 const CONFIRM_ABOVE = 10_000
 
 type Done = Extract<QueryResult, { state: 'done' }>
-type State = { step: 'idle' } | { step: 'confirm'; remaining: number } | { step: 'loading'; loaded: number }
+type State = { step: 'idle' } | { step: 'confirm'; remaining: number }
 
-export function CsvExport({ result }: { result: Done }) {
+/** `pages` is what the table has loaded: CSV starts from there. */
+export function CsvExport({ result, pages }: { result: Done; pages: Pages }) {
   const { reportOrgError, reportApiUsage } = useOrgs()
   const [state, setState] = useState<State>({ step: 'idle' })
-  const abort = useRef<AbortController | undefined>(undefined)
-  useEffect(() => () => abort.current?.abort(), [])
+  // Progress is the number of records loaded so far. The table is remade for
+  // each run, and this with it, so a new run stops the export (docs/web.md "流れごとの指定").
+  const task = useTask<number>()
 
   const save = async () => {
+    setState({ step: 'idle' })
     // What the table has loaded now; later pages it loads meanwhile are fetched here again.
-    // `loaded` and nextRecordsUrl describe the same point; records may already hold a newer page.
-    const { loaded } = result
-    const base = result.records.slice(0, loaded)
-    let url = result.nextRecordsUrl
-    const extra: SObjectRecord[] = []
-    const controller = new AbortController()
-    abort.current = controller
-    setState({ step: 'loading', loaded })
-    try {
+    const { records: base, next: nextRecordsUrl, columns } = pages
+    const loaded = base.length
+    const { username } = result
+    const outcome = await task.start(async (signal, progress) => {
+      const extra: SObjectRecord[] = []
+      let usage: ApiUsage | undefined
+      let url = nextRecordsUrl
+      progress(loaded)
       while (url) {
-        const page = await api.nextPage(result.username, url, controller.signal)
-        reportApiUsage(result.username, page.apiUsage)
+        const page = await api.nextPage(username, url, signal)
+        usage = page.apiUsage ?? usage
         extra.push(...page.records)
-        setState({ step: 'loading', loaded: loaded + extra.length })
+        progress(loaded + extra.length)
         url = page.done ? undefined : page.nextRecordsUrl
       }
-    } catch (e) {
-      // Cancelled, or failed: the loaded pages are dropped.
-      if (!controller.signal.aborted) reportOrgError(result.username, e)
-      setState({ step: 'idle' })
-      return
-    }
-    const records = extra.length ? base.concat(extra) : base
-    download(toCsv(addColumns(result.columns, extra), records), csvFileName(result.object))
-    setState({ step: 'idle' })
+      return { extra, usage }
+    }, 'ignore')
+    if (outcome.kind === 'error') reportOrgError(username, outcome.error)
+    if (outcome.kind !== 'done') return
+    const { extra, usage } = outcome.value
+    reportApiUsage(username, usage)
+    download(toCsv(addColumns(columns, extra), extra.length ? base.concat(extra) : base), csvFileName(result.object))
   }
 
   const start = () => {
-    const remaining = result.nextRecordsUrl ? Math.max(result.totalSize - result.loaded, 0) : 0
+    const remaining = pages.next ? Math.max(result.totalSize - pages.records.length, 0) : 0
     if (remaining > CONFIRM_ABOVE) setState({ step: 'confirm', remaining })
     else void save()
   }
 
+  // The rest of the result can no longer be fetched: the table asks to run the query again.
+  const expired = pages.failure?.kind === 'rerun'
   const button = (
-    <button type="button" className={panel.button} onClick={start} disabled={state.step === 'confirm'}>
+    <button
+      type="button"
+      className={panel.button}
+      onClick={start}
+      disabled={state.step === 'confirm' || expired}
+      title={expired ? t.locatorExpired : undefined}
+    >
       {t.exportCsv}
     </button>
   )
@@ -78,11 +89,11 @@ export function CsvExport({ result }: { result: Done }) {
       </>
     )
   }
-  if (state.step === 'loading') {
+  if (task.running) {
     return (
       <span className={styles.csvStatus} role="status">
-        {t.csvProgress(state.loaded, result.totalSize)}
-        <button type="button" className={panel.button} onClick={() => abort.current?.abort()}>
+        {t.csvProgress(task.progress ?? pages.records.length, result.totalSize)}
+        <button type="button" className={panel.button} onClick={task.cancel}>
           {t.cancel}
         </button>
       </span>

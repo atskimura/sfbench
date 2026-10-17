@@ -97,6 +97,8 @@ export const ja: Messages = {
   recent: '最近のクエリ',
   recentEmpty: 'この組織で実行したクエリがここに表示されます。',
   running: '実行中…',
+  runningQuery: 'クエリを実行しています…',
+  cancelRunNote: 'Salesforce の側で始まった処理までは止まりません。',
   results: '結果',
   loadedCount: (n: number) => `${n.toLocaleString()} 件を読み込み済み`,
   matchedCount: (n: number) => `${n.toLocaleString()} 件が一致`,

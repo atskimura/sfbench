@@ -8,16 +8,16 @@ import { SoqlEditor } from './SoqlEditor.tsx'
 
 export function RunButton() {
   const soql = useSoql()
-  const { result } = useResult()
+  const { running } = useResult()
   return (
     <button
       type="button"
       className={`${panel.button} ${panel.primary}`}
-      disabled={result.state === 'running'}
+      disabled={running}
       onClick={soql.run}
       aria-keyshortcuts="Meta+Enter Control+Enter"
     >
-      {result.state === 'running' ? t.running : t.run}
+      {running ? t.running : t.run}
       <span className={styles.shortcut}>⌘↵</span>
     </button>
   )

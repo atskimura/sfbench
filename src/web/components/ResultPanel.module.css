@@ -112,3 +112,11 @@
   border-radius: var(--radius);
   margin: var(--space-1) 0 0;
 }
+
+.running {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+}

@@ -84,7 +84,11 @@ describe('useTask', () => {
       void result.current.start(body, 'replace').then((o) => outcomes.push(o))
     })
     act(() => runs[1].progress(3))
-    act(() => result.current.cancel())
+    let stopped = false
+    act(() => {
+      stopped = result.current.cancel()
+    })
+    expect(stopped).toBe(true)
     expect(runs[1].signal.aborted).toBe(true)
     expect(result.current).toMatchObject({ running: false, progress: undefined })
     await act(async () => runs[1].reject(new DOMException('aborted', 'AbortError')))
@@ -92,10 +96,23 @@ describe('useTask', () => {
     expect(outcomes).toEqual([{ kind: 'stale' }, { kind: 'stale' }])
   })
 
-  it('cancel while idle does nothing', () => {
+  it('cancel while idle, or after the request ended, does nothing and says so', async () => {
     const { result } = renderHook(() => useTask())
-    act(() => result.current.cancel())
+    let stopped = true
+    act(() => {
+      stopped = result.current.cancel()
+    })
+    expect(stopped).toBe(false)
     expect(result.current.running).toBe(false)
+    const { body, runs } = controlled<string>()
+    act(() => {
+      void result.current.start(body, 'replace')
+    })
+    await act(async () => runs[0].resolve('A'))
+    act(() => {
+      stopped = result.current.cancel()
+    })
+    expect(stopped).toBe(false)
   })
 
   it('unmount: aborts the request, and a start afterwards is stale without running', async () => {
