@@ -2,7 +2,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { MAX_HISTORY, addHistory, historyFile, loadHistory, loadSettings, saveSettings } from './store.ts'
+import { statSync } from 'node:fs'
+import { MAX_HISTORY, addHistory, AiSettingsError, historyFile, loadHistory, loadSettings, mergeAiSettings, saveSettings, settingsView } from './store.ts'
 
 let dir: string
 beforeEach(() => {
@@ -61,3 +62,47 @@ describe('settings', () => {
     expect(loadSettings(join(dir, 'settings.json')).requestTimeoutSeconds).toBe(120)
   })
 })
+
+describe('AI settings', () => {
+  const saved = { provider: 'anthropic' as const, model: 'claude-x', apiKey: 'sk-ant', keyProvider: 'anthropic' as const }
+
+  it('never shows the key to the web UI', () => {
+    const view = settingsView({ omitNamespace: true, requestTimeoutSeconds: 120, ai: saved })
+    expect(view.ai).toEqual({ provider: 'anthropic', model: 'claude-x', hasApiKey: true, keyProvider: 'anthropic' })
+    expect(JSON.stringify(view)).not.toContain('sk-ant')
+  })
+
+  it('keeps the saved key when none is sent, and removes it with null', () => {
+    expect(mergeAiSettings(saved, { provider: 'anthropic', model: 'claude-y' })).toEqual({ ...saved, model: 'claude-y' })
+    expect(mergeAiSettings(saved, { provider: 'anthropic', apiKey: null })).toEqual({ provider: 'anthropic', model: 'claude-x' })
+  })
+
+  it('drops the key when another provider is chosen, but keeps it through Off', () => {
+    expect(mergeAiSettings(saved, { provider: 'openai', model: 'gpt-x' })).toEqual({ provider: 'openai', model: 'gpt-x' })
+    const off = mergeAiSettings(saved, { provider: 'off' })
+    expect(off).toEqual({ ...saved, provider: 'off' })
+    expect(mergeAiSettings(off, { provider: 'anthropic' })).toEqual(saved)
+  })
+
+  it('takes a new key for the chosen provider', () => {
+    expect(mergeAiSettings(undefined, { provider: 'openai', model: 'gpt-x', apiKey: ' sk-1 ' })).toEqual({
+      provider: 'openai',
+      model: 'gpt-x',
+      apiKey: 'sk-1',
+      keyProvider: 'openai',
+    })
+  })
+
+  it('asks for a model and rejects unknown providers', () => {
+    expect(() => mergeAiSettings(undefined, { provider: 'anthropic' })).toThrow(AiSettingsError)
+    expect(() => mergeAiSettings(undefined, { provider: 'gemini', model: 'x' })).toThrow(AiSettingsError)
+  })
+
+  it('saves the file readable by the owner only', () => {
+    const file = join(dir, 'settings.json')
+    saveSettings(file, { omitNamespace: true, requestTimeoutSeconds: 120, ai: saved })
+    expect(loadSettings(file).ai).toEqual(saved)
+    if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600)
+  })
+})
+

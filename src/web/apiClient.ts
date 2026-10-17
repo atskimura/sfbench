@@ -1,5 +1,10 @@
 // Calls the local sfbench server. See docs/design.md ("API") and docs/web.md ("エラーの扱い").
 import type {
+  AiOutput,
+  AiTask,
+  AiTaskRequest,
+  AiTestRequest,
+  AiTestResponse,
   ApiError,
   ApiErrorCode,
   ApiUsage,
@@ -10,6 +15,7 @@ import type {
   QueryResponse,
   SessionResponse,
   Settings,
+  SettingsUpdate,
   WithApiUsage,
   WithFetchedAt,
 } from '../shared/api.ts'
@@ -131,7 +137,10 @@ export const api = {
   history: (username: string) => request<HistoryResponse>('GET', `${org(username)}/history`),
   openOrg: (username: string) => request<{ ok: true }>('POST', `${org(username)}/open`),
   settings: () => request<Settings>('GET', '/api/settings'),
-  saveSettings: (settings: Partial<Settings>) => request<Settings>('PUT', '/api/settings', settings),
+  saveSettings: (settings: SettingsUpdate) => request<Settings>('PUT', '/api/settings', settings),
+  aiGenerate: <T extends AiTask>(req: AiTaskRequest & { task: T }, signal?: AbortSignal) =>
+    request<{ output: AiOutput<T> }>('POST', '/api/ai/generate', req, signal),
+  aiTest: (body: AiTestRequest, signal?: AbortSignal) => request<AiTestResponse>('POST', '/api/ai/test', body, signal),
 }
 
 export type { ApiUsage }

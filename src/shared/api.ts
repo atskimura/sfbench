@@ -83,7 +83,83 @@ export type Settings = {
   omitNamespace: boolean
   /** How long to wait for Salesforce, in seconds (10 to 600). */
   requestTimeoutSeconds: number
+  /** Undefined until the user chooses an AI (or Off) in the settings (docs/ai.md "設定"). */
+  ai?: AiSettingsView
 }
+
+/** The AI providers sfbench can call: Anthropic or OpenAI, or none (docs/ai.md). */
+export type AiProvider = 'off' | 'anthropic' | 'openai'
+
+/** The AI settings as the web UI sees them: the key itself never leaves the server. */
+export type AiSettingsView = {
+  provider: AiProvider
+  model: string
+  hasApiKey: boolean
+  /** The provider the saved key is for (the key goes to no other). */
+  keyProvider?: Exclude<AiProvider, 'off'>
+}
+
+/** AI settings sent from the web UI. Leaving out apiKey keeps the saved key; null removes it. */
+export type AiSettingsInput = {
+  provider: AiProvider
+  model?: string
+  apiKey?: string | null
+}
+
+/** PUT /api/settings: leaving out a part keeps what is saved. */
+export type SettingsUpdate = {
+  omitNamespace?: boolean
+  requestTimeoutSeconds?: number
+  ai?: AiSettingsInput
+}
+
+/** UI language, for the language of the AI's explanations. */
+export type UiLanguage = 'en' | 'ja'
+
+/** What the AI is asked to do (docs/ai.md "タスク"), with what it is given. */
+export type AiTaskRequest =
+  | {
+      task: 'chooseObjects'
+      input: {
+        request: string
+        /** One object per line: `ApiName (Label)`. */
+        objects: string
+        tooling: boolean
+        language: UiLanguage
+      }
+    }
+  | {
+      task: 'generateSoql'
+      input: {
+        request: string
+        /** Fields of the objects, in the line format of docs/ai.md. */
+        objectInfo: string
+        editorText: string
+        tooling: boolean
+        language: UiLanguage
+      }
+    }
+  | {
+      task: 'fixSoql'
+      input: {
+        soql: string
+        error: string
+        objectInfo: string
+        tooling: boolean
+        language: UiLanguage
+      }
+    }
+
+export type AiTask = AiTaskRequest['task']
+
+export type ChooseObjectsOutput = { objects: string[] }
+export type SoqlOutput = { soql: string; explanation: string }
+
+export type AiOutput<T extends AiTask> = T extends 'chooseObjects' ? ChooseObjectsOutput : SoqlOutput
+
+/** POST /api/ai/test: tries the settings being edited, without saving them. */
+export type AiTestRequest = { ai: AiSettingsInput }
+export type AiTestResponse = { elapsedMs: number }
 
 /** describe results carry the time the server fetched them (ISO 8601). */
 export type WithFetchedAt<T> = T & { fetchedAt: string }
@@ -113,6 +189,11 @@ export type ApiErrorCode =
   | 'SF_CLI_NOT_FOUND'
   | 'SF_CLI_ERROR'
   | 'SALESFORCE_ERROR'
+  | 'AI_NOT_CONFIGURED'
+  | 'AI_ERROR'
+  | 'AI_BAD_OUTPUT'
+  | 'AI_TIMEOUT'
+  | 'PAYLOAD_TOO_LARGE'
   | 'INTERNAL_ERROR'
 
 export type ApiError = {
