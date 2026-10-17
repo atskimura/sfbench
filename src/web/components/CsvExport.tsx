@@ -31,8 +31,8 @@ export function CsvExport({ result, pages }: { result: Done; pages: Pages }) {
   const save = async () => {
     setState({ step: 'idle' })
     // What the table has loaded now; later pages it loads meanwhile are fetched here again.
-    // `loaded` and `next` describe the same point; records may already hold a newer page.
-    const { loaded, next: nextRecordsUrl, columns } = pages
+    const { records: base, next: nextRecordsUrl, columns } = pages
+    const loaded = base.length
     const { username } = result
     const outcome = await task.start(async (signal, progress) => {
       const extra: SObjectRecord[] = []
@@ -52,12 +52,11 @@ export function CsvExport({ result, pages }: { result: Done; pages: Pages }) {
     if (outcome.kind !== 'done') return
     const { extra, usage } = outcome.value
     reportApiUsage(username, usage)
-    const base = result.records.slice(0, loaded)
     download(toCsv(addColumns(columns, extra), extra.length ? base.concat(extra) : base), csvFileName(result.object))
   }
 
   const start = () => {
-    const remaining = pages.next ? Math.max(result.totalSize - pages.loaded, 0) : 0
+    const remaining = pages.next ? Math.max(result.totalSize - pages.records.length, 0) : 0
     if (remaining > CONFIRM_ABOVE) setState({ step: 'confirm', remaining })
     else void save()
   }
@@ -85,7 +84,7 @@ export function CsvExport({ result, pages }: { result: Done; pages: Pages }) {
   if (task.running) {
     return (
       <span className={styles.csvStatus} role="status">
-        {t.csvProgress(task.progress ?? pages.loaded, result.totalSize)}
+        {t.csvProgress(task.progress ?? pages.records.length, result.totalSize)}
         <button type="button" className={panel.button} onClick={task.cancel}>
           {t.cancel}
         </button>

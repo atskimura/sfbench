@@ -1,6 +1,6 @@
 // Query results: the result table with its later pages, the row filter, the
 // child records of a subquery cell, and CSV export (docs/web.md "結果の表").
-import { useCallback, useDeferredValue, useId, useMemo, useReducer, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useId, useMemo, useReducer, useState } from 'react'
 import { ApiRequestError, api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
 import { pagesReducer, type Pages } from '../results/pages.ts'
@@ -62,11 +62,12 @@ type Done = Extract<QueryResult, { state: 'done' }>
 
 type Scan = { filter: string; columns: readonly Column[]; count: number; matches: readonly number[] }
 /** Per result: the rows already checked, so that a new page checks only its own rows. */
-const scans = new WeakMap<readonly SObjectRecord[], Scan>()
+const scans = new WeakMap<Done, Scan>()
 
-/** Indices of the loaded rows with a cell containing `filter` (lower case). */
-function matchingRows(records: readonly SObjectRecord[], columns: readonly Column[], loaded: number, filter: string): readonly number[] {
-  let scan = scans.get(records)
+/** Indices of the loaded rows of `result` with a cell containing `filter` (lower case). */
+function matchingRows(result: Done, records: readonly SObjectRecord[], columns: readonly Column[], filter: string): readonly number[] {
+  const loaded = records.length
+  let scan = scans.get(result)
   if (!scan || scan.filter !== filter || scan.columns !== columns || scan.count > loaded) {
     scan = { filter, columns, count: 0, matches: [] }
   }
@@ -74,7 +75,7 @@ function matchingRows(records: readonly SObjectRecord[], columns: readonly Colum
   for (let i = scan.count; i < loaded; i++) {
     if (columns.some((c) => cellText(cellValue(records[i], c)).toLowerCase().includes(filter))) matches.push(i)
   }
-  scans.set(records, { filter, columns, count: loaded, matches })
+  scans.set(result, { filter, columns, count: loaded, matches })
   return matches
 }
 type OpenChild = { row: number; column: Column; child: ChildRecords }
@@ -92,12 +93,18 @@ function usePages(result: Done) {
   const { reportApiUsage, reportOrgError } = useOrgs()
   const { start, running } = useTask()
   const [pages, dispatch] = useReducer(pagesReducer, result, (r): Pages => ({
+    records: r.records,
     next: r.nextRecordsUrl,
-    loaded: r.records.length,
     columns: r.columns,
-    failure: false,
+    failure: undefined,
   }))
-  const { next, loaded, failure } = pages
+  const { next, failure } = pages
+  // Reported once the reducer has kept it: a failure of a page fetched again is dropped there.
+  useEffect(() => {
+    if (failure?.kind === 'retry') reportOrgError(result.username, failure.error)
+    // Each failure once, not again when the callback changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [failure])
   const load = useCallback(
     async (retry = false) => {
       if (!next || (failure && !retry)) return
@@ -107,23 +114,15 @@ function usePages(result: Done) {
       if (outcome.kind === 'done') {
         const page = outcome.value
         reportApiUsage(result.username, page.apiUsage)
-        // The rows go after the `loaded` rows this page continues, once: a page
-        // fetched again finds the array already grown and adds nothing.
-        if (result.records.length === loaded) result.records.push(...page.records)
-        dispatch({
-          type: 'page',
-          from: next,
-          records: page.records,
-          loaded: loaded + page.records.length,
-          next: page.done ? undefined : page.nextRecordsUrl,
-        })
+        dispatch({ type: 'page', from: next, records: page.records, next: page.done ? undefined : page.nextRecordsUrl })
       } else if (outcome.kind === 'error') {
-        const gone = isLocatorGone(outcome.error)
-        dispatch({ type: 'failed', from: next, failure: gone ? 'rerun' : 'retry' })
-        if (!gone) reportOrgError(result.username, outcome.error)
+        const failed = isLocatorGone(outcome.error) ? { kind: 'rerun' as const } : { kind: 'retry' as const, error: outcome.error }
+        dispatch({ type: 'failed', from: next, failure: failed })
       }
     },
-    [result, next, loaded, failure, start, reportApiUsage, reportOrgError],
+    // `running` too: a load ignored while another ran is asked again once that ends.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [result.username, next, failure, running, start, reportApiUsage],
   )
   return { ...pages, load, loading: running }
 }
@@ -137,12 +136,12 @@ function Records({ result }: { result: Done }) {
   const deferredFilter = useDeferredValue(filter.trim().toLowerCase())
   const [selected, setSelected] = useState<CellRef>()
   const [child, setChild] = useState<OpenChild>()
-  const { records } = result
-  const { loaded, columns } = pages
+  const { records, columns } = pages
+  const loaded = records.length
 
   const rows = useMemo(
-    () => (deferredFilter ? matchingRows(records, columns, loaded, deferredFilter) : undefined),
-    [records, columns, loaded, deferredFilter],
+    () => (deferredFilter ? matchingRows(result, records, columns, deferredFilter) : undefined),
+    [result, records, columns, deferredFilter],
   )
 
   // COUNT() has a totalSize but no records: nothing remains without a next page.
@@ -195,7 +194,7 @@ function Records({ result }: { result: Done }) {
           <div className={styles.more}>
             {pages.loading ? (
               <span className={panel.meta}>{t.loadingMore}</span>
-            ) : pages.failure === 'rerun' ? (
+            ) : pages.failure?.kind === 'rerun' ? (
               <span className={panel.meta}>{t.locatorExpired}</span>
             ) : (
               <>

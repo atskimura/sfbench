@@ -65,11 +65,7 @@ export type QueryResult =
       state: 'done'
       /** Different for each run: the result table is remade for each result (its key). */
       id: number
-      /**
-       * The records of the first page. The result table pushes later pages
-       * onto this array, not a copy (docs/web.md), and keeps how many it shows
-       * (results/pages.ts).
-       */
+      /** The records of the first page; the result table keeps the later ones (results/pages.ts). */
       records: SObjectRecord[]
       /** The columns of the first page. */
       columns: readonly Column[]
