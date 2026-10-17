@@ -24,13 +24,11 @@ export function ObjectPanel({ username }: { username: string }) {
   const found = soql.panelObject && globals.data ? findByName(globals.data.sobjects, soql.panelObject, soql.names.ns) : undefined
 
   // While FROM names an object the org does not have (such as a half-typed
-  // name), the last object found stays shown (docs/web.md). So it does while
-  // the list for the other API loads after switching Tooling API, rather than
-  // the object list flashing in between.
+  // name), the last object found stays shown (docs/web.md).
   const [last, setLast] = useState<string>()
   if (found && last !== found.name) setLast(found.name)
   else if (!soql.panelObject && last) setLast(undefined)
-  const lastStillListed = last !== undefined && (globals.pending || globals.data?.sobjects.some((o) => o.name === last))
+  const lastStillListed = last !== undefined && globals.data?.sobjects.some((o) => o.name === last)
   const current = found?.name ?? (soql.panelObject && lastStillListed ? last : undefined)
 
   if (current) return <FieldPanel key={`${current}\n${soql.tooling}`} username={username} objectName={current} />

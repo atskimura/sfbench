@@ -27,7 +27,6 @@ vi.mock('./apiClient.ts', async (importOriginal) => {
 const { api, ApiRequestError } = await import('./apiClient.ts')
 const { App } = await import('./App.tsx')
 const { t } = await import('./i18n/i18n.ts')
-const { clearDescribeCache } = await import('./state/describeCache.ts')
 const mocked = vi.mocked(api)
 
 const org: Org = {
@@ -81,7 +80,6 @@ beforeEach(() => {
 })
 afterEach(() => {
   cleanup()
-  clearDescribeCache()
   vi.resetAllMocks()
 })
 
@@ -134,17 +132,6 @@ describe('SOQL workspace', () => {
     expect(within(objects).queryByText(t.loadFailed)).toBeNull()
     objectsLoaded({ sobjects: [{ name: 'Account', label: 'Account', queryable: true }], fetchedAt: now })
     expect(await within(objects).findByRole('button', { name: /Account/ })).toBeTruthy()
-  })
-
-  it('keeps the fields shown while the Tooling API object list loads', async () => {
-    render(<App launch={{ org: 'demo' }} />)
-    await userEvent.click(await screen.findByRole('button', { name: /Account/ }))
-    expect(await screen.findByRole('region', { name: 'Account' })).toBeTruthy()
-    mocked.sobjects.mockReturnValue(new Promise(() => {}))
-    await userEvent.click(screen.getByLabelText('Tooling API'))
-    await waitFor(() => expect(mocked.sobjects).toHaveBeenLastCalledWith(expect.anything(), true, false))
-    expect(screen.getByRole('region', { name: 'Account' })).toBeTruthy()
-    expect(screen.queryByRole('region', { name: t.sObjects })).toBeNull()
   })
 
   it('runs the query given at launch', async () => {

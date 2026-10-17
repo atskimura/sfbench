@@ -278,7 +278,7 @@ function ReferenceFields({
   const describe = useLoadable(`${username}\n${objectName}\n${soql.tooling}`, () => describeSObject(username, objectName, soql.tooling))
   useReportOrgError(username, describe.error)
   if (describe.error !== undefined) return <p className={panel.empty}>{t.loadFailed}</p>
-  if (!describe.data) return <p className={panel.empty} aria-busy="true">{t.loading}</p>
+  if (describe.pending || !describe.data) return <p className={panel.empty} aria-busy="true">{t.loading}</p>
   return <FieldList username={username} fields={describe.data.fields} relationships={relationships} childRelationship={childRelationship} />
 }
 

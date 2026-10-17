@@ -33,7 +33,7 @@ export function describeSObject(username: string, name: string, tooling: boolean
 }
 
 
-/** For tests: forgets every describe, as a new tab would. */
+/** Forgets every describe, as a new tab would (used between tests). */
 export function clearDescribeCache(): void {
   globals.clear()
   objects.clear()
@@ -44,7 +44,7 @@ export type Loadable<T> = {
   error?: unknown
   /** A request for this key is running (a first load or a reload). */
   loading: boolean
-  /** Nothing to show yet: the first load for this key is running. Panels say "loading" for this. */
+  /** Nothing to show for this key and a request is running (a first load, or a reload after a failure). Panels say "loading" for this. */
   pending: boolean
   reload: () => void
 }
