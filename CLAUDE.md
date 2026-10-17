@@ -86,7 +86,7 @@ SFBENCH_HOME=$(mktemp -d) node scripts/smoke.mjs dist/server/cli.js <組織の�
 
 npm への公開は、手元で次の順に行う。
 
-1. `package.json` の `version` を上げる PR を main にマージする。
+1. `package.json` の `version` を上げる PR を main にマージする。最初の公開（0.1.0）では、同じ PR で `"private": true` を外す（それまでは誤って公開しないよう付けておく）。
 2. `git switch main && git pull` で、手元の main を最新にする。未コミットの変更や追跡していないファイルがない状態にする。
 3. `npm run typecheck && npm run lint && npm test && npm pack --dry-run` で、検査を通し、公開物の中身を確かめる。`--dry-run` を付けるのは、tarball を残すと手順5の検査が「追跡していないファイルがある」として止まるからである（`*.tgz` は `.gitignore` に入れてある）。
 4. `git tag v<バージョン> && git push origin v<バージョン>` で、公開するコミットにタグを付ける。検査を先に済ませるのは、失敗したときに公開されない版のタグを残さないためである。

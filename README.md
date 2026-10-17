@@ -5,6 +5,9 @@ It uses the auth you already have in the sf CLI, so there is no connected app to
 
 [日本語の README](README.ja.md)
 
+**sfbench is under development and not yet published to npm.**
+The SOQL screen is done; it will be published once having an AI write SOQL, REST API requests and anonymous Apex are in.
+
 sfbench is the successor to [lwc-soql-builder](https://github.com/lwc-soql-builder/lwc-soql-builder).
 lwc-soql-builder can no longer log in, because Salesforce has blocked the OAuth user-agent flow it relied on.
 
@@ -20,7 +23,7 @@ lwc-soql-builder can no longer log in, because Salesforce has blocked the OAuth 
 - Queries with the Tooling API and Query All
 - AI agents (such as Claude Code) can open sfbench with a query filled in
 
-Running REST API requests and anonymous Apex, and having an AI write SOQL, will come in later versions.
+Running REST API requests and anonymous Apex, and having an AI write SOQL, will be in place before the first release.
 
 ## Requirements
 
@@ -36,7 +39,7 @@ sf org login web -a my-org
 
 ## Usage
 
-Start sfbench with:
+Once published, start sfbench with:
 
 ```
 npx sfbench

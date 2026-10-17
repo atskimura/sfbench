@@ -3,6 +3,9 @@
 sfbench は、Salesforce の SOQL、REST API、匿名 Apex を手元のブラウザで実行するツールです。
 認証は sf CLI に保存済みのものを使うので、接続アプリケーションの作成や組織の設定は要りません。
 
+**現在開発中で、npm にはまだ公開していません。**
+SOQL の画面ができたところで、AI に SOQL を組ませる機能、REST API と匿名 Apex の実行を作り終えてから公開します。
+
 sfbench は [lwc-soql-builder](https://github.com/lwc-soql-builder/lwc-soql-builder) の後継です。
 lwc-soql-builder は、Salesforce が OAuth のユーザーエージェントフローを使えなくしたため、ログインできなくなりました。
 
@@ -18,7 +21,7 @@ lwc-soql-builder は、Salesforce が OAuth のユーザーエージェントフ
 - Tooling API と Query All でのクエリ
 - AI のエージェント（Claude Code など）から、クエリを入れた状態で起動できる
 
-REST API と匿名 Apex の実行、AI に SOQL を組ませる機能は、順に追加する予定です。
+REST API と匿名 Apex の実行、AI に SOQL を組ませる機能は、公開までに追加します。
 
 ## 必要なもの
 
@@ -34,7 +37,7 @@ sf org login web -a my-org
 
 ## 使い方
 
-次のコマンドで起動します。
+公開後は次のコマンドで起動します。
 
 ```
 npx sfbench
