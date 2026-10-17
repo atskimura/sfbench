@@ -112,7 +112,7 @@ const ResultContext = createContext<ResultState | undefined>(undefined)
 
 export function SoqlProvider({ children }: { children: ReactNode }) {
   const { settings, notify } = useApp()
-  const { selected, selectedSummary, handleOrgError, reportOrgError, markAuthError, reportApiUsage, takeLaunchQuery } = useOrgs()
+  const { selected, selectedSummary, handleOrgError, reportOrgError, markAuthError, reportApiUsage, launchQuery, discardLaunchQuery } = useOrgs()
   const editor = useRef<EditorHandle | null>(null)
   const [selection, setSelection] = useState<Selection>()
   const [firstLine, setFirstLine] = useState('')
@@ -205,6 +205,8 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
     api.query(selected, { soql, tooling: useTooling, queryAll: !useTooling && queryAll }, abort.signal).then(
       (response) => {
         if (generation !== runGeneration.current) return
+        // A run that finished (here or as an error below) uses up the launch query.
+        discardLaunchQuery()
         reportApiUsage(selected, response.apiUsage)
         setResult({
           state: 'done',
@@ -228,6 +230,7 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
       (e: unknown) => {
         if (generation !== runGeneration.current) return
         if (e instanceof ApiRequestError && e.code === 'ABORTED') return
+        discardLaunchQuery()
         if (e instanceof ApiRequestError && e.code === 'ORG_AUTH_ERROR') {
           // Shown in the result area only, not also as a notification.
           markAuthError(selected, e.body?.reloginCommand)
@@ -245,26 +248,32 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
         setResult({ state: 'error', message: (e as Error).message })
       },
     )
-  }, [selected, tooling, queryAll, reportApiUsage, handleOrgError, markAuthError, loadHistoryFor])
+  }, [selected, tooling, queryAll, reportApiUsage, handleOrgError, markAuthError, loadHistoryFor, discardLaunchQuery])
 
-  // When the org changes: drop the result, reload the history, and run the
-  // query given at launch (docs/web.md "起動から作業画面まで").
+  // The workspace is remade for each org (docs/web.md "非同期の流れ"): on
+  // mounting, load the history and take the query given at launch; on going
+  // away, stop the running query.
   useEffect(() => {
-    runAbort.current?.abort()
-    runGeneration.current++
-    setResult({ state: 'idle' })
-    setHistory([])
     historyOrg.current = selected
-    if (!selected) return
-    loadHistoryFor(selected)
-    const launch = takeLaunchQuery()
+    if (selected) loadHistoryFor(selected)
+    const launch = launchQuery()
+    let timer: ReturnType<typeof setTimeout> | undefined
     if (launch) {
       setText(launch.query)
-      if (launch.run) setTimeout(run, 0)
+      // Without --run, the text is in the editor (and its saved copy): done with it.
+      if (launch.run) timer = setTimeout(run, 0)
+      else discardLaunchQuery()
     }
-    // run changes with the org; it must not retrigger this effect.
+    const abort = runAbort
+    const generation = runGeneration
+    return () => {
+      clearTimeout(timer)
+      abort.current?.abort()
+      generation.current++
+    }
+    // Once per workspace, which is remade for each org.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected])
+  }, [])
 
   const soqlValue = useMemo<SoqlState>(
     () => ({

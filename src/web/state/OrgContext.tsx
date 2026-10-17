@@ -14,6 +14,7 @@ import { ApiRequestError, api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
 import { isProductionBySummary } from '../orgs/production.ts'
 import { useApp } from './AppContext.tsx'
+import { clearEditorText } from './editorStorage.ts'
 
 const SELECTED_KEY = 'sfbench.selectedOrg'
 
@@ -98,7 +99,13 @@ export type OrgContextValue = State & {
   /** Marks the org as needing login again without a notification (the caller shows the error). */
   markAuthError: (username: string, reloginCommand: string | undefined) => void
   /** The --query/--run given at launch, returned once (for the SOQL editor). */
-  takeLaunchQuery: () => { query: string; run: boolean } | undefined
+  /**
+   * The --query/--run given at launch, for the workspace shown first. Reading
+   * does not take it (StrictMode shows the workspace twice); it goes on
+   * discardLaunchQuery or when switching away (docs/web.md "起動時のクエリ").
+   */
+  launchQuery: () => { query: string; run: boolean } | undefined
+  discardLaunchQuery: () => void
 }
 
 const OrgContext = createContext<OrgContextValue | undefined>(undefined)
@@ -185,8 +192,18 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
     dispatch({ type: 'status', username, status: { state: 'authError', reloginCommand } })
   }, [])
 
+  // The org whose workspace is shown; choosing the first one is not a switch.
+  const shownOrg = useRef<string | undefined>(undefined)
+
   const selectOrg = useCallback(
     (username: string) => {
+      const previous = shownOrg.current
+      shownOrg.current = username
+      if (previous !== undefined && previous !== username) {
+        // Switching orgs resets the workspace: nothing of the old one comes back.
+        clearEditorText()
+        launchQuery.current = undefined
+      }
       dispatch({ type: 'select', username })
       saveSelected(username)
       // Without a summary, production is judged from the org list and no
@@ -281,10 +298,9 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
     [loadOrgs],
   )
 
-  const takeLaunchQuery = useCallback(() => {
-    const value = launchQuery.current
+  const peekLaunchQuery = useCallback(() => launchQuery.current, [])
+  const discardLaunchQuery = useCallback(() => {
     launchQuery.current = undefined
-    return value
   }, [])
 
   const value = useMemo<OrgContextValue>(() => {
@@ -303,9 +319,10 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
       handleOrgError,
       reportOrgError,
       markAuthError,
-      takeLaunchQuery,
+      launchQuery: peekLaunchQuery,
+      discardLaunchQuery,
     }
-  }, [state, loadOrgs, recheckConnections, selectOrg, setPickerOpen, reportApiUsage, handleOrgError, reportOrgError, markAuthError, takeLaunchQuery])
+  }, [state, loadOrgs, recheckConnections, selectOrg, setPickerOpen, reportApiUsage, handleOrgError, reportOrgError, markAuthError, peekLaunchQuery, discardLaunchQuery])
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>
 }
