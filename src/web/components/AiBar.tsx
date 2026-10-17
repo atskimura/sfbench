@@ -108,8 +108,7 @@ function Chip({ text, onRemove }: { text: string; onRemove: () => void }) {
 export function ProposalCard() {
   const ai = useAi()
   const { settledText } = useSoql()
-  // Not while the AI is Off or not set up (docs/ai.md "既知の弱点").
-  const p = ai.availability === 'ready' ? ai.proposal : undefined
+  const p = ai.proposal
   // Against the editor as it is now, which Replace replaces (docs/ai.md "画面の状態と遷移").
   // The card redraws as the request is typed; the diff is worked out again only when these change.
   const parts = useMemo(() => (p && settledText.trim() ? diffWords(settledText, p.soql) : undefined), [p, settledText])

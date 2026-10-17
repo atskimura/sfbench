@@ -38,7 +38,7 @@ type AiValue = {
   /** A request is running: decided by the AI task only. */
   running: boolean
   step: AiStep | undefined
-  /** Not shown while a request runs. */
+  /** Not shown while a request runs, or while the AI is Off or not set up. */
   proposal: Proposal | undefined
   failure: AiFailure | undefined
   generate: () => void
@@ -80,8 +80,8 @@ async function generateSoql(
       { task: 'chooseObjects', input: { request, objects: objectList(globals, names, budgetLeft(request)), tooling, language: uiLanguage } },
       signal,
     )
-    const found = output.objects.map((o) => findByName(globals, o, names.ns)?.name).filter((o): o is string => Boolean(o))
-    objects = [...new Set(found)]
+    // The server has already matched the names with the list and dropped repeats.
+    objects = output.objects.map((o) => findByName(globals, o, names.ns)?.name).filter((o): o is string => Boolean(o))
     if (objects.length === 0) throw new Notice(t.aiNoObjects)
     progress('loadFields')
   }
@@ -211,7 +211,7 @@ export function AiProvider({ username, children }: { username: string; children:
       removeEditorChip: () => setRemovedFirstLine(soql.firstLine),
       running,
       step,
-      proposal: running ? undefined : proposal,
+      proposal: running || availability !== 'ready' ? undefined : proposal,
       failure: running ? undefined : failure,
       generate,
       fix,

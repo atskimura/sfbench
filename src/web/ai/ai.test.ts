@@ -74,6 +74,11 @@ describe('objectList', () => {
 })
 
 describe('diffWords', () => {
+  it('ends a string being typed at the end of its line', () => {
+    const parts = diffWords("SELECT Id FROM Account WHERE Name = 'Ac\nLIMIT 10", "SELECT Id FROM Account WHERE Name = 'Acme'\nLIMIT 10")
+    expect(parts?.find((p) => p.kind === 'same' && p.text.includes('LIMIT'))).toBeTruthy()
+  })
+
   it('shows a change of case inside a quoted string, such as a 15-character Id', () => {
     const parts = diffWords("SELECT Id FROM Account WHERE Id = '001xx000003DGb2'", "SELECT Id FROM Account WHERE Id = '001xx000003dgb2'")
     expect(parts?.filter((p) => p.kind !== 'same').map((p) => p.text.trim())).toEqual(["'001xx000003DGb2'", "'001xx000003dgb2'"])

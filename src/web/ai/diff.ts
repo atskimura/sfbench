@@ -5,7 +5,8 @@
 export type DiffPart = { text: string; kind: 'same' | 'added' | 'removed' }
 
 /** Words, numbers and names (with dots), quoted strings, and single symbols, each with the spaces before it. */
-const TOKEN = /\s*('(?:\\.|[^'\\])*'?|[\p{L}\p{N}_.]+|[^\s\p{L}\p{N}_.])/gu
+// An unclosed string (one being typed) ends at the end of its line.
+const TOKEN = /\s*('(?:\\.|[^'\\\n])*'?|[\p{L}\p{N}_.]+|[^\s\p{L}\p{N}_.])/gu
 /** Above this many cell comparisons the diff is skipped (the proposal is shown alone). */
 const MAX_CELLS = 1_000_000
 /** Below this share of words in common, a word diff is harder to read than the proposal alone. */
