@@ -33,7 +33,21 @@ export function describeSObject(username: string, name: string, tooling: boolean
 }
 
 
-export type Loadable<T> = { data?: T; error?: unknown; loading: boolean; reload: () => void }
+/** For tests: forgets every describe, as a new tab would. */
+export function clearDescribeCache(): void {
+  globals.clear()
+  objects.clear()
+}
+
+export type Loadable<T> = {
+  data?: T
+  error?: unknown
+  /** A request for this key is running (a first load or a reload). */
+  loading: boolean
+  /** Nothing to show yet: the first load for this key is running. Panels say "loading" for this. */
+  pending: boolean
+  reload: () => void
+}
 
 /**
  * Loads data identified by `key` (undefined: nothing to load). Loads again
@@ -64,10 +78,8 @@ export function useLoadable<T>(key: string | undefined, load: (refresh: boolean)
   const reload = useCallback(() => setReloads((n) => n + 1), [])
   // While reloading, the previous data for the same key stays visible.
   const sameKey = key !== undefined && state.key === key
-  return {
-    data: sameKey ? state.data : undefined,
-    error: state.request === request ? state.error : undefined,
-    loading: request !== undefined && state.request !== request,
-    reload,
-  }
+  const data = sameKey ? state.data : undefined
+  const error = state.request === request ? state.error : undefined
+  const loading = request !== undefined && state.request !== request
+  return { data, error, loading, pending: loading && data === undefined, reload }
 }

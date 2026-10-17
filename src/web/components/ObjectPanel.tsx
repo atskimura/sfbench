@@ -24,11 +24,13 @@ export function ObjectPanel({ username }: { username: string }) {
   const found = soql.panelObject && globals.data ? findByName(globals.data.sobjects, soql.panelObject, soql.names.ns) : undefined
 
   // While FROM names an object the org does not have (such as a half-typed
-  // name), the last object found stays shown (docs/web.md).
+  // name), the last object found stays shown (docs/web.md). So it does while
+  // the list for the other API loads after switching Tooling API, rather than
+  // the object list flashing in between.
   const [last, setLast] = useState<string>()
   if (found && last !== found.name) setLast(found.name)
   else if (!soql.panelObject && last) setLast(undefined)
-  const lastStillListed = last !== undefined && globals.data?.sobjects.some((o) => o.name === last)
+  const lastStillListed = last !== undefined && (globals.pending || globals.data?.sobjects.some((o) => o.name === last))
   const current = found?.name ?? (soql.panelObject && lastStillListed ? last : undefined)
 
   if (current) return <FieldPanel key={`${current}\n${soql.tooling}`} username={username} objectName={current} />
@@ -57,7 +59,7 @@ function ObjectList({ globals }: { globals: Loadable<DescribeGlobal> }) {
       <FilterInput label={t.filterObjects} value={filter} onChange={setFilter} />
       <div className={panel.body} aria-busy={globals.loading}>
         {globals.error !== undefined && <p className={panel.empty}>{t.loadFailed}</p>}
-        {!globals.data && globals.error === undefined && <p className={panel.empty}>{t.loading}</p>}
+        {globals.pending && <p className={panel.empty}>{t.loading}</p>}
         {globals.data && objects.length === 0 && <p className={panel.empty}>{t.noMatchingObjects}</p>}
         <ul className={styles.list}>
           {objects.map((o) => (
