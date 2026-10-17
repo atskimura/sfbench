@@ -20,6 +20,8 @@ export function AiSettings({ saved, draft, onChange }: { saved: AiSettingsView |
   useEffect(() => () => testAbort.current?.abort(), [])
 
   const change = (patch: Partial<AiDraft>) => {
+    // A test still running checks settings that are no longer on screen.
+    testAbort.current?.abort()
     setTest({ state: 'idle' })
     onChange({ ...draft, ...patch, touched: true })
   }

@@ -43,8 +43,22 @@ export type ProviderRequest = {
   signal: AbortSignal
 }
 
-/** fetch with no redirects (a key must not follow a redirect elsewhere), mapping network failures. */
-export async function post(url: string, headers: Record<string, string>, body: object, signal: AbortSignal): Promise<{ status: number; text: string }> {
+/**
+ * POSTs JSON with no redirects (a key must not follow a redirect elsewhere)
+ * and returns the parsed reply. Network failures, error statuses and replies
+ * that are not JSON become AiError.
+ */
+export async function postJson(url: string, headers: Record<string, string>, body: object, signal: AbortSignal): Promise<unknown> {
+  const { status, text } = await post(url, headers, body, signal)
+  if (status < 200 || status >= 300) throw new AiError('AI_ERROR', errorMessage(status, text))
+  try {
+    return JSON.parse(text)
+  } catch {
+    throw new AiError('AI_BAD_OUTPUT', 'The AI API returned a response that is not JSON.', cutErrorText(text))
+  }
+}
+
+async function post(url: string, headers: Record<string, string>, body: object, signal: AbortSignal): Promise<{ status: number; text: string }> {
   let res: Response
   try {
     res = await fetch(url, {

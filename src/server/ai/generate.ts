@@ -5,7 +5,7 @@ import type { StoredAiSettings } from '../store.ts'
 import { callAnthropic } from './anthropic.ts'
 import { AiError } from './errors.ts'
 import { callOpenAi } from './openai.ts'
-import { checkOutput, promptFor } from './tasks.ts'
+import { checkOutput, knownObjects, promptFor } from './tasks.ts'
 
 /** Local models are out, but large models can still take minutes (docs/ai.md "API"). */
 export const AI_TIMEOUT_MS = 300_000
@@ -24,15 +24,22 @@ export async function generate<T extends AiTask>(
 ): Promise<AiOutput<T>> {
   if (!ai || ai.provider === 'off') throw new AiError('AI_NOT_CONFIGURED', 'AI is not set up. Choose an AI in the settings.')
   if (!ai.apiKey) throw new AiError('AI_NOT_CONFIGURED', 'No API key is saved for the AI. Enter it in the settings.')
-  const timeout = AbortSignal.timeout(timeoutMs)
-  const both = AbortSignal.any([signal, timeout])
+  // A timer cleared when done, rather than AbortSignal.timeout, which lives on for the full time.
+  const timeout = new AbortController()
+  const timer = setTimeout(() => timeout.abort(), timeoutMs)
+  const both = AbortSignal.any([signal, timeout.signal])
   const prompt = promptFor(req)
   try {
     const text = await CALLERS[ai.provider]({ apiKey: ai.apiKey, model: ai.model, ...prompt, signal: both })
-    return checkOutput(req.task, text)
+    const output = checkOutput(req.task, text)
+    // Narrowed through the request itself: T does not narrow req.
+    const request = req as AiTaskRequest
+    return (request.task === 'chooseObjects' ? knownObjects(output as AiOutput<'chooseObjects'>, request.input.objects) : output) as AiOutput<T>
   } catch (e) {
-    if (timeout.aborted) throw new AiError('AI_TIMEOUT', `The AI did not answer within ${Math.round(timeoutMs / 1000)} seconds.`)
+    if (timeout.signal.aborted) throw new AiError('AI_TIMEOUT', `The AI did not answer within ${Math.round(timeoutMs / 1000)} seconds.`)
     throw e
+  } finally {
+    clearTimeout(timer)
   }
 }
 

@@ -58,7 +58,7 @@ docs/       設計文書
 - `server.json` の項目名、`X-Sfbench-Admin` ヘッダー、`/api/health` と `/api/shutdown` の形は、バージョンをまたいで変えない。
 - 任意の URL を中継しない。Salesforce へのパスは instanceUrl とオリジンが一致し、`/services/` で始まるものだけを通す。
 - `~/.sfbench/` のファイルは権限 600、ディレクトリは 700 で作る。
-- AI は API（Anthropic、OpenAI 互換）で呼び、利用者がボタンを押したときだけ呼ぶ。AI にクエリの結果やレコードを渡さない。API キーは画面に返さない。
+- AI は API（Anthropic と OpenAI の2つだけ）で呼び、利用者がボタンを押したときだけ呼ぶ。AI にクエリの結果やレコードを渡さない。API キーは画面に返さない。
 - データを変更しうる操作（REST API の送信、Apex の実行）は、利用者がボタンを押すまで実行しない。
 
 ### そのほか

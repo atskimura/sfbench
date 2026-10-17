@@ -221,12 +221,9 @@ export class App {
     }
 
     if (path === '/api/ai/generate' && method === 'POST') {
-      const body = await readJsonObject(req)
+      const body = await readJsonObject(req, { bytes: MAX_AI_INPUT_BYTES, code: 'PAYLOAD_TOO_LARGE', message: 'Too much to send to the AI.' })
       const invalid = invalidTaskRequest(body)
       if (invalid) throw new HttpError(400, 'BAD_REQUEST', invalid)
-      if (Buffer.byteLength(JSON.stringify(body)) > MAX_AI_INPUT_BYTES) {
-        throw new HttpError(413, 'PAYLOAD_TOO_LARGE', 'Too much to send to the AI.')
-      }
       await this.runAi(res, (signal) => generate(this.options.settings.get().ai, body as AiTaskRequest, signal).then((output) => ({ output })))
       return
     }
@@ -528,12 +525,15 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 }
 
 /** Reads a JSON object body. Anything else (empty, null, an array, a string) is a 400. */
-async function readJsonObject(req: IncomingMessage): Promise<Record<string, unknown>> {
+async function readJsonObject(
+  req: IncomingMessage,
+  limit: { bytes: number; code: ApiErrorCode; message: string } = { bytes: MAX_BODY_BYTES, code: 'BAD_REQUEST', message: 'Request body too large' },
+): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = []
   let size = 0
   for await (const chunk of req) {
     size += (chunk as Buffer).length
-    if (size > MAX_BODY_BYTES) throw new HttpError(413, 'BAD_REQUEST', 'Request body too large')
+    if (size > limit.bytes) throw new HttpError(413, limit.code, limit.message)
     chunks.push(chunk as Buffer)
   }
   const text = Buffer.concat(chunks).toString('utf8')
