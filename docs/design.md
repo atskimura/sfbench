@@ -424,7 +424,7 @@ Windows ではこの権限の指定が効かないので、ユーザーのプロ
 旧版もヘッダーをクエリにだけ付けていた。
 
 `PUT /api/settings` では、API キーの項目を省けば保存済みのキーを維持し、空を明示すれば消す。
-ただし、AI の提供元か Base URL を変えたときは、保存済みのキーを消し、入れ直してもらう。
+ただし、AI の提供元を変えたときは、保存済みのキーを消し、入れ直してもらう。
 保存済みのキーが、利用者の意図しない宛先に送られないようにするためである。
 
 ## 画面
@@ -457,12 +457,12 @@ Windows ではこの権限の指定が効かないので、ユーザーのプロ
 
 - 既定は無効である。設定画面で選ぶまで、AI を一切呼ばない。
 - 未設定のときは、AI の入力欄の位置に設定への案内を出す。設定画面で Off を選んだ場合は、AI に関する表示をすべて隠す。
-- AI は API で呼ぶ。対応するのは Anthropic の Messages API と、OpenAI 互換の Chat Completions API（OpenAI、Gemini、OpenRouter、手元で動かす Ollama や LM Studio など）である。どちらもサーバーが `fetch` で呼ぶ。
-- モデル ID、API キー、OpenAI 互換の場合は Base URL を、設定画面で入れる。モデル ID は sfbench に埋め込まない。モデルが廃止されたときに、利用者が書き換えるだけで済むようにするためである。
+- AI は API で呼ぶ。対応するのは Anthropic の Messages API と OpenAI の Chat Completions API の2つである。どちらもサーバーが `fetch` で呼ぶ。OpenAI 互換の API（Gemini、OpenRouter、手元で動かすモデルなど）には対応しない（理由は [ai.md](ai.md)）。
+- モデル ID と API キーを、設定画面で入れる。モデル ID は sfbench に埋め込まない。モデルが廃止されたときに、利用者が書き換えるだけで済むようにするためである。
 - API キーは `~/.sfbench/settings.json` に保存し、画面には返さない。
 - AI を呼ぶのは、利用者が Generate か Fix with AI を押したときだけである。
 - AI には組織を触らせない。Salesforce への問い合わせは sfbench が行い、AI にはテキストだけを渡す。渡すのはオブジェクトと項目の名前、型、選択リストの値、エディタの内容、エラー文で、クエリの結果とレコードは渡さない。
-- AI の出力は JSON の形で受け取る。Anthropic では `output_config.format`、OpenAI 互換では `response_format` の JSON Schema で形を縛り、受け取った出力は sfbench の側でも検査する（[ai.md](ai.md)）。
+- AI の出力は JSON の形で受け取る。Anthropic では `output_config.format`、OpenAI では `response_format` の JSON Schema で形を縛り、受け取った出力は sfbench の側でも検査する（[ai.md](ai.md)）。
 - 出力はいったん提案カードで見せ、利用者が反映を選んでからエディタを書き換える。SOQL に限り「反映して実行」を選べる。
 
 AI の CLI（Claude Code、Codex など）を呼ぶ案は採らなかった。
@@ -485,7 +485,7 @@ Apex の画面は、Tooling API の `executeAnonymous` で匿名 Apex を実行�
 いずれも、壊れたときの影響を一つのファイルに閉じ込め、失敗したときに原因を画面に出す。
 
 - **`sf api request rest` の出力**：`--include` を付けた出力は JSON ではなく、ステータス行、ヘッダー、ボディの生テキストである。解析処理は1ファイルにまとめ、実際の出力を記録したものでテストする。
-- **AI の API**：Anthropic と OpenAI 互換の API の仕様が変わると、AI の機能が動かなくなる。呼び出しは提供元ごとに1ファイルにまとめ、失敗したときは API が返したエラー文を画面に出す。
+- **AI の API**：Anthropic と OpenAI の API の仕様が変わると、AI の機能が動かなくなる。呼び出しは提供元ごとに1ファイルにまとめ、失敗したときは API が返したエラー文を画面に出す。
 
 ## 技術構成
 

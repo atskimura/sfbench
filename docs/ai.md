@@ -29,20 +29,22 @@ REST API のリクエストと匿名 Apex を組ませる機能は、それぞ�
   "ai": {
     "provider": "anthropic",
     "model": "<モデル ID>",
-    "baseUrl": "https://api.openai.com/v1",
     "apiKey": "<キー>",
-    "keyTarget": "anthropic"
+    "keyProvider": "anthropic"
   }
 }
 ```
 
-- **provider**：`off`、`anthropic`、`openai` のどれかである。`openai` は OpenAI 互換の Chat Completions API を指す。
+- **provider**：`off`、`anthropic`、`openai` のどれかである。`anthropic` は Anthropic の Messages API、`openai` は OpenAI の Chat Completions API を指す。
 - **ai がないとき**：未設定である。画面は AI の入力欄の位置に設定への案内を出す。
-- **provider が off のとき**：利用者が Off を選んだ。画面は AI に関する表示をすべて隠す。Off にしても `model`、`baseUrl`、`apiKey` は残し、元の提供元に戻したときに入れ直さずに済むようにする。
+- **provider が off のとき**：利用者が Off を選んだ。画面は AI に関する表示をすべて隠す。Off にしても `model` と `apiKey` は残し、元の提供元に戻したときに入れ直さずに済むようにする。
 - **model**：モデル ID である。sfbench には埋め込まず、利用者が入れる。
-- **baseUrl**：`openai` のときだけ使う。保存するときに、末尾の `/` と、貼り付けられた `/chat/completions` を取り除く（例: `https://api.openai.com/v1`、`http://localhost:11434/v1`）。
-- **apiKey**：手元で動かすモデルなどで不要なときは、ないままでよい。
-- **keyTarget**：キーを最後に使った宛先（`anthropic`、または `openai` と正規化した Base URL）である。キーを消すかどうかの判定に使う（後述）。
+- **apiKey**：API キーである。
+- **keyProvider**：キーを入れたときの提供元である。キーを消すかどうかの判定に使う（後述）。
+
+対応する提供元は Anthropic と OpenAI の2つに限る（利用者の決定）。
+OpenAI 互換の API（Gemini、OpenRouter、手元で動かす Ollama など）にも広げられるが、Base URL の扱い、暗号化されない宛先へのキーの送信、各社の実装の違いへの対処が要り、保守する人のいない道具には重い。
+手元で動かす小さなモデルは、SOQL を正しく組めないことが多い。macOS に組み込まれたモデル（`fm` コマンド）で試したところ、3つの要望のどれにも正しい SOQL を返さなかった。
 
 `settings.json` は、作るときと書き換えるときにファイルの権限を 0600 にする（Windows では何もしない）。
 API キーが入るので、同じマシンのほかの利用者に読ませないためである。
@@ -50,15 +52,14 @@ API キーが入るので、同じマシンのほかの利用者に読ませな�
 
 ### API
 
-`GET /api/settings` は、`ai` から `apiKey` と `keyTarget` を除き、代わりに `hasApiKey`（真偽値）を返す。
+`GET /api/settings` は、`ai` から `apiKey` と `keyProvider` を除き、代わりに `hasApiKey`（真偽値）を返す。
 
 `PUT /api/settings` の `ai` は次のように扱う。
 
 - `ai` を省けば、保存済みの `ai` をそのまま残す。設定画面は、AI の欄を変えたときだけ `ai` を送る。名前空間や待つ時間を変えて保存しただけで、未設定が Off に変わらないようにするためである。
 - `apiKey` を省けば、保存済みのキーを残す。`apiKey: null` で消す。
-- 宛先（`anthropic`、または `openai` と正規化した Base URL）が `keyTarget` と変わったら、`apiKey` を省いていても保存済みのキーを消す。キーが、利用者の意図しない宛先に送られないようにするためである（design.md）。Off を経由しても、宛先が同じならキーは残る。
+- 提供元が `keyProvider` と変わったら、`apiKey` を省いていても保存済みのキーを消す。Anthropic のキーを OpenAI に送るような、利用者の意図しない宛先への送信を防ぐためである（design.md）。Off を経由しても、提供元が同じならキーは残る。
 - `provider` が `anthropic` か `openai` なのに `model` が空なら 400 を返す。
-- `openai` の Base URL は `https://` だけを受け付ける。ただし、自分のマシン（`localhost`、`127.0.0.1`、`::1`）だけは、手元で動かすモデル（Ollama、LM Studio）のために `http://` も受け付ける。それ以外は 400 を返す。暗号化されない通信で、API キーをほかのマシンへ送らないためである。LAN の別のマシンで動かすモデルは、使う人がほとんどいないので対応しない（利用者の決定）。
 
 ## サーバー
 
@@ -67,7 +68,7 @@ API キーが入るので、同じマシンのほかの利用者に読ませな�
 ```
 src/server/ai/
   anthropic.ts        Anthropic Messages API の呼び出し
-  openaiCompatible.ts OpenAI 互換の Chat Completions API の呼び出し
+  openai.ts           OpenAI Chat Completions API の呼び出し
   tasks.ts            タスクごとの指示文、出力の形（JSON Schema）、受け取った出力の検査
   generate.ts         設定を読み、提供元を選んで呼び、出力を検査して返す
 ```
@@ -80,26 +81,23 @@ API の仕様が変わって壊れても、直す場所がそのファイルに�
 どちらも Node の `fetch` で呼び、リダイレクトはたどらない（`redirect: 'error'`）。
 リダイレクトの先に、キーを付けた要求が届かないようにするためである。
 起動オプションの `--use-env-proxy` で、環境変数のプロキシを通る。
-手元で動かすモデル（`localhost`）への要求がプロキシに回らないかは、手で確かめる。
-回るなら、README に `NO_PROXY` の設定を書く。
 
-| 項目 | Anthropic | OpenAI 互換 |
+| 項目 | Anthropic | OpenAI |
 | --- | --- | --- |
-| 宛先 | `POST https://api.anthropic.com/v1/messages` | `POST <baseUrl>/chat/completions` |
-| 認証 | `x-api-key`、`anthropic-version: 2023-06-01` | キーがあれば `Authorization: Bearer <キー>` |
+| 宛先 | `POST https://api.anthropic.com/v1/messages` | `POST https://api.openai.com/v1/chat/completions` |
+| 認証 | `x-api-key`、`anthropic-version: 2023-06-01` | `Authorization: Bearer <キー>` |
 | 出力の形の縛り | `output_config.format`（`{"type": "json_schema", "schema": ...}`） | `response_format`（`{"type": "json_schema", "json_schema": {"name", "schema", "strict": true}}`） |
 | 出力の上限 | `max_tokens: 4096`（必須の項目） | 送らない |
 | 温度など | 送らない | 送らない |
 | 出力の場所 | `content` の `text` | `choices[0].message.content` |
 | 拒否 | `stop_reason: "refusal"` | `message.refusal` |
 | 上限で切れた | `stop_reason: "max_tokens"` | `finish_reason: "length"` |
-| エラーの文 | `error.message` | `error.message`、`[0].error.message`、本文の順に探す |
+| エラーの文 | `error.message` | `error.message` |
 
 - Anthropic で、ツールの呼び出しを強制する方法（`tool_choice`）は使わない。新しいモデルでは 400 になるからである。
-- OpenAI 互換で出力の上限と温度を送らないのは、OpenAI の推論モデルが `max_tokens` と `temperature` を拒み、ほかの実装には代わりの `max_completion_tokens` を知らないものがあるからである。それぞれの既定に任せる。
-- OpenAI 互換の `response_format` は、受け付けない実装や、縛りを無視する実装がある（Ollama は `strict` を無視する。Gemini と LM Studio は文書に書かれていない）。縛りが効いた前提にせず、受け取った出力は必ず sfbench の側で検査する。
-- OpenRouter は、エラーを 200 の応答の本文に入れて返すことがある。状態コードだけでなく、本文に `error` があるかも見る。
-- 画面に出すエラーの文は、先頭の 2 KB までにする。HTML のエラーページがそのまま返ることがあるからである。
+- OpenAI で出力の上限と温度を送らないのは、推論モデルが `max_tokens` と `temperature` を拒むからである。モデルの既定に任せる。
+- `response_format` の縛りが効く前提にせず、受け取った出力は必ず sfbench の側で検査する。モデルによっては縛りに対応しないことがあるからである。
+- 画面に出すエラーの文は、先頭の 2 KB までにする。途中のプロキシなどが、HTML のエラーページを返すことがあるからである。
 - 失敗しても、自動では送り直さない（混雑を表す 429 や 529 も同じ）。利用者がもう一度 Generate を押す。
 
 ### 出力の形
@@ -112,7 +110,7 @@ API の仕様が変わって壊れても、直す場所がそのファイルに�
 - `minLength`、`maximum` などの値の範囲の指定は使わない（Anthropic が 400 を返す）。
 
 受け取った文字列は、`JSON.parse` してから、形を手で検査する（`tasks.ts`）。
-縛りが効かない実装で、JSON の前後に文が付いて返る場合に備え、解析に失敗したら最初の `{` から最後の `}` までを取り出してもう一度解析する。
+縛りが効かないモデルで、JSON の前後に文が付いて返る場合に備え、解析に失敗したら最初の `{` から最後の `}` までを取り出してもう一度解析する。
 それでも形に合わなければ、「AI の応答が期待した形ではありません」として、受け取った文を詳細に付けて返す。
 
 ### タスク
@@ -158,8 +156,6 @@ OpportunityLineItems -> OpportunityLineItem
 画面の予算を超えることは通常ないので、これは最後の安全網である。
 
 100 KB はおよそ3万トークンで、上位のモデルでも1回の料金は数十円に収まる。
-手元で動かすモデルは文脈長が短いことが多く（Ollama の既定は数千トークン）、超えた入力は黙って切り捨てられる。
-その場合は出力が形に合わずにエラーになるので、設定画面の注記で、手元のモデルでは文脈長を広げるよう案内する。
 
 ### プロンプトインジェクション
 
@@ -178,7 +174,7 @@ OpportunityLineItems -> OpportunityLineItem
 | `POST /api/ai/test` | `PUT /api/settings` と同じ形の `ai` を受け、保存せずに `generateSoql` を小さな入力で1回呼ぶ。成功すれば、所要時間を返す |
 
 接続の確認は、設定画面で入力中の内容で行う。
-キーの欄が空なら、保存済みのキーを使う。ただし、宛先が `keyTarget` と同じときに限る（`PUT` と同じ判定）。
+キーの欄が空なら、保存済みのキーを使う。ただし、提供元が `keyProvider` と同じときに限る（`PUT` と同じ判定）。
 料金のかからない `/models` の一覧ではなく、実際の生成を1回行う。
 キーと URL だけでなく、選んだモデルが出力の形の縛りを受け付けるかまで確かめられるからである。
 料金は数トークン分かかる。推論するモデルでは、推論の分も加わる。設定画面にその旨を書く。
@@ -254,21 +250,20 @@ Format で整形しただけなら、空白の違いなので一致する。
 
 ### 設定画面の AI の欄
 
-screens.md のとおり、Off、Anthropic API、OpenAI 互換 API から選び、モデル、Base URL（OpenAI 互換のみ）、API キーを入れる。
+screens.md のとおり、Off、Anthropic、OpenAI から選び、モデルと API キーを入れる。
 
 - API キーの欄は、保存済みなら空のまま「保存済み」と表示する。入力すれば置き換え、「キーを消す」で消す。
-- 宛先（提供元か Base URL）を変えると、保存済みのキーが消えることを、欄の下に書く。
+- 提供元を変えると、保存済みのキーが消えることを、欄の下に書く。
 - AI に送る情報として、オブジェクトと項目の名前、型、選択リストの値、エディタの内容（条件に書いた値を含む）、エラー文を挙げる。クエリの結果とレコードは送らない、と書く。
-- 手元で動かすモデルは、文脈長を広げないと項目の一覧が切り捨てられることがある、と書く。
 - Test connection は、入力中の内容で試す（前述）。
 
 ## テスト
 
-- `anthropic.ts` と `openaiCompatible.ts` は、`fetch` を差し替え、記録した応答（成功、エラー、200 の中のエラー、拒否、上限で切れた出力、形に合わない出力、HTML のエラーページ）で確かめる。送る本文に、上限や温度の項目が表のとおり入ること（入らないこと）も確かめる。
+- `anthropic.ts` と `openai.ts` は、`fetch` を差し替え、記録した応答（成功、エラー、拒否、上限で切れた出力、形に合わない出力、HTML のエラーページ）で確かめる。送る本文に、上限や温度の項目が表のとおり入ること（入らないこと）も確かめる。
 - `tasks.ts` の検査は、形に合う出力、合わない出力、前後に文の付いた JSON で確かめる。`chooseObjects` の名前の照らし合わせも確かめる。
-- 設定の API は、キーを返さないこと、`ai` を省くと保存済みが残ること、宛先を変えるとキーが消え、Off を経由しても宛先が同じなら残ることを確かめる。Base URL の正規化も確かめる。
+- 設定の API は、キーを返さないこと、`ai` を省くと保存済みが残ること、提供元を変えるとキーが消え、Off を経由しても提供元が同じなら残ることを確かめる。
 - 画面は API を差し替えて、Generate の流れ（チップあり、なし）、Cancel、提案カードの各ボタン、Fix with AI、最近のクエリへの記録、予算に収める削り方を確かめる。
-- 実際の AI の API を呼ぶ確認は手で行う（Anthropic と、手元で動かせるなら Ollama）。環境変数でプロキシを設定したときに、`localhost` への要求がプロキシに回らないかも確かめる。
+- 実際の AI の API を呼ぶ確認は手で行う（Anthropic と OpenAI）。
 
 ## 進め方
 
