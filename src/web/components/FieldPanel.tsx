@@ -78,6 +78,7 @@ export function FieldPanel({ username, objectName }: { username: string; objectN
       <FilterInput label={t.filterFields} value={filter} onChange={setFilter} />
       <div className={panel.body} role="tabpanel" aria-labelledby={`${tabsId}-${tab === 'fields' ? 'fields' : 'rels'}`} aria-busy={describe.loading}>
         {describe.error !== undefined && <p className={panel.empty}>{t.loadFailed}</p>}
+        {describe.pending && <p className={panel.empty}>{t.loading}</p>}
         {d && tab === 'fields' && (
           <FieldList username={username} fields={d.fields} relationships={[]} filter={filter} sort={sort} />
         )}
@@ -277,7 +278,7 @@ function ReferenceFields({
   const describe = useLoadable(`${username}\n${objectName}\n${soql.tooling}`, () => describeSObject(username, objectName, soql.tooling))
   useReportOrgError(username, describe.error)
   if (describe.error !== undefined) return <p className={panel.empty}>{t.loadFailed}</p>
-  if (!describe.data) return <p className={panel.empty} aria-busy="true">…</p>
+  if (describe.pending || !describe.data) return <p className={panel.empty} aria-busy="true">{t.loading}</p>
   return <FieldList username={username} fields={describe.data.fields} relationships={relationships} childRelationship={childRelationship} />
 }
 

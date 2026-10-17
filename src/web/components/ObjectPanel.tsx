@@ -57,6 +57,7 @@ function ObjectList({ globals }: { globals: Loadable<DescribeGlobal> }) {
       <FilterInput label={t.filterObjects} value={filter} onChange={setFilter} />
       <div className={panel.body} aria-busy={globals.loading}>
         {globals.error !== undefined && <p className={panel.empty}>{t.loadFailed}</p>}
+        {globals.pending && <p className={panel.empty}>{t.loading}</p>}
         {globals.data && objects.length === 0 && <p className={panel.empty}>{t.noMatchingObjects}</p>}
         <ul className={styles.list}>
           {objects.map((o) => (

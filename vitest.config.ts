@@ -8,6 +8,7 @@ export default defineConfig({
   },
   test: {
     include: ['src/**/*.test.{ts,tsx}'],
+    setupFiles: ['src/web/testSetup.ts'],
     // Component tests opt in with `// @vitest-environment jsdom`.
     environment: 'node',
     css: { modules: { classNameStrategy: 'non-scoped' } },

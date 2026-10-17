@@ -87,6 +87,7 @@ export const en = {
   noMatchingFields: 'No matching fields',
   noChildRelationships: 'No matching child relationships',
   loadFailed: 'Could not load.',
+  loading: 'Loading…',
   run: 'Run',
   queryAll: 'Query All',
   queryAllTitle: 'Also return deleted and archived records',
