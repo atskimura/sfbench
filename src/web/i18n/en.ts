@@ -96,6 +96,8 @@ export const en = {
   recent: 'Recent',
   recentEmpty: 'Queries you run in this org show up here.',
   running: 'Running…',
+  runningQuery: 'Running the query…',
+  cancelRunNote: 'Processing that already started in Salesforce is not stopped.',
   results: 'Results',
   hideObjects: 'Hide the object list',
   showObjects: 'Show the object list',

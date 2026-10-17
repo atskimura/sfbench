@@ -1,10 +1,12 @@
 // Query results: the result table with its later pages, the row filter, the
 // child records of a subquery cell, and CSV export (docs/web.md "結果の表").
-import { useDeferredValue, useId, useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useId, useMemo, useState } from 'react'
+import { ApiRequestError, api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
 import { addColumns, cellText, cellValue, type ChildRecords, type Column, type SObjectRecord } from '../results/columns.ts'
 import { useOrgs } from '../state/OrgContext.tsx'
 import { useResult, type QueryResult } from '../state/SoqlContext.tsx'
+import { useTask } from '../state/useTask.ts'
 import { CopyCommand } from './CopyCommand.tsx'
 import { CsvExport } from './CsvExport.tsx'
 import panel from './Panel.module.css'
@@ -14,11 +16,29 @@ import { ResultTable, type CellRef } from './ResultTable.tsx'
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 export function ResultPanel() {
-  const { result } = useResult()
+  const { result, running, cancel } = useResult()
   return (
-    <section className={`${panel.panel} ${styles.result}`} aria-label={t.results} aria-busy={result.state === 'running'}>
+    <section className={`${panel.panel} ${styles.result}`} aria-label={t.results} aria-busy={running}>
+      {running ? (
+        // Here and not on the Run button, so that clicking Run twice cannot cancel (docs/screens.md).
+        <div className={styles.running}>
+          <p className={panel.empty}>{t.runningQuery}</p>
+          <button type="button" className={panel.button} onClick={cancel}>
+            {t.cancel}
+          </button>
+          <p className={panel.meta}>{t.cancelRunNote}</p>
+        </div>
+      ) : (
+        <Shown result={result} />
+      )}
+    </section>
+  )
+}
+
+function Shown({ result }: { result: QueryResult }) {
+  return (
+    <>
       {result.state === 'idle' && <p className={panel.empty}>{t.noResults}</p>}
-      {result.state === 'running' && <p className={panel.empty}>{t.running}</p>}
       {result.state === 'error' && (
         <div className={styles.error} role="alert">
           <p className={styles.message}>{result.message}</p>
@@ -31,9 +51,9 @@ export function ResultPanel() {
           )}
         </div>
       )}
-      {/* A new run starts a new table, with new column widths. */}
-      {result.state === 'done' && <Records key={result.executedAt.getTime()} result={result} />}
-    </section>
+      {/* A new run starts a new table, with new column widths, and stops what the old one was loading. */}
+      {result.state === 'done' && <Records key={result.id} result={result} />}
+    </>
   )
 }
 
@@ -58,8 +78,45 @@ function matchingRows(records: readonly SObjectRecord[], columns: readonly Colum
 }
 type OpenChild = { row: number; column: Column; child: ChildRecords }
 
+/** The query locator behind nextRecordsUrl expired or was dropped: the same request can never succeed. */
+function isLocatorGone(e: unknown): boolean {
+  return e instanceof ApiRequestError && e.code === 'SALESFORCE_ERROR' && JSON.stringify(e.body?.details ?? '').includes('INVALID_QUERY_LOCATOR')
+}
+
+/**
+ * The next page of the shown result (docs/web.md "流れごとの指定"). After a
+ * failure, only `retry` (a button) loads again; `rerun` means the query
+ * locator expired, so the query must run again.
+ */
+function useNextPage(result: Done) {
+  const { appendPage } = useResult()
+  const { reportApiUsage, reportOrgError } = useOrgs()
+  const { start, running } = useTask()
+  const [failed, setFailed] = useState<false | 'retry' | 'rerun'>(false)
+  const load = useCallback(
+    async (retry = false) => {
+      const url = result.nextRecordsUrl
+      if (!url || (failed && !retry)) return
+      // 'ignore': scroll events while a page loads do not load it twice.
+      const outcome = await start((signal) => api.nextPage(result.username, url, signal), 'ignore')
+      if (outcome.kind === 'done') {
+        const page = outcome.value
+        setFailed(false)
+        reportApiUsage(result.username, page.apiUsage)
+        appendPage(result, { records: page.records, nextRecordsUrl: page.done ? undefined : page.nextRecordsUrl })
+      } else if (outcome.kind === 'error') {
+        const gone = isLocatorGone(outcome.error)
+        setFailed(gone ? 'rerun' : 'retry')
+        if (!gone) reportOrgError(result.username, outcome.error)
+      }
+    },
+    [result, failed, start, appendPage, reportApiUsage, reportOrgError],
+  )
+  return { load, loading: running, failed }
+}
+
 function Records({ result }: { result: Done }) {
-  const { loadNext } = useResult()
+  const next = useNextPage(result)
   const { orgs } = useOrgs()
   const instanceUrl = orgs?.find((o) => o.username === result.username)?.instanceUrl
   const [filter, setFilter] = useState('')
@@ -118,19 +175,19 @@ function Records({ result }: { result: Done }) {
           onSelect={setSelected}
           onOpenChild={(row, column, value) => setChild({ row, column, child: value })}
           // While filtering, later pages load only by the button below (docs/web.md).
-          onNearEnd={rows ? undefined : loadNext}
+          onNearEnd={rows ? undefined : next.load}
           label={t.results}
         />
-        {result.nextRecordsUrl && (rows || result.loadingNext || result.nextFailed) && (
+        {result.nextRecordsUrl && (rows || next.loading || next.failed) && (
           <div className={styles.more}>
-            {result.loadingNext ? (
+            {next.loading ? (
               <span className={panel.meta}>{t.loadingMore}</span>
-            ) : result.nextFailed === 'rerun' ? (
+            ) : next.failed === 'rerun' ? (
               <span className={panel.meta}>{t.locatorExpired}</span>
             ) : (
               <>
-                {result.nextFailed && <span className={panel.meta}>{t.loadMoreFailed}</span>}
-                <button type="button" className={panel.button} onClick={() => loadNext(true)}>
+                {next.failed && <span className={panel.meta}>{t.loadMoreFailed}</span>}
+                <button type="button" className={panel.button} onClick={() => void next.load(true)}>
                   {t.loadMore(nextCount)}
                 </button>
               </>
