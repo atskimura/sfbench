@@ -462,7 +462,7 @@ Windows ではこの権限の指定が効かないので、ユーザーのプロ
 - API キーは `~/.sfbench/settings.json` に保存し、画面には返さない。
 - AI を呼ぶのは、利用者が Generate か Fix with AI を押したときだけである。
 - AI には組織を触らせない。Salesforce への問い合わせは sfbench が行い、AI にはテキストだけを渡す。渡すのはオブジェクトと項目の名前、型、選択リストの値、エディタの内容、エラー文で、クエリの結果とレコードは渡さない。
-- AI の出力は JSON の形で受け取る。形の縛り方（Anthropic ではツールの入力スキーマ、OpenAI 互換では `response_format` の JSON Schema など）は区切り3で確かめる。
+- AI の出力は JSON の形で受け取る。Anthropic では `output_config.format`、OpenAI 互換では `response_format` の JSON Schema で形を縛り、受け取った出力は sfbench の側でも検査する（[ai.md](ai.md)）。
 - 出力はいったん提案カードで見せ、利用者が反映を選んでからエディタを書き換える。SOQL に限り「反映して実行」を選べる。
 
 AI の CLI（Claude Code、Codex など）を呼ぶ案は採らなかった。
