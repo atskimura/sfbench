@@ -76,6 +76,15 @@ const CONTENT_TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
 }
 
+/**
+ * Only the files under /assets/ have a hash in their names, so only they keep
+ * their content for good. The page, the favicon and licenses.txt change with
+ * the version under the same name.
+ */
+export function cacheControl(pathname: string): string {
+  return pathname.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-store'
+}
+
 const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
@@ -439,8 +448,7 @@ export class App {
     }
     res.writeHead(200, {
       'Content-Type': CONTENT_TYPES[extname(isPage ? '/index.html' : pathname)] ?? 'application/octet-stream',
-      // Only the hashed files under /assets/ keep their content for good.
-      'Cache-Control': pathname.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-store',
+      'Cache-Control': cacheControl(pathname),
       ...SECURITY_HEADERS,
     })
     res.end(req.method === 'HEAD' ? undefined : file)

@@ -46,7 +46,7 @@
     "test": "vitest run --passWithNoTests",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "npm run clean && tsc -b && vite build",
-    "prepublishOnly": "npm run typecheck && npm run lint && npm test",
+    "prepublishOnly": "node scripts/check-release.mjs && npm run lint && npm test",
     "prepack": "npm run build"
   },
   "devDependencies": {

@@ -86,10 +86,12 @@ SFBENCH_HOME=$(mktemp -d) node scripts/smoke.mjs dist/server/cli.js <組織の�
 
 npm への公開は、手元で次の順に行う。
 
-1. `package.json` の `version` を上げ、main にマージする。
-2. `npm pack` で中身を確かめる。`prepack` がビルドするので、公開物は常にその時点のソースから作られる。
-3. `npm publish` を実行する。`prepublishOnly` が型チェック、lint、テストを実行し、失敗すれば公開しない。
-4. `v<バージョン>` のタグを付けて push し、GitHub のリリースを作る。
+1. `package.json` の `version` を上げる PR を main にマージする。
+2. `git switch main && git pull` で、手元の main を最新にする。未コミットの変更や追跡していないファイルがない状態にする。
+3. `git tag v<バージョン> && git push origin v<バージョン>` で、公開するコミットにタグを付ける。
+4. `npm pack` で中身を確かめる。`prepack` がビルドするので、公開物はその時点の手元のソースから作られる。
+5. `npm publish` を実行する。`prepublishOnly` は、main にいること、変更がないこと、origin/main と一致すること、HEAD にバージョンのタグがあることを確かめ（`scripts/check-release.mjs`）、続けて lint とテストを実行する。どれかが通らなければ公開しない。型チェックは `prepack` のビルドで行う。
+6. GitHub のリリースをタグから作る。
 
+タグを先に付けるのは、公開した版がどのコミットから作られたかを、あとから必ずたどれるようにするためである。
 画面の「?」と設定画面のリンクは GitHub の README を開くので、リポジトリは公開しておく。
-

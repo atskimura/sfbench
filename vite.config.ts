@@ -27,15 +27,20 @@ function licenses(): Plugin {
       for (const chunk of Object.values(bundle)) {
         if (chunk.type !== 'chunk') continue
         for (const id of chunk.moduleIds) {
+          // Only modules with code left after tree shaking.
+          if (!chunk.modules[id]?.renderedLength) continue
           const dir = packageDir(id.replace(/\\/g, '/').replace(/^\0/, ''))
           if (dir && existsSync(join(dir, 'package.json'))) dirs.add(dir)
         }
       }
       const sections = [...dirs]
         .map((dir) => {
-          const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { name: string; version: string; license?: string }
-          const file = readdirSync(dir).find((f) => /^(license|licence|copying)(\.|$)/i.test(f))
-          const text = file ? readFileSync(join(dir, file), 'utf8').trim() : `License: ${pkg.license ?? 'unknown'}`
+          const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { name: string; version: string }
+          // LICENSE, LICENSE.md, LICENSE-MIT, COPYING and the like.
+          const files = readdirSync(dir).filter((f) => /^(licen[cs]e|copying)([.-]|$)/i.test(f))
+          // Most licenses (MIT among them) require their text and copyright notice to be included.
+          if (files.length === 0) this.error(`${pkg.name} has no license file to include in licenses.txt`)
+          const text = files.map((f) => readFileSync(join(dir, f), 'utf8').trim()).join('\n\n')
           return { name: pkg.name, text: `${pkg.name} ${pkg.version}\n\n${text}` }
         })
         .sort((a, b) => a.name.localeCompare(b.name))
@@ -75,6 +80,8 @@ export default defineConfig({
       // server checks against the Origin. The string shorthand would set
       // changeOrigin and send Host 127.0.0.1:17717 instead.
       '/api/': { target: 'http://127.0.0.1:17717', changeOrigin: false },
+      // Written by the build only: the local server has it once `npm run build` has run.
+      '/licenses.txt': { target: 'http://127.0.0.1:17717', changeOrigin: false },
     },
   },
 })
