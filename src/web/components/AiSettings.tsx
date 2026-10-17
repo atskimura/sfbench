@@ -68,15 +68,13 @@ export function AiSettings({ saved, draft, onChange }: { saved: AiSettingsView |
             autoComplete="off"
             onChange={(e) => change({ model: e.target.value })}
           />
-          <span className={aiDraftValid(draft) ? styles.note : styles.error}>
-            {aiDraftValid(draft) ? (
-              <a href={MODEL_DOCS[draft.provider as AiKeyProvider]} target="_blank" rel="noreferrer">
-                {t.aiModelList}
-              </a>
-            ) : (
-              t.aiModelRequired
-            )}
+          {/* The list is needed most before anything is typed, so it is always shown. */}
+          <span className={styles.note}>
+            <a href={MODEL_DOCS[draft.provider as AiKeyProvider]} target="_blank" rel="noreferrer">
+              {t.aiModelList}
+            </a>
           </span>
+          {!aiDraftValid(draft) && <span className={styles.error}>{t.aiModelRequired}</span>}
           <label htmlFor={ids.key}>{t.aiKey}</label>
           <div className={styles.row}>
             <input
