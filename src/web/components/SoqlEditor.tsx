@@ -12,7 +12,7 @@ import { t } from '../i18n/i18n.ts'
 import { contextCandidates, keywordCandidates, type Candidate, type Describer } from '../soql/completion.ts'
 import { cursorInfo } from '../soql/context.ts'
 import { describeGlobal, describeSObject } from '../state/describeCache.ts'
-import { saveEditorText, savedEditorText } from '../state/editorStorage.ts'
+import { claimEditorText, saveEditorText } from '../state/editorStorage.ts'
 import { useSoql } from '../state/SoqlContext.tsx'
 import styles from './SoqlEditor.module.css'
 
@@ -102,14 +102,11 @@ export function SoqlEditor({ org }: { org: string }) {
       return { from: info.from, options, filter: false }
     }
 
-    // Saved at once, so that the text of an org left earlier cannot come back.
-    const initialText = savedEditorText(org)
-    saveEditorText(org, initialText)
-
     const view = new EditorView({
       parent: host.current,
       state: EditorState.create({
-        doc: initialText,
+        // The first text, outside the undo history (docs/web.md "起動時のクエリ").
+        doc: claimEditorText(org, latest.current.soql.seedQuery),
         extensions: [
           history(),
           sql({ dialect: SOQL }),

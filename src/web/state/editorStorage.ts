@@ -1,17 +1,29 @@
-// The editor text survives a tab reload in the same org, and only that: each
-// workspace saves its own text as soon as it is made, so the text of an org
-// left earlier is gone (docs/web.md "状態の持ち方", "非同期の流れ").
+// The editor text survives a tab reload in the same org, and only that: the
+// storage holds the text of the workspace shown and nothing else (docs/web.md
+// "状態の持ち方", "非同期の流れ").
 const EDITOR_KEY = 'sfbench.editor'
 
 type Saved = { org: string; text: string }
 
-export function savedEditorText(org: string): string {
+/**
+ * Makes the storage the editor's of `org`, which is being made, and returns
+ * its first text: `initial` (the launch query) if given, else the text saved
+ * for this org. The text of another org is removed, so that going back to it
+ * later does not bring it back.
+ */
+export function claimEditorText(org: string, initial: string | undefined): string {
+  if (initial !== undefined) {
+    saveEditorText(org, initial)
+    return initial
+  }
   try {
     const saved = JSON.parse(sessionStorage.getItem(EDITOR_KEY) ?? 'null') as Saved | null
-    return saved && saved.org === org && typeof saved.text === 'string' ? saved.text : ''
+    if (saved && saved.org === org && typeof saved.text === 'string') return saved.text
+    sessionStorage.removeItem(EDITOR_KEY)
   } catch {
-    return ''
+    // Unreadable or unavailable: start empty.
   }
+  return ''
 }
 
 export function saveEditorText(org: string, text: string): void {
