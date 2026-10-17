@@ -1,7 +1,7 @@
 // SOQL editor state and query results (docs/web.md "状態の持ち方").
 // Two contexts, so that typing in the editor does not re-render the results.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { HistoryEntry, QueryResponse } from '../../shared/api.ts'
+import type { HistoryEntry } from '../../shared/api.ts'
 import { ApiRequestError, api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
 import { fromObjectOf } from '../soql/context.ts'
@@ -18,6 +18,7 @@ import {
   type NameContext,
   type Selection,
 } from '../soql/selection.ts'
+import { addColumns, type Column, type SObjectRecord } from '../results/columns.ts'
 import { useApp } from './AppContext.tsx'
 import { useOrgs } from './OrgContext.tsx'
 
@@ -33,6 +34,8 @@ type SoqlState = {
   names: NameContext
   /** The parsed SOQL, or undefined while it cannot be parsed or is empty. */
   selection: Selection | undefined
+  /** The first line of the editor text as last parsed (shown while the editor is closed). */
+  firstLine: string
   /** The object shown in the left panel (as written in FROM), or undefined for the object list. */
   panelObject: string | undefined
   tooling: boolean
@@ -59,7 +62,29 @@ export type QueryResult =
   | { state: 'running' }
   | {
       state: 'done'
-      response: QueryResponse
+      /** The records loaded so far. Later pages are pushed onto this array, not copied (docs/web.md). */
+      records: SObjectRecord[]
+      /**
+       * How many of `records` this state covers. The array grows just before
+       * the state that includes the new page; read this, not records.length,
+       * together with nextRecordsUrl.
+       */
+      loaded: number
+      columns: readonly Column[]
+      totalSize: number
+      /** Set while more pages remain. */
+      nextRecordsUrl: string | undefined
+      loadingNext: boolean
+      /**
+       * The last load of the next page failed: `retry` loads again only when
+       * asked (no automatic retries); `rerun` cannot load again (the query
+       * locator expired), so the query must run again.
+       */
+      nextFailed: false | 'retry' | 'rerun'
+      /** Records in the first page: Salesforce sends smaller pages for wide rows or subqueries. */
+      pageSize: number
+      /** The org the query ran on (the result stays with it). */
+      username: string
       /** The FROM object, for display and the CSV file name. */
       object: string | undefined
       tooling: boolean
@@ -68,16 +93,29 @@ export type QueryResult =
     }
   | { state: 'error'; message: string; details?: unknown; reloginCommand?: string }
 
-type ResultState = { result: QueryResult }
+type ResultState = {
+  result: QueryResult
+  /**
+   * Loads the next page of the result, unless one is loading or none remains.
+   * After a failure, only `retry` (a button) loads it again.
+   */
+  loadNext: (retry?: boolean) => void
+}
+
+/** The query locator behind nextRecordsUrl expired or was dropped: the same request can never succeed. */
+function isLocatorGone(e: unknown): boolean {
+  return e instanceof ApiRequestError && e.code === 'SALESFORCE_ERROR' && JSON.stringify(e.body?.details ?? '').includes('INVALID_QUERY_LOCATOR')
+}
 
 const SoqlContext = createContext<SoqlState | undefined>(undefined)
 const ResultContext = createContext<ResultState | undefined>(undefined)
 
 export function SoqlProvider({ children }: { children: ReactNode }) {
   const { settings, notify } = useApp()
-  const { selected, selectedSummary, handleOrgError, markAuthError, reportApiUsage, takeLaunchQuery } = useOrgs()
+  const { selected, selectedSummary, handleOrgError, reportOrgError, markAuthError, reportApiUsage, takeLaunchQuery } = useOrgs()
   const editor = useRef<EditorHandle | null>(null)
   const [selection, setSelection] = useState<Selection>()
+  const [firstLine, setFirstLine] = useState('')
   const [panelObject, setPanelObject] = useState<string>()
   const [tooling, setToolingState] = useState(false)
   const [queryAll, setQueryAllState] = useState(false)
@@ -85,6 +123,8 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
   const [result, setResult] = useState<QueryResult>({ state: 'idle' })
   const runGeneration = useRef(0)
   const runAbort = useRef<AbortController | undefined>(undefined)
+  /** The page being loaded, so that scroll events in one render do not load it twice. */
+  const nextInFlight = useRef<string | undefined>(undefined)
   // The org whose history may be shown; a late response for another org is dropped.
   const historyOrg = useRef<string | undefined>(undefined)
 
@@ -96,6 +136,7 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
   /** Parses the text into the selection; with `switchPanel`, also shows the FROM object on the left. */
   const applyText = useCallback((text: string, switchPanel = true) => {
     const query = parseSoql(text)
+    setFirstLine(text.trimStart().split('\n', 1)[0])
     if (!text.trim()) {
       setSelection(undefined)
       if (switchPanel) setPanelObject(undefined)
@@ -167,7 +208,15 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
         reportApiUsage(selected, response.apiUsage)
         setResult({
           state: 'done',
-          response,
+          records: response.records,
+          loaded: response.records.length,
+          columns: addColumns([], response.records),
+          totalSize: response.totalSize,
+          nextRecordsUrl: response.done ? undefined : response.nextRecordsUrl,
+          loadingNext: false,
+          nextFailed: false,
+          pageSize: Math.max(response.records.length, 1),
+          username: selected,
           // Parsed now, not from the 300 ms debounced selection (docs/web.md).
           object: parseSoql(soql)?.sObject ?? fromObjectOf(soql),
           tooling: useTooling,
@@ -221,6 +270,7 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
     () => ({
       names,
       selection,
+      firstLine,
       panelObject,
       tooling,
       queryAll,
@@ -252,9 +302,46 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
       },
       run,
     }),
-    [names, selection, panelObject, tooling, queryAll, history, applyText, setText, edit, run],
+    [names, selection, firstLine, panelObject, tooling, queryAll, history, applyText, setText, edit, run],
   )
-  const resultValue = useMemo<ResultState>(() => ({ result }), [result])
+  const loadNext = useCallback((retry = false) => {
+    const current = result
+    if (current.state !== 'done' || !current.nextRecordsUrl || current.loadingNext) return
+    if (current.nextFailed && !retry) return
+    if (nextInFlight.current === current.nextRecordsUrl) return
+    nextInFlight.current = current.nextRecordsUrl
+    const generation = runGeneration.current
+    const { username, records, nextRecordsUrl } = current
+    setResult({ ...current, loadingNext: true, nextFailed: false })
+    api.nextPage(username, nextRecordsUrl, runAbort.current?.signal).then(
+      (page) => {
+        nextInFlight.current = undefined
+        if (generation !== runGeneration.current) return
+        reportApiUsage(username, page.apiUsage)
+        records.push(...page.records)
+        setResult((prev) =>
+          prev.state === 'done' && prev.records === records
+            ? {
+                ...prev,
+                loaded: records.length,
+                columns: addColumns(prev.columns, page.records),
+                nextRecordsUrl: page.done ? undefined : page.nextRecordsUrl,
+                loadingNext: false,
+              }
+            : prev,
+        )
+      },
+      (e: unknown) => {
+        nextInFlight.current = undefined
+        if (generation !== runGeneration.current) return
+        const failed = isLocatorGone(e) ? 'rerun' : 'retry'
+        setResult((prev) => (prev.state === 'done' && prev.records === records ? { ...prev, loadingNext: false, nextFailed: failed } : prev))
+        if (failed === 'retry') reportOrgError(username, e)
+      },
+    )
+  }, [result, reportApiUsage, reportOrgError])
+
+  const resultValue = useMemo<ResultState>(() => ({ result, loadNext }), [result, loadNext])
 
   return (
     <SoqlContext.Provider value={soqlValue}>

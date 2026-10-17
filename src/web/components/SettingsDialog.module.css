@@ -9,6 +9,10 @@
   box-shadow: var(--shadow-popover);
 }
 
+.small {
+  width: 440px;
+}
+
 .dialog::backdrop {
   background: var(--color-scrim);
 }

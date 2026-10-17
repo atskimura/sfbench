@@ -7,9 +7,26 @@ import styles from './EditorPanel.module.css'
 import panel from './Panel.module.css'
 import { SoqlEditor } from './SoqlEditor.tsx'
 
-export function EditorPanel() {
+export function RunButton() {
   const soql = useSoql()
   const { result } = useResult()
+  const { selected } = useOrgs()
+  return (
+    <button
+      type="button"
+      className={`${panel.button} ${panel.primary}`}
+      disabled={!selected || result.state === 'running'}
+      onClick={soql.run}
+      aria-keyshortcuts="Meta+Enter Control+Enter"
+    >
+      {result.state === 'running' ? t.running : t.run}
+      <span className={styles.shortcut}>⌘↵</span>
+    </button>
+  )
+}
+
+export function EditorPanel() {
+  const soql = useSoql()
   const { selected } = useOrgs()
   const queryAllId = useId()
   const toolingId = useId()
@@ -18,16 +35,7 @@ export function EditorPanel() {
   return (
     <section className={panel.panel} aria-label={t.editorLabel}>
       <div className={`${panel.header} ${styles.toolbar}`}>
-        <button
-          type="button"
-          className={`${panel.button} ${panel.primary}`}
-          disabled={noOrg || result.state === 'running'}
-          onClick={soql.run}
-          aria-keyshortcuts="Meta+Enter Control+Enter"
-        >
-          {result.state === 'running' ? t.running : t.run}
-          <span className={styles.shortcut}>⌘↵</span>
-        </button>
+        <RunButton />
         <label className={styles.check} htmlFor={queryAllId} title={t.queryAllTitle}>
           <input
             id={queryAllId}

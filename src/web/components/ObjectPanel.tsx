@@ -8,6 +8,7 @@ import type { DescribeGlobal } from '../apiClient.ts'
 import { describeGlobal, useLoadable, type Loadable } from '../state/describeCache.ts'
 import { useReportOrgError } from '../state/OrgContext.tsx'
 import { useSoql } from '../state/SoqlContext.tsx'
+import { CollapseButton } from './CollapseButton.tsx'
 import { FieldPanel } from './FieldPanel.tsx'
 import { FilterInput } from './FilterInput.tsx'
 import panel from './Panel.module.css'
@@ -51,6 +52,7 @@ function ObjectList({ globals }: { globals: Loadable<DescribeGlobal> }) {
         <span className={panel.spacer} />
         {globals.data && <span className={panel.meta}>{globals.data.sobjects.length}</span>}
         <ReloadButton label={t.reloadObjects} busy={globals.loading} onClick={globals.reload} />
+        <CollapseButton name="objects" label={t.hideObjects} side="left" />
       </div>
       <FilterInput label={t.filterObjects} value={filter} onChange={setFilter} />
       <div className={panel.body} aria-busy={globals.loading}>

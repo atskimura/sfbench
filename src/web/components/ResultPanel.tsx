@@ -1,35 +1,17 @@
-// Query results. This is the simple preview of PR 2b; PR 2d replaces the
-// table with the full result table (docs/web.md "進め方").
+// Query results: the result table with its later pages, the row filter, the
+// child records of a subquery cell, and CSV export (docs/web.md "結果の表").
+import { useDeferredValue, useId, useMemo, useState } from 'react'
 import { t } from '../i18n/i18n.ts'
-import { useResult } from '../state/SoqlContext.tsx'
+import { addColumns, cellText, cellValue, type ChildRecords, type Column, type SObjectRecord } from '../results/columns.ts'
+import { useOrgs } from '../state/OrgContext.tsx'
+import { useResult, type QueryResult } from '../state/SoqlContext.tsx'
 import { CopyCommand } from './CopyCommand.tsx'
+import { CsvExport } from './CsvExport.tsx'
 import panel from './Panel.module.css'
 import styles from './ResultPanel.module.css'
+import { ResultTable, type CellRef } from './ResultTable.tsx'
 
-const PREVIEW_ROWS = 200
-
-function cellText(value: unknown): string {
-  if (value === null || value === undefined) return ''
-  if (typeof value === 'object') {
-    const v = value as { totalSize?: number; records?: unknown[] }
-    if (Array.isArray(v.records)) return `${v.totalSize ?? v.records.length} rows`
-    return JSON.stringify(value)
-  }
-  return String(value)
-}
-
-/** Flattens parent relationships into Account.Name style keys (preview only). */
-function flatten(record: Record<string, unknown>, prefix = '', out: Record<string, unknown> = {}): Record<string, unknown> {
-  for (const [key, value] of Object.entries(record)) {
-    if (key === 'attributes') continue
-    if (value && typeof value === 'object' && !Array.isArray((value as { records?: unknown }).records)) {
-      flatten(value as Record<string, unknown>, `${prefix}${key}.`, out)
-    } else {
-      out[`${prefix}${key}`] = value
-    }
-  }
-  return out
-}
+const timeFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 export function ResultPanel() {
   const { result } = useResult()
@@ -49,45 +31,160 @@ export function ResultPanel() {
           )}
         </div>
       )}
-      {result.state === 'done' && <Preview result={result} />}
+      {/* A new run starts a new table, with new column widths. */}
+      {result.state === 'done' && <Records key={result.executedAt.getTime()} result={result} />}
     </section>
   )
 }
 
-function Preview({ result }: { result: Extract<ReturnType<typeof useResult>['result'], { state: 'done' }> }) {
-  const rows = result.response.records.slice(0, PREVIEW_ROWS).map((r) => flatten(r))
-  const columns = [...new Set(rows.flatMap((r) => Object.keys(r)))]
+type Done = Extract<QueryResult, { state: 'done' }>
+
+type Scan = { filter: string; columns: readonly Column[]; count: number; matches: readonly number[] }
+/** Per result: the rows already checked, so that a new page checks only its own rows. */
+const scans = new WeakMap<readonly SObjectRecord[], Scan>()
+
+/** Indices of the loaded rows with a cell containing `filter` (lower case). */
+function matchingRows(records: readonly SObjectRecord[], columns: readonly Column[], loaded: number, filter: string): readonly number[] {
+  let scan = scans.get(records)
+  if (!scan || scan.filter !== filter || scan.columns !== columns || scan.count > loaded) {
+    scan = { filter, columns, count: 0, matches: [] }
+  }
+  const matches = [...scan.matches]
+  for (let i = scan.count; i < loaded; i++) {
+    if (columns.some((c) => cellText(cellValue(records[i], c)).toLowerCase().includes(filter))) matches.push(i)
+  }
+  scans.set(records, { filter, columns, count: loaded, matches })
+  return matches
+}
+type OpenChild = { row: number; column: Column; child: ChildRecords }
+
+function Records({ result }: { result: Done }) {
+  const { loadNext } = useResult()
+  const { orgs } = useOrgs()
+  const instanceUrl = orgs?.find((o) => o.username === result.username)?.instanceUrl
+  const [filter, setFilter] = useState('')
+  const filterId = useId()
+  const deferredFilter = useDeferredValue(filter.trim().toLowerCase())
+  const [selected, setSelected] = useState<CellRef>()
+  const [child, setChild] = useState<OpenChild>()
+  const { records, columns } = result
+  const { loaded } = result
+
+  const rows = useMemo(
+    () => (deferredFilter ? matchingRows(records, columns, loaded, deferredFilter) : undefined),
+    [records, columns, loaded, deferredFilter],
+  )
+
+  // COUNT() has a totalSize but no records: nothing remains without a next page.
+  // totalSize can fall behind when records are added after the query ran.
+  const remaining = result.nextRecordsUrl ? Math.max(result.totalSize - loaded, 0) : 0
+  const nextCount = remaining > 0 ? Math.min(result.pageSize, remaining) : result.pageSize
   return (
     <>
       <div className={panel.header}>
-        <span className={styles.count}>{t.recordCount(result.response.totalSize)}</span>
+        <span className={styles.count}>{t.recordCount(result.totalSize)}</span>
+        {result.nextRecordsUrl && <span className={panel.meta}>{t.loadedCount(loaded)}</span>}
         <span className={panel.meta}>
-          {[result.object, t.elapsed((result.elapsedMs / 1000).toFixed(2))].filter(Boolean).join(' · ')}
+          {[result.object, t.elapsed((result.elapsedMs / 1000).toFixed(2)), timeFormat.format(result.executedAt)].filter(Boolean).join(' · ')}
         </span>
+        <span className={panel.spacer} />
+        {/* The match count sits inside the box, so that the header does not shift while filtering. */}
+        <span className={styles.filter}>
+          <input
+            className={panel.input}
+            type="search"
+            aria-label={t.filterRows}
+            aria-describedby={rows ? `${filterId}-count` : undefined}
+            placeholder={t.filterRows}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+          {rows && (
+            <span id={`${filterId}-count`} className={styles.matchCount}>
+              {t.matchedCount(rows.length)}
+            </span>
+          )}
+        </span>
+        <CsvExport result={result} />
       </div>
-      <div className={panel.body}>
-        {result.response.records.length > rows.length && (
-          <p className={panel.meta}>{t.previewNote(rows.length, result.response.totalSize)}</p>
+      <div className={styles.body}>
+        <ResultTable
+          records={records}
+          loaded={loaded}
+          rows={rows}
+          columns={columns}
+          instanceUrl={instanceUrl}
+          selected={selected}
+          onSelect={setSelected}
+          onOpenChild={(row, column, value) => setChild({ row, column, child: value })}
+          // While filtering, later pages load only by the button below (docs/web.md).
+          onNearEnd={rows ? undefined : loadNext}
+          label={t.results}
+        />
+        {result.nextRecordsUrl && (rows || result.loadingNext || result.nextFailed) && (
+          <div className={styles.more}>
+            {result.loadingNext ? (
+              <span className={panel.meta}>{t.loadingMore}</span>
+            ) : result.nextFailed === 'rerun' ? (
+              <span className={panel.meta}>{t.locatorExpired}</span>
+            ) : (
+              <>
+                {result.nextFailed && <span className={panel.meta}>{t.loadMoreFailed}</span>}
+                <button type="button" className={panel.button} onClick={() => loadNext(true)}>
+                  {t.loadMore(nextCount)}
+                </button>
+              </>
+            )}
+          </div>
         )}
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              {columns.map((c) => (
-                <th key={c}>{c}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr key={i}>
-                {columns.map((c) => (
-                  <td key={c}>{cellText(row[c])}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {selected && <CellDetail records={records} cell={selected} />}
+        {child && (
+          <ChildTable
+            key={`${child.row}\n${child.column.key}`}
+            open={child}
+            instanceUrl={instanceUrl}
+            onClose={() => setChild(undefined)}
+          />
+        )}
       </div>
     </>
+  )
+}
+
+/** The full text of the selected cell, which the table cuts off. */
+function CellDetail({ records, cell }: { records: readonly SObjectRecord[]; cell: CellRef }) {
+  const text = cellText(cellValue(records[cell.row], cell.column))
+  return (
+    <div className={styles.detail}>
+      <span className={`${panel.meta} ${panel.mono}`}>{cell.column.key}</span>
+      <span className={styles.detailText}>{text}</span>
+    </div>
+  )
+}
+
+function ChildTable({ open, instanceUrl, onClose }: { open: OpenChild; instanceUrl: string | undefined; onClose: () => void }) {
+  const columns = useMemo(() => addColumns([], open.child.records), [open.child.records])
+  const [selected, setSelected] = useState<CellRef>()
+  return (
+    <section className={styles.childPanel} aria-label={open.column.key}>
+      <div className={panel.header}>
+        <span className={styles.count}>{t.childRecordsTitle(open.column.key, open.row + 1)}</span>
+        <span className={panel.meta}>{t.recordCount(open.child.totalSize)}</span>
+        {open.child.records.length < open.child.totalSize && <span className={panel.meta}>{t.childFirstPageOnly}</span>}
+        <span className={panel.spacer} />
+        <button type="button" className={panel.button} onClick={onClose}>
+          {t.close}
+        </button>
+      </div>
+      <ResultTable
+        records={open.child.records}
+        columns={columns}
+        instanceUrl={instanceUrl}
+        selected={selected}
+        onSelect={setSelected}
+        label={open.column.key}
+      />
+      {selected && <CellDetail records={open.child.records} cell={selected} />}
+    </section>
   )
 }
