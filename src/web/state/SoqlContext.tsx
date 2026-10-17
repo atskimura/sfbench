@@ -65,17 +65,16 @@ export type QueryResult =
       state: 'done'
       /** Different for each run: the result table is remade for each result (its key). */
       id: number
-      /** The records loaded so far. Later pages are pushed onto this array, not copied (docs/web.md). */
-      records: SObjectRecord[]
       /**
-       * How many of `records` this state covers. The array grows just before
-       * the state that includes the new page; read this, not records.length,
-       * together with nextRecordsUrl.
+       * The records of the first page. The result table pushes later pages
+       * onto this array, not a copy (docs/web.md), and keeps how many it shows
+       * (results/pages.ts).
        */
-      loaded: number
+      records: SObjectRecord[]
+      /** The columns of the first page. */
       columns: readonly Column[]
       totalSize: number
-      /** Set while more pages remain. */
+      /** The second page, if more pages remain. */
       nextRecordsUrl: string | undefined
       /** Records in the first page: Salesforce sends smaller pages for wide rows or subqueries. */
       pageSize: number
@@ -93,14 +92,8 @@ type ResultState = {
   result: QueryResult
   /** A query is running: decided by the run's task only (docs/web.md "流れごとの指定"). */
   running: boolean
-  /** Stops the running query. The result is already empty: a run empties it when it starts. */
+  /** Stops the running query and empties the result. */
   cancel: () => void
-  /**
-   * Adds a page loaded by the result table to the shown result. The table is
-   * remade for each result and goes away while a query runs, so the page
-   * belongs to the shown result.
-   */
-  appendPage: (result: Extract<QueryResult, { state: 'done' }>, page: { records: SObjectRecord[]; nextRecordsUrl: string | undefined }) => void
 }
 
 const SoqlContext = createContext<SoqlState | undefined>(undefined)
@@ -180,21 +173,17 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
 
   /**
    * Runs the given text: the editor's, or the launch query before the editor
-   * may exist. While a query runs, a run by the user does nothing (the Run
-   * button is disabled, and Cmd+Enter is ignored here); AI's Replace & Run
-   * replaces it.
+   * may exist. While a query runs, another run does nothing (the Run button is
+   * disabled, and Cmd+Enter is ignored here).
    */
   const runSoql = useCallback(
-    async (soql: string, whileRunning: 'ignore' | 'replace' = 'ignore') => {
+    async (soql: string) => {
       if (!soql.trim()) return
       const started = performance.now()
       const useTooling = tooling
-      // Emptied when a run starts, so that Cancel needs to touch only the run.
-      // An ignored run empties nothing that shows: the running query sets the result.
-      setResult({ state: 'idle' })
       const outcome = await startRun(
         (signal) => api.query(username, { soql, tooling: useTooling, queryAll: !useTooling && queryAll }, signal),
-        whileRunning,
+        'ignore',
       )
       if (outcome.kind === 'stale') return
       if (outcome.kind === 'done') {
@@ -204,7 +193,6 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
           state: 'done',
           id: ++resultCount.current,
           records: response.records,
-          loaded: response.records.length,
           columns: addColumns([], response.records),
           totalSize: response.totalSize,
           nextRecordsUrl: response.done ? undefined : response.nextRecordsUrl,
@@ -289,15 +277,11 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
     }),
     [names, selection, firstLine, panelObject, tooling, queryAll, history, applyText, setText, edit, run],
   )
-  const appendPage = useCallback<ResultState['appendPage']>((shown, page) => {
-    // The records array grows in place (docs/web.md); `loaded` says how much of it the result covers.
-    shown.records.push(...page.records)
-    const loaded = shown.records.length
-    setResult((prev) =>
-      prev.state === 'done' ? { ...prev, loaded, columns: addColumns(prev.columns, page.records), nextRecordsUrl: page.nextRecordsUrl } : prev,
-    )
-  }, [])
-  const resultValue = useMemo<ResultState>(() => ({ result, running, cancel: cancelRun, appendPage }), [result, running, cancelRun, appendPage])
+  /** Stops the running query; only a run that was stopped empties the result. */
+  const cancel = useCallback(() => {
+    if (cancelRun()) setResult({ state: 'idle' })
+  }, [cancelRun])
+  const resultValue = useMemo<ResultState>(() => ({ result, running, cancel }), [result, running, cancel])
 
   return (
     <SoqlContext.Provider value={soqlValue}>

@@ -1,8 +1,9 @@
 // Query results: the result table with its later pages, the row filter, the
 // child records of a subquery cell, and CSV export (docs/web.md "結果の表").
-import { useCallback, useDeferredValue, useId, useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useId, useMemo, useReducer, useState } from 'react'
 import { ApiRequestError, api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
+import { pagesReducer, type Pages } from '../results/pages.ts'
 import { addColumns, cellText, cellValue, type ChildRecords, type Column, type SObjectRecord } from '../results/columns.ts'
 import { useOrgs } from '../state/OrgContext.tsx'
 import { useResult, type QueryResult } from '../state/SoqlContext.tsx'
@@ -84,42 +85,51 @@ function isLocatorGone(e: unknown): boolean {
 }
 
 /**
- * The next page of the shown result (docs/web.md "流れごとの指定"). After a
- * failure, only `retry` (a button) loads again; `rerun` means the query
- * locator expired, so the query must run again.
+ * The later pages of the shown result (docs/web.md "流れごとの指定"). The
+ * reducer decides which page is taken; this fetches one page at a time.
  */
-function useNextPage(result: Done) {
-  const { appendPage } = useResult()
+function usePages(result: Done) {
   const { reportApiUsage, reportOrgError } = useOrgs()
   const { start, running } = useTask()
-  const [failed, setFailed] = useState<false | 'retry' | 'rerun'>(false)
+  const [pages, dispatch] = useReducer(pagesReducer, result, (r): Pages => ({
+    next: r.nextRecordsUrl,
+    loaded: r.records.length,
+    columns: r.columns,
+    failure: false,
+  }))
+  const { next, loaded, failure } = pages
   const load = useCallback(
     async (retry = false) => {
-      // Decided from one render: in it, either a page is loading (with the URL
-      // it continues) or it has been added (with the next URL). So a load
-      // called with this render's values never fetches a page already added.
-      const url = result.nextRecordsUrl
-      if (!url || running || (failed && !retry)) return
-      // 'ignore' as well: calls before the next render do not load it twice.
-      const outcome = await start((signal) => api.nextPage(result.username, url, signal), 'ignore')
+      if (!next || (failure && !retry)) return
+      // A load called with an older render's values may fetch a page again;
+      // the reducer drops it, since `next` has moved on.
+      const outcome = await start((signal) => api.nextPage(result.username, next, signal), 'ignore')
       if (outcome.kind === 'done') {
         const page = outcome.value
-        setFailed(false)
         reportApiUsage(result.username, page.apiUsage)
-        appendPage(result, { records: page.records, nextRecordsUrl: page.done ? undefined : page.nextRecordsUrl })
+        // The rows go after the `loaded` rows this page continues, once: a page
+        // fetched again finds the array already grown and adds nothing.
+        if (result.records.length === loaded) result.records.push(...page.records)
+        dispatch({
+          type: 'page',
+          from: next,
+          records: page.records,
+          loaded: loaded + page.records.length,
+          next: page.done ? undefined : page.nextRecordsUrl,
+        })
       } else if (outcome.kind === 'error') {
         const gone = isLocatorGone(outcome.error)
-        setFailed(gone ? 'rerun' : 'retry')
+        dispatch({ type: 'failed', from: next, failure: gone ? 'rerun' : 'retry' })
         if (!gone) reportOrgError(result.username, outcome.error)
       }
     },
-    [result, running, failed, start, appendPage, reportApiUsage, reportOrgError],
+    [result, next, loaded, failure, start, reportApiUsage, reportOrgError],
   )
-  return { load, loading: running, failed }
+  return { ...pages, load, loading: running }
 }
 
 function Records({ result }: { result: Done }) {
-  const next = useNextPage(result)
+  const pages = usePages(result)
   const { orgs } = useOrgs()
   const instanceUrl = orgs?.find((o) => o.username === result.username)?.instanceUrl
   const [filter, setFilter] = useState('')
@@ -127,8 +137,8 @@ function Records({ result }: { result: Done }) {
   const deferredFilter = useDeferredValue(filter.trim().toLowerCase())
   const [selected, setSelected] = useState<CellRef>()
   const [child, setChild] = useState<OpenChild>()
-  const { records, columns } = result
-  const { loaded } = result
+  const { records } = result
+  const { loaded, columns } = pages
 
   const rows = useMemo(
     () => (deferredFilter ? matchingRows(records, columns, loaded, deferredFilter) : undefined),
@@ -137,13 +147,13 @@ function Records({ result }: { result: Done }) {
 
   // COUNT() has a totalSize but no records: nothing remains without a next page.
   // totalSize can fall behind when records are added after the query ran.
-  const remaining = result.nextRecordsUrl ? Math.max(result.totalSize - loaded, 0) : 0
+  const remaining = pages.next ? Math.max(result.totalSize - loaded, 0) : 0
   const nextCount = remaining > 0 ? Math.min(result.pageSize, remaining) : result.pageSize
   return (
     <>
       <div className={panel.header}>
         <span className={styles.count}>{t.recordCount(result.totalSize)}</span>
-        {result.nextRecordsUrl && <span className={panel.meta}>{t.loadedCount(loaded)}</span>}
+        {pages.next && <span className={panel.meta}>{t.loadedCount(loaded)}</span>}
         <span className={panel.meta}>
           {[result.object, t.elapsed((result.elapsedMs / 1000).toFixed(2)), timeFormat.format(result.executedAt)].filter(Boolean).join(' · ')}
         </span>
@@ -165,7 +175,7 @@ function Records({ result }: { result: Done }) {
             </span>
           )}
         </span>
-        <CsvExport result={result} />
+        <CsvExport result={result} pages={pages} />
       </div>
       <div className={styles.body}>
         <ResultTable
@@ -178,19 +188,19 @@ function Records({ result }: { result: Done }) {
           onSelect={setSelected}
           onOpenChild={(row, column, value) => setChild({ row, column, child: value })}
           // While filtering, later pages load only by the button below (docs/web.md).
-          onNearEnd={rows ? undefined : next.load}
+          onNearEnd={rows ? undefined : pages.load}
           label={t.results}
         />
-        {result.nextRecordsUrl && (rows || next.loading || next.failed) && (
+        {pages.next && (rows || pages.loading || pages.failure) && (
           <div className={styles.more}>
-            {next.loading ? (
+            {pages.loading ? (
               <span className={panel.meta}>{t.loadingMore}</span>
-            ) : next.failed === 'rerun' ? (
+            ) : pages.failure === 'rerun' ? (
               <span className={panel.meta}>{t.locatorExpired}</span>
             ) : (
               <>
-                {next.failed && <span className={panel.meta}>{t.loadMoreFailed}</span>}
-                <button type="button" className={panel.button} onClick={() => void next.load(true)}>
+                {pages.failure && <span className={panel.meta}>{t.loadMoreFailed}</span>}
+                <button type="button" className={panel.button} onClick={() => void pages.load(true)}>
                   {t.loadMore(nextCount)}
                 </button>
               </>

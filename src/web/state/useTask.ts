@@ -25,10 +25,15 @@ export function useTask<P = never>() {
     setProgress(undefined)
   }, [])
 
-  /** Stops the running request: it is aborted and becomes stale. */
+  /**
+   * Stops the running request: it is aborted and becomes stale. Returns
+   * whether there was one (a request that has just ended is not stopped).
+   */
   const cancel = useCallback(() => {
-    live.current.controller?.abort()
+    const { controller } = live.current
+    controller?.abort()
     finish()
+    return controller !== undefined
   }, [finish])
 
   const start = useCallback(

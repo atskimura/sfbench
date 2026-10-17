@@ -7,6 +7,7 @@ import { t } from '../i18n/i18n.ts'
 import { addColumns, type SObjectRecord } from '../results/columns.ts'
 import { csvFileName, toCsv } from '../results/csv.ts'
 import { useOrgs } from '../state/OrgContext.tsx'
+import type { Pages } from '../results/pages.ts'
 import type { QueryResult } from '../state/SoqlContext.tsx'
 import { useTask } from '../state/useTask.ts'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
@@ -19,7 +20,8 @@ const CONFIRM_ABOVE = 10_000
 type Done = Extract<QueryResult, { state: 'done' }>
 type State = { step: 'idle' } | { step: 'confirm'; remaining: number }
 
-export function CsvExport({ result }: { result: Done }) {
+/** `pages` is what the table has loaded: CSV starts from there. */
+export function CsvExport({ result, pages }: { result: Done; pages: Pages }) {
   const { reportOrgError, reportApiUsage } = useOrgs()
   const [state, setState] = useState<State>({ step: 'idle' })
   // Progress is the number of records loaded so far. The table is remade for
@@ -29,8 +31,9 @@ export function CsvExport({ result }: { result: Done }) {
   const save = async () => {
     setState({ step: 'idle' })
     // What the table has loaded now; later pages it loads meanwhile are fetched here again.
-    // `loaded` and nextRecordsUrl describe the same point; records may already hold a newer page.
-    const { loaded, username, nextRecordsUrl } = result
+    // `loaded` and `next` describe the same point; records may already hold a newer page.
+    const { loaded, next: nextRecordsUrl, columns } = pages
+    const { username } = result
     const outcome = await task.start(async (signal, progress) => {
       const extra: SObjectRecord[] = []
       let usage: ApiUsage | undefined
@@ -50,11 +53,11 @@ export function CsvExport({ result }: { result: Done }) {
     const { extra, usage } = outcome.value
     reportApiUsage(username, usage)
     const base = result.records.slice(0, loaded)
-    download(toCsv(addColumns(result.columns, extra), extra.length ? base.concat(extra) : base), csvFileName(result.object))
+    download(toCsv(addColumns(columns, extra), extra.length ? base.concat(extra) : base), csvFileName(result.object))
   }
 
   const start = () => {
-    const remaining = result.nextRecordsUrl ? Math.max(result.totalSize - result.loaded, 0) : 0
+    const remaining = pages.next ? Math.max(result.totalSize - pages.loaded, 0) : 0
     if (remaining > CONFIRM_ABOVE) setState({ step: 'confirm', remaining })
     else void save()
   }
@@ -82,7 +85,7 @@ export function CsvExport({ result }: { result: Done }) {
   if (task.running) {
     return (
       <span className={styles.csvStatus} role="status">
-        {t.csvProgress(task.progress ?? result.loaded, result.totalSize)}
+        {t.csvProgress(task.progress ?? pages.loaded, result.totalSize)}
         <button type="button" className={panel.button} onClick={task.cancel}>
           {t.cancel}
         </button>
