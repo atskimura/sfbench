@@ -14,7 +14,9 @@ const STALE = { kind: 'stale' } as const
 export function useTask<P = never>() {
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState<P>()
-  const live = useRef({ controller: undefined as AbortController | undefined, mounted: false })
+  // gone is raised only when the component goes away, so that a start before
+  // or during the first render's effects (layout effects included) runs.
+  const live = useRef({ controller: undefined as AbortController | undefined, gone: false })
 
   /** The running request is over: what it showed goes. */
   const finish = useCallback(() => {
@@ -32,7 +34,7 @@ export function useTask<P = never>() {
   const start = useCallback(
     async <T,>(body: TaskBody<T, P>, whileRunning: 'replace' | 'ignore'): Promise<TaskOutcome<T>> => {
       const l = live.current
-      if (!l.mounted) return STALE
+      if (l.gone) return STALE
       // Decided here, not after a render, so that a double click starts once.
       if (l.controller && whileRunning === 'ignore') return STALE
       cancel()
@@ -59,16 +61,15 @@ export function useTask<P = never>() {
     [cancel, finish],
   )
 
-  // A layout effect runs before every effect, children's included, so that a
-  // child may start a request from its first effect (not from its own layout
-  // effect, which runs earlier). StrictMode runs it again after the simulated
-  // unmount, which marks the task alive again. Hiding the component (Suspense,
-  // Activity) runs the cleanup too, which stops the request and its display.
+  // Going away stops the request. StrictMode's simulated unmount and remount
+  // runs this cleanup and then the effect again, which brings the task back.
+  // (The workspace uses neither Suspense nor Activity, which would hide it
+  // without unmounting: see docs/web.md "非同期の流れ".)
   useLayoutEffect(() => {
     const l = live.current
-    l.mounted = true
+    l.gone = false
     return () => {
-      l.mounted = false
+      l.gone = true
       cancel()
     }
   }, [cancel])

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // One test per row of the useTask table in docs/web.md "非同期の流れ".
 import { act, render, renderHook } from '@testing-library/react'
-import { StrictMode, useEffect } from 'react'
+import { StrictMode, useEffect, useLayoutEffect } from 'react'
 import { describe, expect, it } from 'vitest'
 import { useTask, type TaskOutcome } from './useTask.ts'
 
@@ -186,5 +186,22 @@ describe('useTask', () => {
     rerender()
     expect(result.current.start).toBe(first.start)
     expect(result.current.cancel).toBe(first.cancel)
+  })
+
+  it('a start from a child layout effect in the same render runs too', async () => {
+    const { body, runs } = controlled<string>()
+    function Child({ start }: { start: ReturnType<typeof useTask<never>>['start'] }) {
+      useLayoutEffect(() => {
+        void start(body, 'replace')
+      }, [start])
+      return null
+    }
+    function Parent() {
+      const task = useTask<never>()
+      return <Child start={task.start} />
+    }
+    render(<Parent />)
+    expect(runs).toHaveLength(1)
+    expect(runs[0].signal.aborted).toBe(false)
   })
 })
