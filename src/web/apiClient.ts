@@ -142,7 +142,7 @@ export const api = {
     request<WithApiUsage<QueryResponse>>('POST', `${org(username)}/query`, req, signal),
   nextPage: (username: string, nextRecordsUrl: string, signal?: AbortSignal) =>
     request<WithApiUsage<QueryResponse>>('POST', `${org(username)}/query/next`, { nextRecordsUrl }, signal),
-  history: (username: string) => request<HistoryResponse>('GET', `${org(username)}/history`),
+  history: (username: string, signal?: AbortSignal) => request<HistoryResponse>('GET', `${org(username)}/history`, undefined, signal),
   openOrg: (username: string) => request<{ ok: true }>('POST', `${org(username)}/open`),
   settings: () => request<Settings>('GET', '/api/settings'),
   saveSettings: (settings: SettingsUpdate) => request<Settings>('PUT', '/api/settings', settings),
