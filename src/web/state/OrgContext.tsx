@@ -48,11 +48,16 @@ const OrgContext = createContext<OrgContextValue | undefined>(undefined)
 /** Waits, or rejects when the signal aborts. */
 function delay(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, ms)
-    signal.addEventListener('abort', () => {
+    if (signal.aborted) return reject(signal.reason)
+    const abort = () => {
       clearTimeout(timer)
       reject(signal.reason)
-    }, { once: true })
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', abort)
+      resolve()
+    }, ms)
+    signal.addEventListener('abort', abort, { once: true })
   })
 }
 

@@ -102,7 +102,7 @@ describe('AI settings', () => {
 })
 
 describe('loading and saving', () => {
-  it('cannot save until the settings load, and saves once while saving', async () => {
+  it('cannot save until the settings load, and saves once and stays open while saving', async () => {
     let loaded: (s: typeof base) => void = () => {}
     mocked.settings.mockImplementationOnce(() => new Promise((resolve) => (loaded = resolve)))
     let saved: (s: typeof base) => void = () => {}
@@ -115,6 +115,8 @@ describe('loading and saving', () => {
     await userEvent.click(save)
     expect(save.disabled).toBe(true)
     await userEvent.click(save)
+    await userEvent.click(screen.getByRole('button', { name: t.cancel }))
+    expect(onClose).not.toHaveBeenCalled()
     saved(base)
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(mocked.saveSettings).toHaveBeenCalledTimes(1)
