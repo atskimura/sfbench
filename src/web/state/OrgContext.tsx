@@ -9,76 +9,16 @@ import {
   useRef,
   type ReactNode,
 } from 'react'
-import type { ApiUsage, LaunchOptions, Org, OrgsResponse, OrgSummary } from '../../shared/api.ts'
+import type { ApiUsage, LaunchOptions, Org, OrgSummary } from '../../shared/api.ts'
 import { ApiRequestError, api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
 import { isProductionBySummary } from '../orgs/production.ts'
 import { useApp } from './AppContext.tsx'
+import { initialState, isNamed, reducer, type State } from './orgState.ts'
 
 const SELECTED_KEY = 'sfbench.selectedOrg'
 
-export type OrgStatus = { state: 'ok' } | { state: 'authError'; reloginCommand?: string }
-
-type State = {
-  orgs: Org[] | undefined
-  connectionCheck: OrgsResponse['connectionCheck']
-  loading: boolean
-  loadError: string | undefined
-  selected: string | undefined
-  summaries: Record<string, OrgSummary>
-  status: Record<string, OrgStatus>
-  apiUsage: Record<string, ApiUsage>
-  pickerOpen: boolean
-  /** A message at the top of the org list, such as "no default org". */
-  notice: string | undefined
-}
-
-type Action =
-  | { type: 'loading' }
-  | { type: 'loaded'; orgs: Org[]; connectionCheck: OrgsResponse['connectionCheck'] }
-  | { type: 'checking' }
-  | { type: 'loadFailed'; message: string }
-  | { type: 'select'; username: string }
-  | { type: 'summary'; username: string; summary: OrgSummary }
-  | { type: 'status'; username: string; status: OrgStatus }
-  | { type: 'apiUsage'; username: string; usage: ApiUsage }
-  | { type: 'picker'; open: boolean; notice?: string }
-
-function reducer(state: State, action: Action): State {
-  switch (action.type) {
-    case 'loading':
-      return { ...state, loading: true, loadError: undefined }
-    case 'loaded':
-      return { ...state, loading: false, orgs: action.orgs, connectionCheck: action.connectionCheck }
-    case 'checking':
-      return { ...state, connectionCheck: 'pending' }
-    case 'loadFailed':
-      return { ...state, loading: false, loadError: action.message }
-    case 'select':
-      return { ...state, selected: action.username, pickerOpen: false, notice: undefined }
-    case 'summary':
-      return { ...state, summaries: { ...state.summaries, [action.username]: action.summary } }
-    case 'status':
-      return { ...state, status: { ...state.status, [action.username]: action.status } }
-    case 'apiUsage':
-      return { ...state, apiUsage: { ...state.apiUsage, [action.username]: action.usage } }
-    case 'picker':
-      return { ...state, pickerOpen: action.open, notice: action.open ? (action.notice ?? state.notice) : undefined }
-  }
-}
-
-const initialState: State = {
-  orgs: undefined,
-  connectionCheck: 'pending',
-  loading: true,
-  loadError: undefined,
-  selected: undefined,
-  summaries: {},
-  status: {},
-  apiUsage: {},
-  pickerOpen: false,
-  notice: undefined,
-}
+export type { OrgStatus, Seed } from './orgState.ts'
 
 export type OrgContextValue = State & {
   selectedOrg: Org | undefined
@@ -97,8 +37,6 @@ export type OrgContextValue = State & {
   reportOrgError: (username: string, e: unknown) => void
   /** Marks the org as needing login again without a notification (the caller shows the error). */
   markAuthError: (username: string, reloginCommand: string | undefined) => void
-  /** The --query/--run given at launch, returned once (for the SOQL editor). */
-  takeLaunchQuery: () => { query: string; run: boolean } | undefined
 }
 
 const OrgContext = createContext<OrgContextValue | undefined>(undefined)
@@ -121,12 +59,9 @@ function saveSelected(username: string): void {
 
 export function OrgProvider({ launch, children }: { launch: LaunchOptions | undefined; children: ReactNode }) {
   const { handleCommonError, notify } = useApp()
-  const [state, dispatch] = useReducer(reducer, initialState)
+  const [state, dispatch] = useReducer(reducer, launch, initialState)
   const started = useRef(false)
   const loadGeneration = useRef(0)
-  const launchQuery = useRef<{ query: string; run: boolean } | undefined>(
-    launch?.query ? { query: launch.query, run: launch.run === true } : undefined,
-  )
 
   const reportApiUsage = useCallback((username: string, usage: ApiUsage | undefined) => {
     if (usage) dispatch({ type: 'apiUsage', username, usage })
@@ -261,13 +196,11 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
     chosen.current = true
     // A new launch uses only what the launch says; a tab reload restores the saved org.
     const wanted = launch ? launch.org : readSelected()
-    const found = wanted ? state.orgs.find((o) => o.alias === wanted || o.username === wanted) : undefined
+    const found = wanted ? state.orgs.find((o) => isNamed(o, wanted)) : undefined
     if (found) {
       selectOrg(found.username)
       return
     }
-    // No org to run in: the query is put in the editor but not run (docs/web.md).
-    launchQuery.current = launchQuery.current && { ...launchQuery.current, run: false }
     const notice = launch?.org ? t.unknownLaunchOrg(launch.org) : launch ? t.noDefaultOrg : undefined
     dispatch({ type: 'picker', open: true, notice })
   }, [state.orgs, state.loadError, launch, selectOrg])
@@ -281,11 +214,6 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
     [loadOrgs],
   )
 
-  const takeLaunchQuery = useCallback(() => {
-    const value = launchQuery.current
-    launchQuery.current = undefined
-    return value
-  }, [])
 
   const value = useMemo<OrgContextValue>(() => {
     const selectedOrg = state.orgs?.find((o) => o.username === state.selected)
@@ -303,9 +231,8 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
       handleOrgError,
       reportOrgError,
       markAuthError,
-      takeLaunchQuery,
     }
-  }, [state, loadOrgs, recheckConnections, selectOrg, setPickerOpen, reportApiUsage, handleOrgError, reportOrgError, markAuthError, takeLaunchQuery])
+  }, [state, loadOrgs, recheckConnections, selectOrg, setPickerOpen, reportApiUsage, handleOrgError, reportOrgError, markAuthError])
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>
 }

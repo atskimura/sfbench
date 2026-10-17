@@ -3,7 +3,7 @@
 // The object list, the editor area and the recent queries can be closed
 // (docs/screens.md "パネルの開閉").
 import { t } from '../i18n/i18n.ts'
-import { useOrgs } from '../state/OrgContext.tsx'
+import { useOrgs, type Seed } from '../state/OrgContext.tsx'
 import { PanelsProvider, usePanels } from '../state/PanelsContext.tsx'
 import { SoqlProvider, useSoql } from '../state/SoqlContext.tsx'
 import { EditorPanel, RunButton } from './EditorPanel.tsx'
@@ -14,10 +14,26 @@ import { ResultPanel } from './ResultPanel.tsx'
 import styles from './Workspace.module.css'
 
 export function Workspace() {
+  const { selected, seed, loading, orgs } = useOrgs()
+  // Nothing to work on before an org is chosen; typing then would be lost
+  // on the first choice (docs/screens.md "既定の組織がないとき").
+  if (!selected) {
+    return (
+      <section className={`${panel.panel} ${styles.noOrg}`} aria-busy={loading && !orgs}>
+        <p className={panel.empty}>{!orgs && loading ? t.loadingOrgs : orgs?.length === 0 ? t.noOrgs : t.selectOrgFirst}</p>
+      </section>
+    )
+  }
+  // Remade for each org: switching orgs resets everything in it and stops
+  // what it was running (docs/web.md "非同期の流れ").
+  return <OrgWorkspace key={selected} username={selected} seed={seed} />
+}
+
+function OrgWorkspace({ username, seed }: { username: string; seed: Seed | undefined }) {
   return (
-    <SoqlProvider>
+    <SoqlProvider username={username} seed={seed}>
       <PanelsProvider>
-        <Layout />
+        <Layout username={username} initialText={seed?.query} />
       </PanelsProvider>
     </SoqlProvider>
   )
@@ -25,8 +41,7 @@ export function Workspace() {
 
 // Layout does not read the SOQL state, so that typing (which changes it)
 // does not draw the result table again; only the small parts below do.
-function Layout() {
-  const { selectedOrg, loading, orgs } = useOrgs()
+function Layout({ username, initialText }: { username: string; initialText: string | undefined }) {
   const { open, setOpen } = usePanels()
   return (
     <div className={styles.workspace}>
@@ -34,22 +49,13 @@ function Layout() {
         {!open.objects && <ObjectsStrip onClick={() => setOpen('objects', true)} />}
         {/* Kept mounted while closed, so that the loaded lists stay. */}
         <div className={styles.fill} hidden={!open.objects}>
-          {selectedOrg ? (
-            <ObjectPanel key={selectedOrg.username} username={selectedOrg.username} />
-          ) : (
-            <section className={panel.panel} aria-busy={loading && !orgs}>
-              <div className={panel.header}>
-                <span className={panel.title}>{t.sObjects}</span>
-              </div>
-              <p className={panel.empty}>{!orgs && loading ? t.loadingOrgs : t.selectOrg}</p>
-            </section>
-          )}
+          <ObjectPanel username={username} />
         </div>
       </div>
       <div className={styles.right}>
         {/* The editor stays mounted while closed: CodeMirror keeps the text and its undo history. */}
         <div className={styles.top} hidden={!open.editor}>
-          <EditorPanel />
+          <EditorPanel username={username} initialText={initialText} />
           {open.recent ? (
             <RecentPanel />
           ) : (

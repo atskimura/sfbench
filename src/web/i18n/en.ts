@@ -4,6 +4,7 @@ export const en = {
   appName: 'sfbench',
   loadingOrgs: 'Loading the orgs from the sf CLI…',
   selectOrg: 'Select an org',
+  selectOrgFirst: 'Choose an org from the org switcher at the top right to start.',
   findOrg: 'Find by alias or username',
   noOrgs: 'No orgs. Log in to an org with the sf CLI:',
   addOrg: 'Add an org with the sf CLI, then reopen this list:',

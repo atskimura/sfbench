@@ -20,7 +20,8 @@ import {
 } from '../soql/selection.ts'
 import { addColumns, type Column, type SObjectRecord } from '../results/columns.ts'
 import { useApp } from './AppContext.tsx'
-import { useOrgs } from './OrgContext.tsx'
+import { useOrgs, type Seed } from './OrgContext.tsx'
+import { useTask } from './useTask.ts'
 
 /** What the SOQL editor component exposes to the rest of the app. */
 export type EditorHandle = {
@@ -110,9 +111,11 @@ function isLocatorGone(e: unknown): boolean {
 const SoqlContext = createContext<SoqlState | undefined>(undefined)
 const ResultContext = createContext<ResultState | undefined>(undefined)
 
-export function SoqlProvider({ children }: { children: ReactNode }) {
+/** The workspace of one org: it is remade for each org (docs/web.md "非同期の流れ"). */
+export function SoqlProvider({ username, seed, children }: { username: string; seed: Seed | undefined; children: ReactNode }) {
   const { settings, notify } = useApp()
-  const { selected, selectedSummary, handleOrgError, reportOrgError, markAuthError, reportApiUsage, takeLaunchQuery } = useOrgs()
+  const { summaries, handleOrgError, reportOrgError, markAuthError, reportApiUsage } = useOrgs()
+  const summary = summaries[username]
   const editor = useRef<EditorHandle | null>(null)
   const [selection, setSelection] = useState<Selection>()
   const [firstLine, setFirstLine] = useState('')
@@ -125,12 +128,11 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
   const runAbort = useRef<AbortController | undefined>(undefined)
   /** The page being loaded, so that scroll events in one render do not load it twice. */
   const nextInFlight = useRef<string | undefined>(undefined)
-  // The org whose history may be shown; a late response for another org is dropped.
-  const historyOrg = useRef<string | undefined>(undefined)
+  const { start: startHistory } = useTask()
 
   const names = useMemo<NameContext>(
-    () => ({ ns: selectedSummary?.namespacePrefix, omitNamespace: settings?.omitNamespace ?? true }),
-    [selectedSummary, settings],
+    () => ({ ns: summary?.namespacePrefix, omitNamespace: settings?.omitNamespace ?? true }),
+    [summary, settings],
   )
 
   /** Parses the text into the selection; with `switchPanel`, also shows the FROM object on the left. */
@@ -177,23 +179,14 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
     [notify, setText],
   )
 
-  const loadHistoryFor = useCallback(
-    (username: string) => {
-      api.history(username).then(
-        (h) => {
-          if (historyOrg.current === username) setHistory(h.entries)
-        },
-        (e: unknown) => {
-          if (historyOrg.current === username) handleOrgError(username, e)
-        },
-      )
-    },
-    [handleOrgError],
-  )
+  const refreshHistory = useCallback(async () => {
+    const outcome = await startHistory((signal) => api.history(username, signal), 'replace')
+    // A failure shows nothing: the list stays as it was (docs/web.md "流れごとの指定").
+    if (outcome.kind === 'done') setHistory(outcome.value.entries)
+  }, [startHistory, username])
 
-  const run = useCallback(() => {
-    if (!selected) return
-    const soql = editor.current?.getText() ?? ''
+  /** Runs the given text: the editor's, or the launch query before the editor may exist. */
+  const runSoql = useCallback((soql: string) => {
     if (!soql.trim()) return
     runAbort.current?.abort()
     const abort = new AbortController()
@@ -202,10 +195,10 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
     const started = performance.now()
     const useTooling = tooling
     setResult({ state: 'running' })
-    api.query(selected, { soql, tooling: useTooling, queryAll: !useTooling && queryAll }, abort.signal).then(
+    api.query(username, { soql, tooling: useTooling, queryAll: !useTooling && queryAll }, abort.signal).then(
       (response) => {
         if (generation !== runGeneration.current) return
-        reportApiUsage(selected, response.apiUsage)
+        reportApiUsage(username, response.apiUsage)
         setResult({
           state: 'done',
           records: response.records,
@@ -216,21 +209,21 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
           loadingNext: false,
           nextFailed: false,
           pageSize: Math.max(response.records.length, 1),
-          username: selected,
+          username: username,
           // Parsed now, not from the 300 ms debounced selection (docs/web.md).
           object: parseSoql(soql)?.sObject ?? fromObjectOf(soql),
           tooling: useTooling,
           elapsedMs: performance.now() - started,
           executedAt: new Date(),
         })
-        loadHistoryFor(selected)
+        void refreshHistory()
       },
       (e: unknown) => {
         if (generation !== runGeneration.current) return
         if (e instanceof ApiRequestError && e.code === 'ABORTED') return
         if (e instanceof ApiRequestError && e.code === 'ORG_AUTH_ERROR') {
           // Shown in the result area only, not also as a notification.
-          markAuthError(selected, e.body?.reloginCommand)
+          markAuthError(username, e.body?.reloginCommand)
           setResult({ state: 'error', message: t.orgAuthError, reloginCommand: e.body?.reloginCommand })
           return
         }
@@ -238,33 +231,36 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
           setResult({ state: 'error', message: e.message, details: e.body?.details })
           return
         }
-        if (handleOrgError(selected, e)) {
+        if (handleOrgError(username, e)) {
           setResult({ state: 'idle' })
           return
         }
         setResult({ state: 'error', message: (e as Error).message })
       },
     )
-  }, [selected, tooling, queryAll, reportApiUsage, handleOrgError, markAuthError, loadHistoryFor])
+  }, [username, tooling, queryAll, reportApiUsage, handleOrgError, markAuthError, refreshHistory])
+  const run = useCallback(() => runSoql(editor.current?.getText() ?? ''), [runSoql])
 
-  // When the org changes: drop the result, reload the history, and run the
-  // query given at launch (docs/web.md "起動から作業画面まで").
+  // The workspace is remade for each org (docs/web.md "非同期の流れ"): on
+  // mounting, load the history and take the seed; on going away, stop the
+  // running query.
   useEffect(() => {
-    runAbort.current?.abort()
-    runGeneration.current++
-    setResult({ state: 'idle' })
-    setHistory([])
-    historyOrg.current = selected
-    if (!selected) return
-    loadHistoryFor(selected)
-    const launch = takeLaunchQuery()
-    if (launch) {
-      setText(launch.query)
-      if (launch.run) setTimeout(run, 0)
+    void refreshHistory()
+    // Run just after rendering, not here: StrictMode runs this effect, its
+    // cleanup and the effect again, and the cleanup clears the first timer
+    // before it fires, so the launch query runs once (docs/web.md "起動時のクエリ").
+    // The editor starts with the same query (docs/web.md "起動時のクエリ").
+    const timer = seed?.run ? setTimeout(() => runSoql(seed.query), 0) : undefined
+    const abort = runAbort
+    const generation = runGeneration
+    return () => {
+      clearTimeout(timer)
+      abort.current?.abort()
+      generation.current++
     }
-    // run changes with the org; it must not retrigger this effect.
+    // Once per workspace, which is remade for each org.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected])
+  }, [])
 
   const soqlValue = useMemo<SoqlState>(
     () => ({

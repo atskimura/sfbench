@@ -11,9 +11,8 @@ import { useEffect, useRef } from 'react'
 import { t } from '../i18n/i18n.ts'
 import { contextCandidates, keywordCandidates, type Candidate, type Describer } from '../soql/completion.ts'
 import { cursorInfo } from '../soql/context.ts'
-import { useOrgs } from '../state/OrgContext.tsx'
 import { describeGlobal, describeSObject } from '../state/describeCache.ts'
-import { saveEditorText, savedEditorText } from '../state/editorStorage.ts'
+import { claimEditorText, saveEditorText } from '../state/editorStorage.ts'
 import { useSoql } from '../state/SoqlContext.tsx'
 import styles from './SoqlEditor.module.css'
 
@@ -54,14 +53,14 @@ const OPTION_TYPE: Record<Candidate['kind'], string> = {
   keyword: 'keyword',
 }
 
-export function SoqlEditor() {
+/** The editor of the workspace for `org`, which is remade for each org. */
+export function SoqlEditor({ org, initialText }: { org: string; initialText: string | undefined }) {
   const host = useRef<HTMLDivElement>(null)
   const soql = useSoql()
-  const { selected } = useOrgs()
   // CodeMirror is created once; it reads the latest values through these refs.
-  const latest = useRef({ soql, selected })
+  const latest = useRef({ soql })
   useEffect(() => {
-    latest.current = { soql, selected }
+    latest.current = { soql }
   })
 
   useEffect(() => {
@@ -85,20 +84,18 @@ export function SoqlEditor() {
       if (info.context.kind === 'none') return null
       // Open while typing a word or right after a dot (`Account.`), or on Ctrl+Space.
       if (!info.word && !info.afterDot && !context.explicit) return null
-      const { soql: s, selected: username } = latest.current
+      const { soql: s } = latest.current
       // Without describes: keywords, except after a dot where only fields fit.
       let candidates = info.dotted ? [] : keywordCandidates(info.word)
-      if (username) {
-        const prefix = `${username}\n${s.tooling}\n`
-        const describer: Describer = {
-          objects: async () => (await guarded(prefix, () => describeGlobal(username, s.tooling))).sobjects,
-          describe: (name) => guarded(prefix + name.toLowerCase(), () => describeSObject(username, name, s.tooling)),
-        }
-        try {
-          candidates = await contextCandidates(info, describer, s.names)
-        } catch {
-          // The fallback above, without a notification: completion runs on every key.
-        }
+      const prefix = `${org}\n${s.tooling}\n`
+      const describer: Describer = {
+        objects: async () => (await guarded(prefix, () => describeGlobal(org, s.tooling))).sobjects,
+        describe: (name) => guarded(prefix + name.toLowerCase(), () => describeSObject(org, name, s.tooling)),
+      }
+      try {
+        candidates = await contextCandidates(info, describer, s.names)
+      } catch {
+        // The fallback above, without a notification: completion runs on every key.
       }
       if (candidates.length === 0) return null
       const options = candidates.map((c) => ({ label: c.label, apply: c.insert, type: OPTION_TYPE[c.kind] }))
@@ -108,7 +105,8 @@ export function SoqlEditor() {
     const view = new EditorView({
       parent: host.current,
       state: EditorState.create({
-        doc: savedEditorText(),
+        // The first text, outside the undo history (docs/web.md "起動時のクエリ").
+        doc: claimEditorText(org, initialText),
         extensions: [
           history(),
           sql({ dialect: SOQL }),
@@ -152,7 +150,7 @@ export function SoqlEditor() {
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return
             const text = update.state.doc.toString()
-            saveEditorText(text)
+            saveEditorText(org, text)
             clearTimeout(settleTimer)
             settleTimer = setTimeout(() => latest.current.soql.onTextSettled(text), SETTLE_MS)
           }),
@@ -163,8 +161,8 @@ export function SoqlEditor() {
     latest.current.soql.registerEditor({
       getText: () => view.state.doc.toString(),
       setText: (text) => {
+        // Saved by the update listener.
         view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } })
-        saveEditorText(text)
       },
       focus: () => view.focus(),
     })
@@ -174,6 +172,8 @@ export function SoqlEditor() {
       latest.current.soql.registerEditor(null)
       view.destroy()
     }
+    // Once per workspace: the workspace, and so `org` and `initialText`, is remade for each org.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return <div ref={host} className={styles.editor} />
