@@ -20,15 +20,24 @@ export function cutErrorText(text: string): string {
   return text.length > MAX_ERROR_TEXT ? `${text.slice(0, MAX_ERROR_TEXT)}…` : text
 }
 
+/**
+ * Hides keys in error text: OpenAI quotes part of a wrong key
+ * ("Incorrect API key provided: sk-proj-****abcd"), and keys are never shown
+ * on screen.
+ */
+export function hideKeys(text: string): string {
+  return text.replace(/\bsk-[\w*.-]+/g, 'sk-…')
+}
+
 /** The error message in an AI API's error body (`{error: {message}}`), or the body itself. */
 export function errorMessage(status: number, body: string): string {
   try {
     const parsed = JSON.parse(body) as { error?: { message?: unknown } }
-    if (typeof parsed.error?.message === 'string') return cutErrorText(parsed.error.message)
+    if (typeof parsed.error?.message === 'string') return cutErrorText(hideKeys(parsed.error.message))
   } catch {
     // Not JSON: show the text.
   }
-  return cutErrorText(body.trim() || `HTTP ${status}`)
+  return cutErrorText(hideKeys(body.trim()) || `HTTP ${status}`)
 }
 
 /** One request to a provider: the text of the reply, which tasks.ts parses and checks. */
@@ -59,18 +68,18 @@ export async function postJson(url: string, headers: Record<string, string>, bod
 }
 
 async function post(url: string, headers: Record<string, string>, body: object, signal: AbortSignal): Promise<{ status: number; text: string }> {
-  let res: Response
   try {
-    res = await fetch(url, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...headers },
       body: JSON.stringify(body),
       redirect: 'error',
       signal,
     })
+    // Read here too: the connection can drop while the body arrives.
+    return { status: res.status, text: await res.text() }
   } catch (e) {
     if (signal.aborted) throw signal.reason
     throw new AiError('AI_ERROR', `Could not reach ${new URL(url).host}: ${(e as Error).message}`)
   }
-  return { status: res.status, text: await res.text() }
 }

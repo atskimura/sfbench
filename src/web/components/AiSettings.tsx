@@ -1,12 +1,12 @@
 // The AI section of the settings (docs/screens.md "設定", docs/ai.md "設定画面の AI の欄").
 import { useEffect, useId, useRef, useState } from 'react'
-import type { AiProvider, AiSettingsView } from '../../shared/api.ts'
+import { AI_PROVIDERS, type AiKeyProvider, type AiSettingsView } from '../../shared/api.ts'
 import { aiDraftValid, aiInput, type AiDraft } from '../ai/draft.ts'
 import { ApiRequestError, api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
 import styles from './SettingsDialog.module.css'
 
-const MODEL_DOCS: Record<Exclude<AiProvider, 'off'>, string> = {
+const MODEL_DOCS: Record<AiKeyProvider, string> = {
   anthropic: 'https://platform.claude.com/docs/en/about-claude/models/overview',
   openai: 'https://developers.openai.com/api/docs/models',
 }
@@ -49,7 +49,7 @@ export function AiSettings({ saved, draft, onChange }: { saved: AiSettingsView |
     <section className={styles.section} aria-describedby={ids.notes}>
       <h3 className={styles.sectionTitle}>{t.settingsAi}</h3>
       <div className={styles.choices} role="radiogroup" aria-label={t.settingsAi}>
-        {(['off', 'anthropic', 'openai'] as const).map((provider) => (
+        {AI_PROVIDERS.map((provider) => (
           <label key={provider} className={styles.check}>
             <input type="radio" name="ai-provider" checked={draft.provider === provider} onChange={() => change({ provider })} />
             {t.aiProviderName[provider]}
@@ -70,7 +70,7 @@ export function AiSettings({ saved, draft, onChange }: { saved: AiSettingsView |
           />
           <span className={aiDraftValid(draft) ? styles.note : styles.error}>
             {aiDraftValid(draft) ? (
-              <a href={MODEL_DOCS[draft.provider as Exclude<AiProvider, 'off'>]} target="_blank" rel="noreferrer">
+              <a href={MODEL_DOCS[draft.provider as AiKeyProvider]} target="_blank" rel="noreferrer">
                 {t.aiModelList}
               </a>
             ) : (

@@ -1,6 +1,6 @@
 // Settings and query history, stored under ~/.sfbench. See docs/design.md ("データの保存").
 import { join } from 'node:path'
-import { isValidTimeout, type AiProvider, type AiSettingsView, type HistoryEntry, type Settings } from '../shared/api.ts'
+import { AI_PROVIDERS, isValidTimeout, type AiKeyProvider, type AiProvider, type AiSettingsView, type HistoryEntry, type Settings } from '../shared/api.ts'
 import { readJson, writeFileAtomic } from './fsutil.ts'
 
 /** The AI settings as saved, with the key (docs/ai.md "保存する形"). Never sent to the web UI. */
@@ -9,7 +9,7 @@ export type StoredAiSettings = {
   model: string
   apiKey?: string
   /** The provider the key was entered for: the key goes to no other. */
-  keyProvider?: Exclude<AiProvider, 'off'>
+  keyProvider?: AiKeyProvider
 }
 
 /** Settings as saved in settings.json. */
@@ -17,10 +17,8 @@ export type StoredSettings = Omit<Settings, 'ai'> & { ai?: StoredAiSettings }
 
 export const DEFAULT_SETTINGS: StoredSettings = { omitNamespace: true, requestTimeoutSeconds: 120 }
 
-const PROVIDERS: readonly AiProvider[] = ['off', 'anthropic', 'openai']
-
 function isProvider(value: unknown): value is AiProvider {
-  return PROVIDERS.includes(value as AiProvider)
+  return (AI_PROVIDERS as readonly unknown[]).includes(value)
 }
 
 function loadAi(value: unknown): StoredAiSettings | undefined {
@@ -28,9 +26,11 @@ function loadAi(value: unknown): StoredAiSettings | undefined {
   const v = value as Record<string, unknown>
   if (!isProvider(v.provider)) return undefined
   const ai: StoredAiSettings = { provider: v.provider, model: typeof v.model === 'string' ? v.model : '' }
-  if (typeof v.apiKey === 'string' && v.apiKey && (v.keyProvider === 'anthropic' || v.keyProvider === 'openai')) {
+  // A key is kept only with the provider it was entered for (Off keeps it for when that provider is chosen again).
+  const keyProvider = isProvider(v.keyProvider) && v.keyProvider !== 'off' ? v.keyProvider : undefined
+  if (typeof v.apiKey === 'string' && v.apiKey && keyProvider && (v.provider === 'off' || v.provider === keyProvider)) {
     ai.apiKey = v.apiKey
-    ai.keyProvider = v.keyProvider
+    ai.keyProvider = keyProvider
   }
   return ai
 }

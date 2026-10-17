@@ -98,6 +98,12 @@ describe('AI settings', () => {
     expect(() => mergeAiSettings(undefined, { provider: 'gemini', model: 'x' })).toThrow(AiSettingsError)
   })
 
+  it('does not load a key saved for another provider', () => {
+    const file = join(dir, 'settings.json')
+    saveSettings(file, { omitNamespace: true, requestTimeoutSeconds: 120, ai: { ...saved, provider: 'openai' } })
+    expect(loadSettings(file).ai).toEqual({ provider: 'openai', model: 'claude-x' })
+  })
+
   it('saves the file readable by the owner only', () => {
     const file = join(dir, 'settings.json')
     saveSettings(file, { omitNamespace: true, requestTimeoutSeconds: 120, ai: saved })

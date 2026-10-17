@@ -1,3 +1,5 @@
+import type { AiProvider } from '../../shared/api.ts'
+
 export const en = {
   appName: 'sfbench',
   loadingOrgs: 'Loading the orgs from the sf CLI…',
@@ -25,7 +27,7 @@ export const en = {
   settingsOmitNamespace: "Omit the org's namespace prefix",
   settingsOmitNamespaceNote: 'Write Invoice__c instead of acme__Invoice__c in orgs with a namespace. Applies to all orgs.',
   settingsAi: 'AI',
-  aiProviderName: { off: 'Off', anthropic: 'Anthropic', openai: 'OpenAI' } as Record<'off' | 'anthropic' | 'openai', string>,
+  aiProviderName: { off: 'Off', anthropic: 'Anthropic', openai: 'OpenAI' } as Record<AiProvider, string>,
   aiModel: 'Model ID',
   aiModelList: 'List of model IDs',
   aiModelRequired: 'Enter the model ID.',

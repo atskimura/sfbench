@@ -57,7 +57,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const timeoutValid = isValidTimeout(timeout)
 
   const save = async () => {
-    if (!settings || !timeoutValid || !aiDraftValid(aiDraft)) return
+    if (!settings || !timeoutValid || !(aiDraftValid(aiDraft) || !aiDraft.touched)) return
     setSaving(true)
     try {
       setAppSettings(
@@ -135,7 +135,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           <button type="button" className={styles.button} onClick={onClose}>
             {t.cancel}
           </button>
-          <button type="submit" className={`${styles.button} ${styles.primary}`} disabled={!settings || !timeoutValid || !aiDraftValid(aiDraft) || saving}>
+          <button type="submit" className={`${styles.button} ${styles.primary}`} disabled={!settings || !timeoutValid || !(aiDraftValid(aiDraft) || !aiDraft.touched) || saving}>
             {t.save}
           </button>
         </div>

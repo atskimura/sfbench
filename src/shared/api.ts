@@ -88,7 +88,10 @@ export type Settings = {
 }
 
 /** The AI providers sfbench can call: Anthropic or OpenAI, or none (docs/ai.md). */
-export type AiProvider = 'off' | 'anthropic' | 'openai'
+export const AI_PROVIDERS = ['off', 'anthropic', 'openai'] as const
+export type AiProvider = (typeof AI_PROVIDERS)[number]
+/** The providers that take a key. */
+export type AiKeyProvider = Exclude<AiProvider, 'off'>
 
 /** The AI settings as the web UI sees them: the key itself never leaves the server. */
 export type AiSettingsView = {
@@ -96,7 +99,7 @@ export type AiSettingsView = {
   model: string
   hasApiKey: boolean
   /** The provider the saved key is for (the key goes to no other). */
-  keyProvider?: Exclude<AiProvider, 'off'>
+  keyProvider?: AiKeyProvider
 }
 
 /** AI settings sent from the web UI. Leaving out apiKey keeps the saved key; null removes it. */

@@ -462,6 +462,8 @@ export class App {
    * tab): the request to the AI is aborted too, and nothing is sent back.
    */
   private async runAi(res: ServerResponse, call: (signal: AbortSignal) => Promise<unknown>): Promise<void> {
+    // Already gone while the body was read: 'close' has fired, so do not call the AI at all.
+    if (res.destroyed || res.socket?.destroyed) return
     const gone = new AbortController()
     res.on('close', () => {
       if (!res.writableEnded) gone.abort()

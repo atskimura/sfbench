@@ -30,6 +30,8 @@ describe('Anthropic', () => {
   })
 
   it('shows the API error message, a refusal, and a cut-off output', async () => {
+    vi.stubGlobal('fetch', reply(401, { error: { message: 'Incorrect API key provided: sk-proj-****abcd. You can find your API key at …' } }))
+    await expect(generate(anthropic, TEST_REQUEST, never)).rejects.toMatchObject({ message: expect.not.stringContaining('abcd') })
     vi.stubGlobal('fetch', reply(401, { type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }))
     await expect(generate(anthropic, TEST_REQUEST, never)).rejects.toMatchObject({ code: 'AI_ERROR', message: 'invalid x-api-key' })
     vi.stubGlobal('fetch', reply(200, { content: [{ type: 'text', text: 'No.' }], stop_reason: 'refusal' }))
@@ -69,6 +71,12 @@ describe('generate', () => {
     await expect(generate(undefined, TEST_REQUEST, never)).rejects.toMatchObject({ code: 'AI_NOT_CONFIGURED' })
     await expect(generate({ ...anthropic, provider: 'off' }, TEST_REQUEST, never)).rejects.toMatchObject({ code: 'AI_NOT_CONFIGURED' })
     await expect(generate({ provider: 'anthropic', model: 'x' }, TEST_REQUEST, never)).rejects.toMatchObject({ code: 'AI_NOT_CONFIGURED' })
+    await expect(generate({ ...anthropic, model: ' ' }, TEST_REQUEST, never)).rejects.toMatchObject({ code: 'AI_NOT_CONFIGURED' })
+    // A key entered for Anthropic never goes to OpenAI, even if the file says so.
+    const fetch = vi.fn()
+    vi.stubGlobal('fetch', fetch)
+    await expect(generate({ ...anthropic, provider: 'openai' }, TEST_REQUEST, never)).rejects.toMatchObject({ code: 'AI_NOT_CONFIGURED' })
+    expect(fetch).not.toHaveBeenCalled()
   })
 
   it('gives up after the timeout and stops when the caller goes away', async () => {
@@ -86,10 +94,19 @@ describe('generate', () => {
 
 describe('tasks', () => {
   it('accepts JSON wrapped in text, and rejects other shapes', () => {
-    expect(checkOutput('generateSoql', 'Here: {"soql":" SELECT Id FROM Account ","explanation":"x"} done')).toEqual({ soql: 'SELECT Id FROM Account', explanation: 'x' })
-    expect(() => checkOutput('generateSoql', '{"soql":""}')).toThrow(AiError)
-    expect(() => checkOutput('generateSoql', 'SELECT Id FROM Account')).toThrow(AiError)
-    expect(checkOutput('chooseObjects', '{"objects":["A","B","C","D"]}')).toEqual({ objects: ['A', 'B', 'C', 'D'] })
+    expect(checkOutput(TEST_REQUEST, 'Here: {"soql":" SELECT Id FROM Account ","explanation":"x"} done')).toEqual({ soql: 'SELECT Id FROM Account', explanation: 'x' })
+    expect(() => checkOutput(TEST_REQUEST, '{"soql":""}')).toThrow(AiError)
+    expect(() => checkOutput(TEST_REQUEST, 'SELECT Id FROM Account')).toThrow(AiError)
+  })
+
+  it('matches chosen objects against the list given, ignoring case and namespace', () => {
+    const req: AiTaskRequest = {
+      task: 'chooseObjects',
+      input: { request: 'x', objects: 'Account (取引先)\nacme__Invoice__c (請求書)\nContact (取引先責任者)', tooling: false, language: 'en' },
+    }
+    expect(checkOutput(req, '{"objects":["Acount","invoice__c","ACCOUNT","Contact","Foo"]}')).toEqual({
+      objects: ['acme__Invoice__c', 'Account', 'Contact'],
+    })
   })
 
   it('marks org text as data, and writes fix explanations in the UI language', () => {
@@ -101,7 +118,7 @@ describe('tasks', () => {
     expect(prompt.user).not.toContain('<data name="metadata">')
   })
 
-  it('keeps only chosen objects that are in the list, spelled as in the list, before cutting to three', () => {
+  it('keeps only chosen objects that are in the list, before cutting to three', () => {
     const list = 'Account (取引先)\nOpportunity (商談)\nContact (取引先責任者)\nCase (ケース)'
     expect(knownObjects({ objects: ['Acount', 'Foo__c', 'opportunity', 'Bar', 'ACCOUNT', 'Case', 'Contact'] }, list)).toEqual({
       objects: ['Opportunity', 'Account', 'Case'],

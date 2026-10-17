@@ -77,7 +77,11 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
     if ((e as Error).name === 'AbortError') throw new ApiRequestError(0, 'ABORTED', 'Aborted')
     throw new ApiRequestError(0, 'NETWORK_ERROR', 'Could not reach the sfbench server.')
   }
-  const json = (await res.json().catch(() => undefined)) as unknown
+  const json = (await res.json().catch((e: unknown) => {
+    // Cancelled while the body was arriving: an abort, not an empty reply.
+    if ((e as Error).name === 'AbortError') throw new ApiRequestError(0, 'ABORTED', 'Aborted')
+    return undefined
+  })) as unknown
   if (!res.ok) {
     const error = (json as ApiError | undefined)?.error
     throw new ApiRequestError(res.status, error?.code ?? 'INTERNAL_ERROR', error?.message ?? `HTTP ${res.status}`, error)

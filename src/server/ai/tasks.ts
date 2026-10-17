@@ -138,18 +138,19 @@ function parseJson(text: string): unknown {
 
 const BAD_OUTPUT = 'The AI did not answer in the expected form.'
 
-export function checkOutput<T extends AiTask>(task: T, text: string): AiOutput<T> {
+/** Parses and checks the reply for the request; chosen objects are matched against the list given. */
+export function checkOutput(req: AiTaskRequest, text: string): AiOutput<AiTask> {
   const value = parseJson(text) as Record<string, unknown> | undefined
   if (!value || typeof value !== 'object') throw new AiError('AI_BAD_OUTPUT', BAD_OUTPUT, text)
-  if (task === 'chooseObjects') {
+  if (req.task === 'chooseObjects') {
     const objects = value.objects
     if (!Array.isArray(objects) || !objects.every((o) => typeof o === 'string')) throw new AiError('AI_BAD_OUTPUT', BAD_OUTPUT, text)
-    return { objects } as AiOutput<T>
+    return knownObjects({ objects }, req.input.objects)
   }
   if (typeof value.soql !== 'string' || !value.soql.trim() || typeof value.explanation !== 'string') {
     throw new AiError('AI_BAD_OUTPUT', BAD_OUTPUT, text)
   }
-  return { soql: value.soql.trim(), explanation: value.explanation.trim() } as AiOutput<T>
+  return { soql: value.soql.trim(), explanation: value.explanation.trim() }
 }
 
 /**
@@ -158,15 +159,23 @@ export function checkOutput<T extends AiTask>(task: T, text: string): AiOutput<T
  * before cutting, so that wrong names do not push out right ones.
  */
 export function knownObjects(output: AiOutput<'chooseObjects'>, list: string): AiOutput<'chooseObjects'> {
-  const names = new Map(
-    list
-      .split('\n')
-      .map((line) => line.trim().split(/\s/)[0])
-      .filter(Boolean)
-      .map((name) => [name.toLowerCase(), name] as const),
-  )
-  const known = output.objects.map((o) => names.get(o.trim().toLowerCase())).filter((o): o is string => Boolean(o))
+  const listed = list
+    .split('\n')
+    .map((line) => line.trim().split(/\s/)[0])
+    .filter(Boolean)
+  const exact = new Map(listed.map((name) => [name.toLowerCase(), name]))
+  const loose = new Map(listed.map((name) => [withoutNamespace(name), name]))
+  const find = (o: string) => exact.get(o.trim().toLowerCase()) ?? loose.get(withoutNamespace(o.trim()))
+  const known = output.objects.map(find).filter((o): o is string => Boolean(o))
   return { objects: [...new Set(known)].slice(0, MAX_OBJECTS) }
+}
+
+/**
+ * A custom name without its namespace (acme__Invoice__c to invoice__c), in
+ * lower case, so that the AI may add or leave out the org's namespace.
+ */
+function withoutNamespace(name: string): string {
+  return name.toLowerCase().replace(/^[a-z0-9]+__(?=.+__)/, '')
 }
 
 /** Checks a request body from the web UI. Returns an error message, or undefined when it is fine. */
