@@ -19,6 +19,7 @@ import {
   type Selection,
 } from '../soql/selection.ts'
 import { addColumns, type Column, type SObjectRecord } from '../results/columns.ts'
+import { markFor, promptForRun, type PromptMark } from '../ai/promptMark.ts'
 import { useApp } from './AppContext.tsx'
 import { useOrgs, type Seed } from './OrgContext.tsx'
 import { useTask } from './useTask.ts'
@@ -42,7 +43,17 @@ type SoqlState = {
   tooling: boolean
   queryAll: boolean
   history: HistoryEntry[]
+  /** The editor text as last settled (300 ms after typing stops), for the AI proposal's diff. */
+  settledText: string
   registerEditor: (handle: EditorHandle | null) => void
+  /** The editor text now (not the settled text). */
+  getText: () => string
+  /**
+   * Puts an AI proposal in the editor as one undoable change, with its API,
+   * and marks it with its request (docs/ai.md "画面の状態と遷移"). With `run`,
+   * runs it at once, replacing a query that is running.
+   */
+  applyProposal: (proposal: { soql: string; tooling: boolean; prompt: string | undefined }, run: boolean) => void
   /** Called by the editor when its text settles (300 ms after typing stops). */
   onTextSettled: (text: string) => void
   setTooling: (on: boolean) => void
@@ -82,7 +93,14 @@ export type QueryResult =
       elapsedMs: number
       executedAt: Date
     }
-  | { state: 'error'; message: string; details?: unknown; reloginCommand?: string }
+  | {
+      state: 'error'
+      message: string
+      details?: unknown
+      reloginCommand?: string
+      /** Salesforce rejected the query, as it was run: Fix with AI fixes this (docs/ai.md "画面の状態と遷移"). */
+      rejected?: { soql: string; tooling: boolean; prompt: string | undefined }
+    }
 
 type ResultState = {
   result: QueryResult
@@ -107,6 +125,9 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
   const [tooling, setToolingState] = useState(false)
   const [queryAll, setQueryAllState] = useState(false)
   const [history, setHistory] = useState<HistoryEntry[]>([])
+  const [settledText, setSettledText] = useState('')
+  // The query an AI proposal or a history entry put in, with its request.
+  const [mark, setMark] = useState<PromptMark>()
   const [result, setResult] = useState<QueryResult>({ state: 'idle' })
   const { start: startRun, running, cancel: cancelRun } = useTask()
   const resultCount = useRef(0)
@@ -120,6 +141,7 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
   /** Parses the text into the selection; with `switchPanel`, also shows the FROM object on the left. */
   const applyText = useCallback((text: string, switchPanel = true) => {
     const query = parseSoql(text)
+    setSettledText(text)
     setFirstLine(text.trimStart().split('\n', 1)[0])
     if (!text.trim()) {
       setSelection(undefined)
@@ -168,18 +190,20 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
   }, [startHistory, username])
 
   /**
-   * Runs the given text: the editor's, or the launch query before the editor
-   * may exist. While a query runs, another run does nothing (the Run button is
-   * disabled, and Cmd+Enter is ignored here).
+   * Runs the given text: the editor's, an AI proposal, or the launch query
+   * before the editor may exist. While a query runs, another run does nothing
+   * (the Run button is disabled, and Cmd+Enter is ignored here), except an AI
+   * proposal's Replace & Run, which replaces it.
    */
   const runSoql = useCallback(
-    async (soql: string) => {
+    async (soql: string, options: { tooling?: boolean; prompt?: string; whileRunning?: 'ignore' | 'replace' } = {}) => {
       if (!soql.trim()) return
       const started = performance.now()
-      const useTooling = tooling
+      const useTooling = options.tooling ?? tooling
+      const prompt = options.prompt
       const outcome = await startRun(
-        (signal) => api.query(username, { soql, tooling: useTooling, queryAll: !useTooling && queryAll }, signal),
-        'ignore',
+        (signal) => api.query(username, { soql, tooling: useTooling, queryAll: !useTooling && queryAll, ...(prompt ? { prompt } : {}) }, signal),
+        options.whileRunning ?? 'ignore',
       )
       if (outcome.kind === 'stale') return
       if (outcome.kind === 'done') {
@@ -209,7 +233,7 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
         markAuthError(username, e.body?.reloginCommand)
         setResult({ state: 'error', message: t.orgAuthError, reloginCommand: e.body?.reloginCommand })
       } else if (e instanceof ApiRequestError && e.code === 'SALESFORCE_ERROR') {
-        setResult({ state: 'error', message: e.message, details: e.body?.details })
+        setResult({ state: 'error', message: e.message, details: e.body?.details, rejected: { soql, tooling: useTooling, prompt } })
       } else if (handleOrgError(username, e)) {
         setResult({ state: 'idle' })
       } else {
@@ -218,7 +242,26 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
     },
     [startRun, username, tooling, queryAll, reportApiUsage, handleOrgError, markAuthError, refreshHistory],
   )
-  const run = useCallback(() => void runSoql(editor.current?.getText() ?? ''), [runSoql])
+  const run = useCallback(() => {
+    const soql = editor.current?.getText() ?? ''
+    void runSoql(soql, { prompt: promptForRun(mark, soql, tooling) })
+  }, [runSoql, mark, tooling])
+
+  const setTooling = useCallback((on: boolean) => {
+    setToolingState(on)
+    if (on) setQueryAllState(false)
+  }, [])
+
+  const applyProposal = useCallback(
+    (proposal: { soql: string; tooling: boolean; prompt: string | undefined }, andRun: boolean) => {
+      setText(proposal.soql)
+      setTooling(proposal.tooling)
+      setMark(markFor(proposal.soql, proposal.tooling, proposal.prompt))
+      // The values go to the run directly: the mark and the toggle reach it only after a render.
+      if (andRun) void runSoql(proposal.soql, { tooling: proposal.tooling, prompt: proposal.prompt, whileRunning: 'replace' })
+    },
+    [setText, setTooling, runSoql],
+  )
 
   // The workspace is remade for each org (docs/web.md "非同期の流れ"): on
   // mounting, load the history and run the launch query.
@@ -244,15 +287,15 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
       tooling,
       queryAll,
       history,
+      settledText,
       registerEditor: (handle) => {
         editor.current = handle
         if (handle) applyText(handle.getText())
       },
+      getText: () => editor.current?.getText() ?? '',
+      applyProposal,
       onTextSettled: (text) => applyText(text),
-      setTooling: (on) => {
-        setToolingState(on)
-        if (on) setQueryAllState(false)
-      },
+      setTooling,
       setQueryAll: (on) => {
         setQueryAllState(on)
         if (on) setToolingState(false)
@@ -266,12 +309,13 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
       format: () => edit(formatSoql),
       loadHistory: (entry) => {
         setText(entry.soql)
+        setMark(markFor(entry.soql, entry.tooling, entry.prompt))
         setToolingState(entry.tooling)
         setQueryAllState(!entry.tooling && entry.queryAll)
       },
       run,
     }),
-    [names, selection, firstLine, panelObject, tooling, queryAll, history, applyText, setText, edit, run],
+    [names, selection, firstLine, panelObject, tooling, queryAll, history, settledText, applyText, applyProposal, setTooling, setText, edit, run],
   )
   /** Stops the running query; only a run that was stopped empties the result. */
   const cancel = useCallback(() => {

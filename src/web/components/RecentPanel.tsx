@@ -22,6 +22,7 @@ export function RecentPanel() {
           {soql.history.map((entry) => (
             <li key={`${entry.executedAt}\n${entry.soql}`}>
               <button type="button" className={styles.item} onClick={() => soql.loadHistory(entry)} title={entry.soql}>
+                {entry.prompt && <span className={styles.prompt}>{entry.prompt}</span>}
                 <span className={styles.soql}>{entry.soql}</span>
                 <span className={panel.meta}>
                   {timeFormat.format(new Date(entry.executedAt))}
