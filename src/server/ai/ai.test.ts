@@ -33,7 +33,7 @@ describe('Anthropic', () => {
     vi.stubGlobal('fetch', reply(401, { error: { message: 'Incorrect API key provided: sk-proj-****abcd. You can find your API key at …' } }))
     await expect(generate(anthropic, TEST_REQUEST, never)).rejects.toMatchObject({ message: expect.not.stringContaining('abcd') })
     vi.stubGlobal('fetch', reply(401, { type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }))
-    await expect(generate(anthropic, TEST_REQUEST, never)).rejects.toMatchObject({ code: 'AI_ERROR', message: 'invalid x-api-key' })
+    await expect(generate(anthropic, TEST_REQUEST, never)).rejects.toMatchObject({ code: 'AI_ERROR', message: 'authentication_error: invalid x-api-key' })
     vi.stubGlobal('fetch', reply(200, { content: [{ type: 'text', text: 'No.' }], stop_reason: 'refusal' }))
     await expect(generate(anthropic, TEST_REQUEST, never)).rejects.toMatchObject({ code: 'AI_ERROR' })
     vi.stubGlobal('fetch', reply(200, { content: [{ type: 'text', text: '{"soql":"SEL' }], stop_reason: 'max_tokens' }))

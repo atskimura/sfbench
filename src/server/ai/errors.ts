@@ -29,11 +29,16 @@ export function hideKeys(text: string): string {
   return text.replace(/\bsk-[\w*.-]+/g, 'sk-…')
 }
 
-/** The error message in an AI API's error body (`{error: {message}}`), or the body itself. */
+/**
+ * The error message in an AI API's error body (`{error: {type, message}}`),
+ * or the body itself. The type comes first: a bare "model: x" from Anthropic
+ * says little without "not_found_error".
+ */
 export function errorMessage(status: number, body: string): string {
   try {
-    const parsed = JSON.parse(body) as { error?: { message?: unknown } }
-    if (typeof parsed.error?.message === 'string') return cutErrorText(hideKeys(parsed.error.message))
+    const parsed = JSON.parse(body) as { error?: { message?: unknown; type?: unknown } }
+    const { message, type } = parsed.error ?? {}
+    if (typeof message === 'string') return cutErrorText(hideKeys(typeof type === 'string' && type ? `${type}: ${message}` : message))
   } catch {
     // Not JSON: show the text.
   }
