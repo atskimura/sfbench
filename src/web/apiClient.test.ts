@@ -31,4 +31,18 @@ describe('apiClient', () => {
     const error = await api.query('u', { soql: 'x' }, abort.signal).catch((e: unknown) => e)
     expect((error as ApiRequestError).code).toBe('ABORTED')
   })
+
+  it('reports ABORTED, not a lost connection, when fetch rejects with the reason of an abort', async () => {
+    const abort = new AbortController()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        abort.abort(new DOMException('timed out', 'TimeoutError'))
+        throw abort.signal.reason
+      }),
+    )
+    const error = await api.query('u', { soql: 'x' }, abort.signal).catch((e: unknown) => e)
+    expect((error as ApiRequestError).code).toBe('ABORTED')
+    expect((error as ApiRequestError).isSessionLost).toBe(false)
+  })
 })

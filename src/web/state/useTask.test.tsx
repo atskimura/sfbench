@@ -114,26 +114,58 @@ describe('useTask', () => {
     expect(runs).toHaveLength(1)
   })
 
-  it('a start from a child effect right after mounting runs (StrictMode too)', async () => {
+  it('a start from a child effect right after mounting runs; under StrictMode the first run is stale', async () => {
     const { body, runs } = controlled<string>()
+    const outcomes: TaskOutcome<string>[] = []
     function Child({ start }: { start: ReturnType<typeof useTask<never>>['start'] }) {
       useEffect(() => {
-        void start(body, 'replace')
+        void start(body, 'replace').then((o) => outcomes.push(o))
       }, [start])
       return null
     }
     function Parent() {
       const task = useTask<never>()
-      return <Child start={task.start} />
+      return (
+        <>
+          <output>{String(task.running)}</output>
+          <Child start={task.start} />
+        </>
+      )
     }
-    render(
+    const view = render(
       <StrictMode>
         <Parent />
       </StrictMode>,
     )
-    // StrictMode: the first run is aborted by the simulated unmount, the second runs.
-    expect(runs.length).toBeGreaterThanOrEqual(1)
-    expect(runs[runs.length - 1].signal.aborted).toBe(false)
+    // StrictMode mounts, unmounts and mounts again: the first run is aborted.
+    expect(runs).toHaveLength(2)
+    expect(runs[0].signal.aborted).toBe(true)
+    expect(runs[1].signal.aborted).toBe(false)
+    expect(view.container.querySelector('output')?.textContent).toBe('true')
+    await act(async () => {
+      runs[0].resolve('first')
+      runs[1].resolve('second')
+    })
+    expect(outcomes).toEqual([{ kind: 'stale' }, { kind: 'done', value: 'second' }])
+  })
+
+  it('an abort the task did not cause (another signal) is an error, not stale', async () => {
+    const { result } = renderHook(() => useTask())
+    let outcome: TaskOutcome<string> | undefined
+    await act(async () => {
+      outcome = await result.current.start(async () => {
+        throw new DOMException('aborted elsewhere', 'AbortError')
+      }, 'replace')
+    })
+    expect(outcome).toMatchObject({ kind: 'error' })
+  })
+
+  it('a finished request is not aborted', async () => {
+    const { result } = renderHook(() => useTask())
+    const { body, runs } = controlled<string>()
+    act(() => void result.current.start(body, 'replace'))
+    await act(async () => runs[0].resolve('A'))
+    expect(runs[0].signal.aborted).toBe(false)
   })
 
   it('a body that throws synchronously is an error, not a thrown start', async () => {

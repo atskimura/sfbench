@@ -74,7 +74,8 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
       signal,
     })
   } catch (e) {
-    if ((e as Error).name === 'AbortError') throw new ApiRequestError(0, 'ABORTED', 'Aborted')
+    // Aborted with any reason (a timeout or a combined signal included): not a lost connection.
+    if (signal?.aborted || (e as Error).name === 'AbortError') throw new ApiRequestError(0, 'ABORTED', 'Aborted')
     throw new ApiRequestError(0, 'NETWORK_ERROR', 'Could not reach the sfbench server.')
   }
   const json = (await res.json().catch((e: unknown) => {

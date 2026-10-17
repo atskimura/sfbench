@@ -14,62 +14,64 @@ const STALE = { kind: 'stale' } as const
 export function useTask<P = never>() {
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState<P>()
-  const live = useRef({ current: undefined as AbortController | undefined, mounted: false })
+  const live = useRef({ controller: undefined as AbortController | undefined, mounted: false })
 
-  /** Ends the running request: it becomes stale, and what it showed goes. */
-  const stop = useCallback(() => {
-    const l = live.current
-    l.current?.abort()
-    l.current = undefined
+  /** The running request is over: what it showed goes. */
+  const finish = useCallback(() => {
+    live.current.controller = undefined
     setRunning(false)
     setProgress(undefined)
   }, [])
+
+  /** Stops the running request: it is aborted and becomes stale. */
+  const cancel = useCallback(() => {
+    live.current.controller?.abort()
+    finish()
+  }, [finish])
 
   const start = useCallback(
     async <T,>(body: TaskBody<T, P>, whileRunning: 'replace' | 'ignore'): Promise<TaskOutcome<T>> => {
       const l = live.current
       if (!l.mounted) return STALE
       // Decided here, not after a render, so that a double click starts once.
-      if (l.current && whileRunning === 'ignore') return STALE
-      stop()
+      if (l.controller && whileRunning === 'ignore') return STALE
+      cancel()
       const request = new AbortController()
-      l.current = request
+      l.controller = request
       setRunning(true)
-      const valid = () => l.current === request
+      const valid = () => l.controller === request
       const report = (value: P) => {
         if (valid()) setProgress(() => value)
       }
       try {
         const value = await body(request.signal, report)
         if (!valid()) return STALE
-        stop()
+        // Not aborted: a body may still use its signal for what it returned.
+        finish()
         return { kind: 'done', value }
       } catch (error) {
         // Includes the failure that aborting this request causes.
         if (!valid()) return STALE
-        stop()
+        finish()
         return { kind: 'error', error }
       }
     },
-    [stop],
+    [cancel, finish],
   )
 
-  const cancel = useCallback(() => {
-    if (live.current.current) stop()
-  }, [stop])
-
   // A layout effect runs before every effect, children's included, so that a
-  // child may start a request from its first effect. StrictMode runs it again
-  // after the simulated unmount, which marks the task alive again.
+  // child may start a request from its first effect (not from its own layout
+  // effect, which runs earlier). StrictMode runs it again after the simulated
+  // unmount, which marks the task alive again. Hiding the component (Suspense,
+  // Activity) runs the cleanup too, which stops the request and its display.
   useLayoutEffect(() => {
     const l = live.current
     l.mounted = true
     return () => {
       l.mounted = false
-      l.current?.abort()
-      l.current = undefined
+      cancel()
     }
-  }, [])
+  }, [cancel])
 
   return { start, cancel, running, progress }
 }
