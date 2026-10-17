@@ -10,6 +10,8 @@ import { api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
 import { DOCUMENTATION_URL, GITHUB_URL } from '../links.ts'
 import { useApp } from '../state/AppContext.tsx'
+import { aiDraftValid, aiInput, initialAiDraft, type AiDraft } from '../ai/draft.ts'
+import { AiSettings } from './AiSettings.tsx'
 import styles from './SettingsDialog.module.css'
 
 
@@ -18,6 +20,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [settings, setSettings] = useState<Settings>()
   const [timeoutText, setTimeoutText] = useState('')
+  const [aiDraft, setAiDraft] = useState<AiDraft>(initialAiDraft(undefined))
   const [saving, setSaving] = useState(false)
   const namespaceId = useId()
   const timeoutId = useId()
@@ -37,6 +40,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         if (!active) return
         setSettings(s)
         setTimeoutText(String(s.requestTimeoutSeconds))
+        setAiDraft(initialAiDraft(s.ai))
       },
       (e: unknown) => {
         if (!active) return
@@ -53,10 +57,17 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const timeoutValid = isValidTimeout(timeout)
 
   const save = async () => {
-    if (!settings || !timeoutValid) return
+    if (!settings || !timeoutValid || !(aiDraftValid(aiDraft) || !aiDraft.touched)) return
     setSaving(true)
     try {
-      setAppSettings(await api.saveSettings({ omitNamespace: settings.omitNamespace, requestTimeoutSeconds: timeout }))
+      setAppSettings(
+        await api.saveSettings({
+          omitNamespace: settings.omitNamespace,
+          requestTimeoutSeconds: timeout,
+          // Only when changed: saving other settings keeps "not set up" (docs/ai.md "API").
+          ...(aiDraft.touched ? { ai: aiInput(aiDraft) } : {}),
+        }),
+      )
       onClose()
     } catch (e) {
       if (!handleCommonError(e)) notify({ message: (e as Error).message })
@@ -117,13 +128,14 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                 {timeoutValid ? t.settingsTimeoutNote(MIN_TIMEOUT, MAX_TIMEOUT) : t.settingsTimeoutInvalid(MIN_TIMEOUT, MAX_TIMEOUT)}
               </span>
             </section>
+            <AiSettings saved={settings.ai} draft={aiDraft} onChange={setAiDraft} />
           </>
         )}
         <div className={styles.actions}>
           <button type="button" className={styles.button} onClick={onClose}>
             {t.cancel}
           </button>
-          <button type="submit" className={`${styles.button} ${styles.primary}`} disabled={!settings || !timeoutValid || saving}>
+          <button type="submit" className={`${styles.button} ${styles.primary}`} disabled={!settings || !timeoutValid || !(aiDraftValid(aiDraft) || !aiDraft.touched) || saving}>
             {t.save}
           </button>
         </div>

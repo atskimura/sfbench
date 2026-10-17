@@ -1,5 +1,10 @@
 // Calls the local sfbench server. See docs/design.md ("API") and docs/web.md ("エラーの扱い").
 import type {
+  AiOutput,
+  AiTask,
+  AiTaskRequest,
+  AiTestRequest,
+  AiTestResponse,
   ApiError,
   ApiErrorCode,
   ApiUsage,
@@ -10,6 +15,7 @@ import type {
   QueryResponse,
   SessionResponse,
   Settings,
+  SettingsUpdate,
   WithApiUsage,
   WithFetchedAt,
 } from '../shared/api.ts'
@@ -71,7 +77,11 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
     if ((e as Error).name === 'AbortError') throw new ApiRequestError(0, 'ABORTED', 'Aborted')
     throw new ApiRequestError(0, 'NETWORK_ERROR', 'Could not reach the sfbench server.')
   }
-  const json = (await res.json().catch(() => undefined)) as unknown
+  const json = (await res.json().catch((e: unknown) => {
+    // Cancelled while the body was arriving: an abort, not an empty reply.
+    if ((e as Error).name === 'AbortError') throw new ApiRequestError(0, 'ABORTED', 'Aborted')
+    return undefined
+  })) as unknown
   if (!res.ok) {
     const error = (json as ApiError | undefined)?.error
     throw new ApiRequestError(res.status, error?.code ?? 'INTERNAL_ERROR', error?.message ?? `HTTP ${res.status}`, error)
@@ -131,7 +141,10 @@ export const api = {
   history: (username: string) => request<HistoryResponse>('GET', `${org(username)}/history`),
   openOrg: (username: string) => request<{ ok: true }>('POST', `${org(username)}/open`),
   settings: () => request<Settings>('GET', '/api/settings'),
-  saveSettings: (settings: Partial<Settings>) => request<Settings>('PUT', '/api/settings', settings),
+  saveSettings: (settings: SettingsUpdate) => request<Settings>('PUT', '/api/settings', settings),
+  aiGenerate: <T extends AiTask>(req: AiTaskRequest & { task: T }, signal?: AbortSignal) =>
+    request<{ output: AiOutput<T> }>('POST', '/api/ai/generate', req, signal),
+  aiTest: (body: AiTestRequest, signal?: AbortSignal) => request<AiTestResponse>('POST', '/api/ai/test', body, signal),
 }
 
 export type { ApiUsage }

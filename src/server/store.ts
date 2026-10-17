@@ -1,24 +1,107 @@
 // Settings and query history, stored under ~/.sfbench. See docs/design.md ("データの保存").
 import { join } from 'node:path'
-import { isValidTimeout, type HistoryEntry, type Settings } from '../shared/api.ts'
+import { AI_PROVIDERS, isValidTimeout, type AiKeyProvider, type AiProvider, type AiSettingsView, type HistoryEntry, type Settings } from '../shared/api.ts'
 import { readJson, writeFileAtomic } from './fsutil.ts'
 
-export const DEFAULT_SETTINGS: Settings = { omitNamespace: true, requestTimeoutSeconds: 120 }
+/** The AI settings as saved, with the key (docs/ai.md "保存する形"). Never sent to the web UI. */
+export type StoredAiSettings = {
+  provider: AiProvider
+  model: string
+  apiKey?: string
+  /** The provider the key was entered for: the key goes to no other. */
+  keyProvider?: AiKeyProvider
+}
 
+/** Settings as saved in settings.json. */
+export type StoredSettings = Omit<Settings, 'ai'> & { ai?: StoredAiSettings }
 
-export function loadSettings(file: string): Settings {
+export const DEFAULT_SETTINGS: StoredSettings = { omitNamespace: true, requestTimeoutSeconds: 120 }
+
+function isProvider(value: unknown): value is AiProvider {
+  return (AI_PROVIDERS as readonly unknown[]).includes(value)
+}
+
+function loadAi(value: unknown): StoredAiSettings | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const v = value as Record<string, unknown>
+  if (!isProvider(v.provider)) return undefined
+  const ai: StoredAiSettings = { provider: v.provider, model: typeof v.model === 'string' ? v.model : '' }
+  // A key is kept only with the provider it was entered for (Off keeps it for when that provider is chosen again).
+  const keyProvider = isProvider(v.keyProvider) && v.keyProvider !== 'off' ? v.keyProvider : undefined
+  if (typeof v.apiKey === 'string' && v.apiKey && keyProvider && (v.provider === 'off' || v.provider === keyProvider)) {
+    ai.apiKey = v.apiKey
+    ai.keyProvider = keyProvider
+  }
+  return ai
+}
+
+export function loadSettings(file: string): StoredSettings {
   const stored = readJson(file)
-  const s = stored && typeof stored === 'object' ? (stored as Partial<Settings>) : {}
-  return {
+  const s = stored && typeof stored === 'object' ? (stored as Record<string, unknown>) : {}
+  const settings: StoredSettings = {
     omitNamespace: typeof s.omitNamespace === 'boolean' ? s.omitNamespace : DEFAULT_SETTINGS.omitNamespace,
     requestTimeoutSeconds: isValidTimeout(s.requestTimeoutSeconds)
       ? s.requestTimeoutSeconds
       : DEFAULT_SETTINGS.requestTimeoutSeconds,
   }
+  const ai = loadAi(s.ai)
+  if (ai) settings.ai = ai
+  return settings
 }
 
-export function saveSettings(file: string, settings: Settings): void {
+/** Written with mode 0600 (writeFileAtomic): the file holds the AI's API key. */
+export function saveSettings(file: string, settings: StoredSettings): void {
   writeFileAtomic(file, JSON.stringify(settings, null, 2))
+}
+
+/** What the web UI gets: the AI settings without the key. */
+export function settingsView(settings: StoredSettings): Settings {
+  const { ai, ...rest } = settings
+  if (!ai) return rest
+  const view: AiSettingsView = { provider: ai.provider, model: ai.model, hasApiKey: Boolean(ai.apiKey) }
+  if (ai.apiKey && ai.keyProvider) view.keyProvider = ai.keyProvider
+  return { ...rest, ai: view }
+}
+
+export class AiSettingsError extends Error {}
+
+/**
+ * Merges the AI settings sent by the web UI into the saved ones
+ * (docs/ai.md "API"). Leaving out apiKey keeps the saved key, null removes
+ * it, and choosing another provider (other than Off) drops it, so that a key
+ * never goes to a provider it was not entered for.
+ */
+export function mergeAiSettings(saved: StoredAiSettings | undefined, input: unknown): StoredAiSettings {
+  if (!input || typeof input !== 'object') throw new AiSettingsError('ai must be an object.')
+  const v = input as Record<string, unknown>
+  if (!isProvider(v.provider)) throw new AiSettingsError('ai.provider must be off, anthropic or openai.')
+  if (v.model !== undefined && typeof v.model !== 'string') throw new AiSettingsError('ai.model must be a string.')
+  if (v.apiKey !== undefined && v.apiKey !== null && typeof v.apiKey !== 'string') {
+    throw new AiSettingsError('ai.apiKey must be a string or null.')
+  }
+  const provider = v.provider
+  const model = typeof v.model === 'string' ? v.model.trim() : (saved?.model ?? '')
+  if (provider !== 'off' && !model) throw new AiSettingsError('Enter the model ID.')
+
+  let apiKey = saved?.apiKey
+  let keyProvider = saved?.keyProvider
+  if (provider !== 'off' && keyProvider !== provider) {
+    apiKey = undefined
+    keyProvider = undefined
+  }
+  if (v.apiKey === null) {
+    apiKey = undefined
+    keyProvider = undefined
+  } else if (typeof v.apiKey === 'string' && v.apiKey.trim() && provider !== 'off') {
+    apiKey = v.apiKey.trim()
+    keyProvider = provider
+  }
+  const merged: StoredAiSettings = { provider, model }
+  if (apiKey && keyProvider) {
+    merged.apiKey = apiKey
+    merged.keyProvider = keyProvider
+  }
+  return merged
 }
 
 /**
@@ -27,18 +110,18 @@ export function saveSettings(file: string, settings: Settings): void {
  */
 export class SettingsStore {
   private readonly file: string
-  private current: Settings
+  private current: StoredSettings
 
   constructor(file: string) {
     this.file = file
     this.current = loadSettings(file)
   }
 
-  get(): Settings {
+  get(): StoredSettings {
     return this.current
   }
 
-  set(settings: Settings): Settings {
+  set(settings: StoredSettings): StoredSettings {
     saveSettings(this.file, settings)
     this.current = settings
     return settings

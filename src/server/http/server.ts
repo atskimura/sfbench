@@ -8,6 +8,8 @@ import {
   isValidTimeout,
   MAX_TIMEOUT_SECONDS,
   MIN_TIMEOUT_SECONDS,
+  type AiTaskRequest,
+  type AiTestRequest,
   type ApiError,
   type ApiErrorCode,
   type HistoryResponse,
@@ -16,7 +18,7 @@ import {
   type OrgsResponse,
   type QueryRequest,
   type SessionResponse,
-  type Settings,
+  type SettingsUpdate,
 } from '../../shared/api.ts'
 import { log } from '../log.ts'
 import type { OrgRegistry } from '../orgs.ts'
@@ -30,10 +32,15 @@ import {
 } from '../salesforce.ts'
 import { openOrg, reloginCommand } from '../sf/commands.ts'
 import { OrgAuthError, SfCliError, SfNotFoundError } from '../sf/errors.ts'
-import { addHistory, loadHistory, type SettingsStore } from '../store.ts'
+import { AiError } from '../ai/errors.ts'
+import { generate, TEST_REQUEST } from '../ai/generate.ts'
+import { invalidTaskRequest } from '../ai/tasks.ts'
+import { addHistory, AiSettingsError, loadHistory, mergeAiSettings, settingsView, type SettingsStore } from '../store.ts'
 import { isAdminRequestOrigin, isAllowedHost, isSameOriginRequest } from './security.ts'
 
 const MAX_BODY_BYTES = 5 * 1024 * 1024
+/** The web UI keeps what it sends to the AI within 100 KB; this is the last guard (docs/ai.md "送る量"). */
+const MAX_AI_INPUT_BYTES = 200 * 1024
 const LAUNCH_CODE_TTL_MS = 60_000
 const LAUNCH_CODE_TTL_NO_OPEN_MS = 10 * 60_000
 export const DEV_LAUNCH_CODE = 'dev'
@@ -189,11 +196,11 @@ export class App {
 
     if (path === '/api/settings') {
       if (method === 'GET') {
-        sendJson(res, 200, this.options.settings.get())
+        sendJson(res, 200, settingsView(this.options.settings.get()))
         return
       }
       if (method === 'PUT') {
-        const body = (await readJsonObject(req)) as Partial<Settings>
+        const body = (await readJsonObject(req)) as SettingsUpdate
         const settings = { ...this.options.settings.get() }
         if (typeof body.omitNamespace === 'boolean') settings.omitNamespace = body.omitNamespace
         if (body.requestTimeoutSeconds !== undefined) {
@@ -206,9 +213,28 @@ export class App {
           }
           settings.requestTimeoutSeconds = body.requestTimeoutSeconds
         }
-        sendJson(res, 200, this.options.settings.set(settings))
+        // Without ai, the saved AI settings stay as they are (docs/ai.md "API").
+        if (body.ai !== undefined) settings.ai = mergeAiSettings(settings.ai, body.ai)
+        sendJson(res, 200, settingsView(this.options.settings.set(settings)))
         return
       }
+    }
+
+    if (path === '/api/ai/generate' && method === 'POST') {
+      const body = await readJsonObject(req, { bytes: MAX_AI_INPUT_BYTES, code: 'PAYLOAD_TOO_LARGE', message: 'Too much to send to the AI.' })
+      const invalid = invalidTaskRequest(body)
+      if (invalid) throw new HttpError(400, 'BAD_REQUEST', invalid)
+      await this.runAi(res, (signal) => generate(this.options.settings.get().ai, body as AiTaskRequest, signal).then((output) => ({ output })))
+      return
+    }
+
+    if (path === '/api/ai/test' && method === 'POST') {
+      const body = (await readJsonObject(req)) as Partial<AiTestRequest>
+      // The settings being edited, with the saved key when none is typed (same rule as saving).
+      const ai = mergeAiSettings(this.options.settings.get().ai, body.ai)
+      const started = Date.now()
+      await this.runAi(res, (signal) => generate(ai, TEST_REQUEST, signal).then(() => ({ elapsedMs: Date.now() - started })))
+      return
     }
 
     if (path === '/api/orgs' && method === 'GET') {
@@ -417,12 +443,36 @@ export class App {
       sendJson(res, 400, errorBody('BAD_REQUEST', e.message))
     } else if (e instanceof SfNotFoundError) {
       sendJson(res, 503, errorBody('SF_CLI_NOT_FOUND', e.message))
+    } else if (e instanceof AiError) {
+      const status = { AI_NOT_CONFIGURED: 400, AI_ERROR: 502, AI_BAD_OUTPUT: 502, AI_TIMEOUT: 504 }[e.code]
+      sendJson(res, status, { error: { code: e.code, message: e.message, details: e.details } } satisfies ApiError)
+    } else if (e instanceof AiSettingsError) {
+      sendJson(res, 400, errorBody('BAD_REQUEST', e.message))
     } else if (e instanceof SfCliError) {
       log.warn(`sf error: ${e.message}`)
       sendJson(res, 502, errorBody('SF_CLI_ERROR', e.message))
     } else {
       log.error(`error: ${(e as Error).stack ?? String(e)}`)
       sendJson(res, 500, errorBody('INTERNAL_ERROR', 'Internal error'))
+    }
+  }
+
+  /**
+   * Runs an AI call that stops when the web UI goes away (Cancel, a closed
+   * tab): the request to the AI is aborted too, and nothing is sent back.
+   */
+  private async runAi(res: ServerResponse, call: (signal: AbortSignal) => Promise<unknown>): Promise<void> {
+    // Already gone while the body was read: 'close' has fired, so do not call the AI at all.
+    if (res.destroyed || res.socket?.destroyed) return
+    const gone = new AbortController()
+    res.on('close', () => {
+      if (!res.writableEnded) gone.abort()
+    })
+    try {
+      sendJson(res, 200, await call(gone.signal))
+    } catch (e) {
+      if (gone.signal.aborted) return
+      throw e
     }
   }
 
@@ -477,12 +527,15 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 }
 
 /** Reads a JSON object body. Anything else (empty, null, an array, a string) is a 400. */
-async function readJsonObject(req: IncomingMessage): Promise<Record<string, unknown>> {
+async function readJsonObject(
+  req: IncomingMessage,
+  limit: { bytes: number; code: ApiErrorCode; message: string } = { bytes: MAX_BODY_BYTES, code: 'BAD_REQUEST', message: 'Request body too large' },
+): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = []
   let size = 0
   for await (const chunk of req) {
     size += (chunk as Buffer).length
-    if (size > MAX_BODY_BYTES) throw new HttpError(413, 'BAD_REQUEST', 'Request body too large')
+    if (size > limit.bytes) throw new HttpError(413, limit.code, limit.message)
     chunks.push(chunk as Buffer)
   }
   const text = Buffer.concat(chunks).toString('utf8')
