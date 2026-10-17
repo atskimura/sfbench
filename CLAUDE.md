@@ -81,3 +81,15 @@ docs/       設計文書
 npm run build
 SFBENCH_HOME=$(mktemp -d) node scripts/smoke.mjs dist/server/cli.js <組織のエイリアス>
 ```
+
+## 公開の手順
+
+npm への公開は、手元で次の順に行う。
+
+1. `package.json` の `version` を上げ、main にマージする。
+2. `npm pack` で中身を確かめる。`prepack` がビルドするので、公開物は常にその時点のソースから作られる。
+3. `npm publish` を実行する。`prepublishOnly` が型チェック、lint、テストを実行し、失敗すれば公開しない。
+4. `v<バージョン>` のタグを付けて push し、GitHub のリリースを作る。
+
+画面の「?」と設定画面のリンクは GitHub の README を開くので、リポジトリは公開しておく。
+
