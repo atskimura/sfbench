@@ -10,18 +10,20 @@ import { api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
 import { DOCUMENTATION_URL, GITHUB_URL } from '../links.ts'
 import { useApp } from '../state/AppContext.tsx'
+import { useTask } from '../state/useTask.ts'
 import { aiDraftValid, aiInput, initialAiDraft, type AiDraft } from '../ai/draft.ts'
 import { AiSettings } from './AiSettings.tsx'
 import styles from './SettingsDialog.module.css'
 
 
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
-  const { handleCommonError, notify, setSettings: setAppSettings } = useApp()
+  const { handleCommonError, notify, saveSettings, savingSettings } = useApp()
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [settings, setSettings] = useState<Settings>()
   const [timeoutText, setTimeoutText] = useState('')
   const [aiDraft, setAiDraft] = useState<AiDraft>(initialAiDraft(undefined))
-  const [saving, setSaving] = useState(false)
+  // Saving runs in AppContext, so that closing the dialog does not drop it.
+  const { start } = useTask()
   const namespaceId = useId()
   const timeoutId = useId()
   const timeoutNoteId = useId()
@@ -34,46 +36,32 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     dialogRef.current?.showModal?.()
-    let active = true
-    api.settings().then(
-      (s) => {
-        if (!active) return
-        setSettings(s)
-        setTimeoutText(String(s.requestTimeoutSeconds))
-        setAiDraft(initialAiDraft(s.ai))
-      },
-      (e: unknown) => {
-        if (!active) return
-        if (!callbacks.current.handleCommonError(e)) callbacks.current.notify({ message: (e as Error).message })
-        callbacks.current.onClose()
-      },
-    )
-    return () => {
-      active = false
-    }
-  }, [])
+    void start((signal) => api.settings(signal), 'ignore').then((outcome) => {
+      if (outcome.kind === 'done') {
+        setSettings(outcome.value)
+        setTimeoutText(String(outcome.value.requestTimeoutSeconds))
+        setAiDraft(initialAiDraft(outcome.value.ai))
+      }
+      if (outcome.kind === 'error') {
+        const { handleCommonError, notify, onClose } = callbacks.current
+        if (!handleCommonError(outcome.error)) notify({ message: (outcome.error as Error).message })
+        onClose()
+      }
+    })
+  }, [start])
 
   const timeout = /^\d+$/.test(timeoutText) ? Number(timeoutText) : Number.NaN
   const timeoutValid = isValidTimeout(timeout)
 
   const save = async () => {
     if (!settings || !timeoutValid || !(aiDraftValid(aiDraft) || !aiDraft.touched)) return
-    setSaving(true)
-    try {
-      setAppSettings(
-        await api.saveSettings({
-          omitNamespace: settings.omitNamespace,
-          requestTimeoutSeconds: timeout,
-          // Only when changed: saving other settings keeps "not set up" (docs/ai.md "API").
-          ...(aiDraft.touched ? { ai: aiInput(aiDraft) } : {}),
-        }),
-      )
-      onClose()
-    } catch (e) {
-      if (!handleCommonError(e)) notify({ message: (e as Error).message })
-    } finally {
-      setSaving(false)
+    const update = {
+      omitNamespace: settings.omitNamespace,
+      requestTimeoutSeconds: timeout,
+      // Only when changed: saving other settings keeps "not set up" (docs/ai.md "API").
+      ...(aiDraft.touched ? { ai: aiInput(aiDraft) } : {}),
     }
+    if (await saveSettings(update)) onClose()
   }
 
   return (
@@ -135,7 +123,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           <button type="button" className={styles.button} onClick={onClose}>
             {t.cancel}
           </button>
-          <button type="submit" className={`${styles.button} ${styles.primary}`} disabled={!settings || !timeoutValid || !(aiDraftValid(aiDraft) || !aiDraft.touched) || saving}>
+          <button type="submit" className={`${styles.button} ${styles.primary}`} disabled={!settings || !timeoutValid || !(aiDraftValid(aiDraft) || !aiDraft.touched) || savingSettings}>
             {t.save}
           </button>
         </div>

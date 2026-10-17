@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./apiClient.ts', async (importOriginal) => {
@@ -9,7 +10,7 @@ vi.mock('./apiClient.ts', async (importOriginal) => {
 })
 
 const { api, ApiRequestError } = await import('./apiClient.ts')
-const { AppProvider } = await import('./state/AppContext.tsx')
+const { AppProvider, useApp } = await import('./state/AppContext.tsx')
 const { SettingsDialog } = await import('./components/SettingsDialog.tsx')
 const { t } = await import('./i18n/i18n.ts')
 const mocked = vi.mocked(api)
@@ -84,5 +85,77 @@ describe('AI settings', () => {
     expect(mocked.aiTest.mock.calls[0][0]).toEqual({ ai: { provider: 'anthropic', model: 'claude-y' } })
     await userEvent.click(screen.getByRole('button', { name: t.aiTest }))
     expect(await screen.findByText('invalid x-api-key')).toBeTruthy()
+  })
+
+  it('drops a test still running when the settings change', async () => {
+    mocked.settings.mockResolvedValue({ ...base, ai: { provider: 'anthropic', model: 'claude-x', hasApiKey: true, keyProvider: 'anthropic' } })
+    let finish: (v: { elapsedMs: number }) => void = () => {}
+    mocked.aiTest.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)))
+    open()
+    await userEvent.click(await screen.findByRole('button', { name: t.aiTest }))
+    expect(screen.getByRole('button', { name: t.aiTesting })).toBeTruthy()
+    await userEvent.type(screen.getByLabelText(t.aiModel), '-2')
+    expect(screen.getByRole('button', { name: t.aiTest })).toBeTruthy()
+    finish({ elapsedMs: 1000 })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(screen.queryByText(t.aiTestOk('1.0'))).toBeNull()
+  })
+})
+
+describe('loading and saving', () => {
+  it('cannot save until the settings load, and saves once while saving', async () => {
+    let loaded: (s: typeof base) => void = () => {}
+    // The dialog loads before AppProvider (children's effects run first).
+    mocked.settings.mockImplementationOnce(() => new Promise((resolve) => (loaded = resolve)))
+    let saved: (s: typeof base) => void = () => {}
+    mocked.saveSettings.mockImplementationOnce(() => new Promise((resolve) => (saved = resolve)))
+    const onClose = open()
+    const save = screen.getByRole('button', { name: t.save }) as HTMLButtonElement
+    expect(save.disabled).toBe(true)
+    loaded(base)
+    await waitFor(() => expect(save.disabled).toBe(false))
+    await userEvent.click(save)
+    expect(save.disabled).toBe(true)
+    await userEvent.click(save)
+    saved(base)
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(mocked.saveSettings).toHaveBeenCalledTimes(1)
+  })
+
+  it('applies a save that ends after the dialog is closed', async () => {
+    mocked.settings.mockResolvedValue(base)
+    let saved: (s: typeof base) => void = () => {}
+    mocked.saveSettings.mockImplementationOnce(() => new Promise((resolve) => (saved = resolve)))
+    function Probe() {
+      const { settings } = useApp()
+      return <output>{settings ? String(settings.omitNamespace) : ''}</output>
+    }
+    function Host() {
+      const [opened, setOpened] = useState(true)
+      return (
+        <>
+          <Probe />
+          {opened && <SettingsDialog onClose={() => setOpened(false)} />}
+        </>
+      )
+    }
+    render(
+      <AppProvider>
+        <Host />
+      </AppProvider>,
+    )
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('true'))
+    await userEvent.click(await screen.findByLabelText(t.settingsOmitNamespace, { exact: false }))
+    await userEvent.click(screen.getByRole('button', { name: t.save }))
+    await userEvent.click(screen.getByRole('button', { name: t.cancel }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    saved({ ...base, omitNamespace: false })
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('false'))
+  })
+
+  it('tells and closes when the settings cannot be loaded', async () => {
+    mocked.settings.mockRejectedValue(new ApiRequestError(500, 'INTERNAL_ERROR', 'cannot read settings'))
+    const onClose = open()
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
   })
 })

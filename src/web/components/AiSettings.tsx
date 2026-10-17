@@ -1,9 +1,10 @@
 // The AI section of the settings (docs/screens.md "設定", docs/ai.md "設定画面の AI の欄").
-import { useEffect, useId, useRef, useState } from 'react'
+import { useId, useState } from 'react'
 import { AI_PROVIDERS, type AiKeyProvider, type AiSettingsView } from '../../shared/api.ts'
 import { aiDraftValid, aiInput, type AiDraft } from '../ai/draft.ts'
-import { ApiRequestError, api } from '../apiClient.ts'
+import { api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
+import { useTask } from '../state/useTask.ts'
 import styles from './SettingsDialog.module.css'
 
 const MODEL_DOCS: Record<AiKeyProvider, string> = {
@@ -11,18 +12,17 @@ const MODEL_DOCS: Record<AiKeyProvider, string> = {
   openai: 'https://developers.openai.com/api/docs/models',
 }
 
-type TestState = { state: 'idle' } | { state: 'testing' } | { state: 'ok'; ms: number } | { state: 'error'; message: string }
+type TestResult = { state: 'ok'; ms: number } | { state: 'error'; message: string }
 
 export function AiSettings({ saved, draft, onChange }: { saved: AiSettingsView | undefined; draft: AiDraft; onChange: (draft: AiDraft) => void }) {
   const ids = { model: useId(), key: useId(), notes: useId() }
-  const [test, setTest] = useState<TestState>({ state: 'idle' })
-  const testAbort = useRef<AbortController | undefined>(undefined)
-  useEffect(() => () => testAbort.current?.abort(), [])
+  const [result, setResult] = useState<TestResult>()
+  const { start, cancel, running: testing } = useTask()
 
   const change = (patch: Partial<AiDraft>) => {
     // A test still running checks settings that are no longer on screen.
-    testAbort.current?.abort()
-    setTest({ state: 'idle' })
+    cancel()
+    setResult(undefined)
     onChange({ ...draft, ...patch, touched: true })
   }
   const on = draft.provider !== 'off'
@@ -32,17 +32,11 @@ export function AiSettings({ saved, draft, onChange }: { saved: AiSettingsView |
   const canTest = on && aiDraftValid(draft) && (draft.apiKey.trim() !== '' || savedKeyUsable)
 
   const runTest = async () => {
-    testAbort.current?.abort()
-    const abort = new AbortController()
-    testAbort.current = abort
-    setTest({ state: 'testing' })
-    try {
-      const { elapsedMs } = await api.aiTest({ ai: aiInput(draft) }, abort.signal)
-      setTest({ state: 'ok', ms: elapsedMs })
-    } catch (e) {
-      if (e instanceof ApiRequestError && e.code === 'ABORTED') return
-      setTest({ state: 'error', message: (e as Error).message })
-    }
+    setResult(undefined)
+    const input = aiInput(draft)
+    const outcome = await start((signal) => api.aiTest({ ai: input }, signal), 'replace')
+    if (outcome.kind === 'done') setResult({ state: 'ok', ms: outcome.value.elapsedMs })
+    if (outcome.kind === 'error') setResult({ state: 'error', message: (outcome.error as Error).message })
   }
 
   return (
@@ -94,12 +88,12 @@ export function AiSettings({ saved, draft, onChange }: { saved: AiSettingsView |
           </div>
           {savedKeyElsewhere && <span className={styles.error}>{t.aiKeyOtherProvider}</span>}
           <div className={styles.row}>
-            <button type="button" className={styles.button} disabled={!canTest || test.state === 'testing'} onClick={() => void runTest()}>
-              {test.state === 'testing' ? t.aiTesting : t.aiTest}
+            <button type="button" className={styles.button} disabled={!canTest || testing} onClick={() => void runTest()}>
+              {testing ? t.aiTesting : t.aiTest}
             </button>
-            <span role="status" className={test.state === 'error' ? styles.error : styles.note}>
-              {test.state === 'ok' && t.aiTestOk((test.ms / 1000).toFixed(1))}
-              {test.state === 'error' && test.message}
+            <span role="status" className={result?.state === 'error' ? styles.error : styles.note}>
+              {result?.state === 'ok' && t.aiTestOk((result.ms / 1000).toFixed(1))}
+              {result?.state === 'error' && result.message}
             </span>
           </div>
         </>

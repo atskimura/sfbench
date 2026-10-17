@@ -15,7 +15,7 @@ export type Seed = { query: string; run: boolean }
 export type State = {
   orgs: Org[] | undefined
   connectionCheck: OrgsResponse['connectionCheck']
-  loading: boolean
+  /** Why the latest load of the list failed, until a list arrives. */
   loadError: string | undefined
   selected: string | undefined
   summaries: Record<string, OrgSummary>
@@ -31,10 +31,9 @@ export type State = {
 }
 
 export type Action =
-  | { type: 'loading' }
   | { type: 'loaded'; orgs: Org[]; connectionCheck: OrgsResponse['connectionCheck'] }
-  | { type: 'checking' }
   | { type: 'loadFailed'; message: string }
+  | { type: 'waitFailed' }
   | { type: 'select'; username: string }
   | { type: 'summary'; username: string; summary: OrgSummary }
   | { type: 'status'; username: string; status: OrgStatus }
@@ -43,14 +42,13 @@ export type Action =
 
 export function reducer(state: State, action: Action): State {
   switch (action.type) {
-    case 'loading':
-      return { ...state, loading: true, loadError: undefined }
     case 'loaded':
-      return { ...state, loading: false, orgs: action.orgs, connectionCheck: action.connectionCheck }
-    case 'checking':
-      return { ...state, connectionCheck: 'pending' }
+      return { ...state, orgs: action.orgs, connectionCheck: action.connectionCheck, loadError: undefined }
     case 'loadFailed':
-      return { ...state, loading: false, loadError: action.message }
+      return { ...state, loadError: action.message }
+    case 'waitFailed':
+      // Not shown as an error: the list offers to check again instead of waiting forever.
+      return { ...state, connectionCheck: 'failed' }
     case 'select': {
       const closed = { ...state, pickerOpen: false, notice: undefined }
       // The same org again: the workspace stays, and so does what it was given.
@@ -77,7 +75,6 @@ export function initialState(launch: LaunchOptions | undefined): State {
   return {
     orgs: undefined,
     connectionCheck: 'pending',
-    loading: true,
     loadError: undefined,
     selected: undefined,
     summaries: {},

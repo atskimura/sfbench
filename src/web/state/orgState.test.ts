@@ -53,3 +53,19 @@ describe('launch query', () => {
     expect(reducer(first, select('one@example.com')).seed).toBe(first.seed)
   })
 })
+
+// docs/web.md "組織の一覧の状態と遷移"
+describe('org list', () => {
+  it('clears a failed load when a list arrives', () => {
+    const failed = reducer(initialState(undefined), { type: 'loadFailed', message: 'sf org list failed' })
+    expect(failed.loadError).toBe('sf org list failed')
+    expect(reducer(failed, { type: 'loaded', orgs, connectionCheck: 'done' }).loadError).toBeUndefined()
+  })
+
+  it('stops waiting for the check when waiting fails', () => {
+    const pending = reducer(initialState(undefined), { type: 'loaded', orgs, connectionCheck: 'pending' })
+    const failed = reducer(pending, { type: 'waitFailed' })
+    expect(failed.connectionCheck).toBe('failed')
+    expect(failed.orgs).toBe(orgs)
+  })
+})

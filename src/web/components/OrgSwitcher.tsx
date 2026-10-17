@@ -102,7 +102,7 @@ function OrgPopover({ id }: { id: string }) {
       </div>
       <div className={styles.list} aria-busy={loading}>
         {orgs === undefined && loading && <p className={styles.message}>{t.loadingOrgs}</p>}
-        {loadError && <p className={styles.message}>{loadError}</p>}
+        {loadError && !loading && <p className={styles.message}>{loadError}</p>}
         {orgs?.length === 0 && !loading && (
           <div className={styles.message}>
             <p>{t.noOrgs}</p>

@@ -1,7 +1,8 @@
 // App-wide state: whether the server is reachable, a fatal problem, and notifications.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import type { Settings } from '../../shared/api.ts'
+import type { Settings, SettingsUpdate } from '../../shared/api.ts'
 import { ApiRequestError, api } from '../apiClient.ts'
+import { useTask } from './useTask.ts'
 
 export type Notification = {
   id: number
@@ -15,7 +16,12 @@ export type Notification = {
 type AppState = {
   /** The server's settings; undefined until loaded. */
   settings: Settings | undefined
-  setSettings: (settings: Settings) => void
+  /**
+   * Saves the settings and applies what the server returns, even if the
+   * settings dialog has closed meanwhile. Resolves to whether they were saved.
+   */
+  saveSettings: (update: SettingsUpdate) => Promise<boolean>
+  savingSettings: boolean
   sessionLost: boolean
   sfNotFound: boolean
   notifications: Notification[]
@@ -67,16 +73,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [notify],
   )
 
+  // Loading at startup and saving both write the settings, so they share one
+  // task here, outside the dialog: a save outlives the dialog (docs/web.md
+  // "流れごとの指定"). Its progress marks a save.
+  const settingsTask = useTask<'save'>()
+  const { start } = settingsTask
+  const savingSettings = settingsTask.progress === 'save'
+
+  // Without settings, the defaults apply (omit the namespace), and nothing is
+  // shown apart from a lost session or a missing sf CLI.
   useEffect(() => {
-    api.settings().then(setSettings, (e: unknown) => {
-      // Without settings, the defaults apply (omit the namespace).
-      handleCommonError(e)
+    void start((signal) => api.settings(signal), 'ignore').then((outcome) => {
+      if (outcome.kind === 'done') setSettings(outcome.value)
+      if (outcome.kind === 'error' && outcome.error instanceof ApiRequestError) handleCommonError(outcome.error)
     })
-  }, [handleCommonError])
+  }, [start, handleCommonError])
+
+  const saveSettings = useCallback(
+    async (update: SettingsUpdate) => {
+      // Replaces a startup load still running: the saved settings are newer.
+      const outcome = await start((signal, progress) => {
+        progress('save')
+        return api.saveSettings(update, signal)
+      }, 'replace')
+      if (outcome.kind === 'done') setSettings(outcome.value)
+      if (outcome.kind === 'error' && !handleCommonError(outcome.error)) notify({ message: (outcome.error as Error).message })
+      return outcome.kind === 'done'
+    },
+    [start, handleCommonError, notify],
+  )
 
   const value = useMemo(
-    () => ({ settings, setSettings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError }),
-    [settings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError],
+    () => ({ settings, saveSettings, savingSettings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError }),
+    [settings, saveSettings, savingSettings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError],
   )
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }
