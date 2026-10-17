@@ -26,7 +26,7 @@ vi.mock('./apiClient.ts', async (importOriginal) => {
   }
 })
 
-const { api } = await import('./apiClient.ts')
+const { api, ApiRequestError } = await import('./apiClient.ts')
 const { App } = await import('./App.tsx')
 const { t } = await import('./i18n/i18n.ts')
 const mocked = vi.mocked(api)
@@ -125,6 +125,7 @@ describe('org workspace', () => {
       </StrictMode>,
     )
     expect(await screen.findByText('Acme')).toBeTruthy()
+    expect(mocked.query).toHaveBeenCalledTimes(1)
     const runs = mocked.query.mock.calls.length
     await switchTo('two', 'one')
     await switchTo('one', 'two')
@@ -132,5 +133,29 @@ describe('org workspace', () => {
     await new Promise((r) => setTimeout(r, 50))
     expect(mocked.query.mock.calls.length).toBe(runs)
     expect(editorText()).toBe('')
+  })
+  it('stops the running query when the org changes', async () => {
+    let signal: AbortSignal | undefined
+    mocked.query.mockImplementation((_username, _req, s) => {
+      signal = s
+      return new Promise(() => {})
+    })
+    render(<App launch={{ org: 'one', query: 'SELECT Id FROM Account', run: true }} />)
+    await waitFor(() => expect(signal).toBeDefined())
+    await switchTo('two', 'one')
+    expect(signal?.aborted).toBe(true)
+  })
+
+  it('drops a recent-queries failure of the org left', async () => {
+    let fail: (e: unknown) => void = () => {}
+    mocked.history.mockImplementation((username) =>
+      username === 'one@example.com' ? new Promise((_resolve, reject) => (fail = reject)) : Promise.resolve({ entries: [] }),
+    )
+    render(<App launch={{ org: 'one' }} />)
+    await waitFor(() => expect(mocked.history).toHaveBeenCalledWith('one@example.com', expect.anything()))
+    await switchTo('two', 'one')
+    fail(new ApiRequestError(401, 'ORG_AUTH_ERROR', 'expired'))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.queryByText(t.orgAuthError)).toBeNull()
   })
 })
