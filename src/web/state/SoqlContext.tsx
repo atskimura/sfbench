@@ -118,7 +118,7 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
   const [queryAll, setQueryAllState] = useState(false)
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [result, setResult] = useState<QueryResult>({ state: 'idle' })
-  const runTask = useTask()
+  const { start: startRun, running, cancel: cancelRun } = useTask()
   const resultCount = useRef(0)
   const { start: startHistory } = useTask()
 
@@ -177,7 +177,6 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
     if (outcome.kind === 'done') setHistory(outcome.value.entries)
   }, [startHistory, username])
 
-  const { start: startRun } = runTask
   /**
    * Runs the given text: the editor's, or the launch query before the editor
    * may exist. While a query runs, another run does nothing (the Run button is
@@ -230,7 +229,7 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
     },
     [startRun, username, tooling, queryAll, reportApiUsage, handleOrgError, markAuthError, refreshHistory],
   )
-  const run = useCallback(() => runSoql(editor.current?.getText() ?? ''), [runSoql])
+  const run = useCallback(() => void runSoql(editor.current?.getText() ?? ''), [runSoql])
 
   // The workspace is remade for each org (docs/web.md "非同期の流れ"): on
   // mounting, load the history and run the launch query.
@@ -285,18 +284,19 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
     }),
     [names, selection, firstLine, panelObject, tooling, queryAll, history, applyText, setText, edit, run],
   )
-  const { running, cancel: cancelRun } = runTask
   const cancel = useCallback(() => {
     cancelRun()
     setResult({ state: 'idle' })
   }, [cancelRun])
   const appendPage = useCallback<ResultState['appendPage']>((shown, page) => {
-    // The records array grows in place (docs/web.md); `loaded` says how much of it the result covers.
+    // The records array of that result grows in place (docs/web.md); `loaded`
+    // says how much of it the result covers. Only that result takes the page.
     shown.records.push(...page.records)
     const loaded = shown.records.length
-    // The shown result is this one: the table that loaded the page goes away with it.
     setResult((prev) =>
-      prev.state === 'done' ? { ...prev, loaded, columns: addColumns(prev.columns, page.records), nextRecordsUrl: page.nextRecordsUrl } : prev,
+      prev.state === 'done' && prev.id === shown.id
+        ? { ...prev, loaded, columns: addColumns(prev.columns, page.records), nextRecordsUrl: page.nextRecordsUrl }
+        : prev,
     )
   }, [])
   const resultValue = useMemo<ResultState>(() => ({ result, running, cancel, appendPage }), [result, running, cancel, appendPage])

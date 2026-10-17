@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // Running a query, its later pages and CSV export as tasks (docs/web.md "流れごとの指定").
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Org } from '../shared/api.ts'
@@ -70,7 +70,15 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.resetAllMocks()
+  vi.restoreAllMocks()
 })
+
+/** Watches downloads: CSV export saves through an object URL. */
+function watchDownloads() {
+  URL.createObjectURL ??= () => ''
+  URL.revokeObjectURL ??= () => {}
+  return vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:csv')
+}
 
 type Page = Awaited<ReturnType<typeof api.query>>
 const rows = (from: number, n: number, name = 'Row') => Array.from({ length: n }, (_, i) => ({ Id: `00${from + i}`, Name: `${name} ${from + i}` }))
@@ -109,9 +117,10 @@ describe('running a query', () => {
     mocked.query.mockReturnValue(new Promise(() => {}))
     render(<App launch={launch} />)
     await waitFor(() => expect(mocked.query).toHaveBeenCalledTimes(1))
-    await userEvent.click(document.querySelector('.cm-content') as HTMLElement)
-    await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
-    await userEvent.keyboard('{Control>}{Enter}{/Control}')
+    // A key event, not a click: jsdom cannot lay out CodeMirror's text.
+    const content = document.querySelector('.cm-content') as HTMLElement
+    fireEvent.keyDown(content, { key: 'Enter', metaKey: true })
+    fireEvent.keyDown(content, { key: 'Enter', ctrlKey: true })
     expect(mocked.query).toHaveBeenCalledTimes(1)
   })
 
@@ -137,31 +146,38 @@ describe('running a query', () => {
 
 describe('CSV export', () => {
   it('shows how many records it has loaded, and Cancel stops it', async () => {
-    const signals: (AbortSignal | undefined)[] = []
+    const downloads = watchDownloads()
+    const { call, promise } = pending<Page>()
     mocked.query.mockResolvedValue({ totalSize: 6, done: false, nextRecordsUrl: '/next/1', records: rows(0, 2) })
     mocked.nextPage
       // The table's own next page: left loading, so that only CSV moves on.
       .mockReturnValueOnce(new Promise(() => {}))
       .mockResolvedValueOnce({ totalSize: 6, done: false, nextRecordsUrl: '/next/2', records: rows(2, 2) })
       .mockImplementation((_u, _url, signal) => {
-        signals.push(signal)
-        return new Promise(() => {})
+        call.signal = signal
+        return promise
       })
     render(<App launch={launch} />)
     await waitFor(() => expect(mocked.nextPage).toHaveBeenCalledTimes(1))
     await userEvent.click(screen.getByRole('button', { name: t.exportCsv }))
     expect(await screen.findByText(t.csvProgress(4, 6))).toBeTruthy()
     await userEvent.click(within(screen.getByRole('status')).getByRole('button', { name: t.cancel }))
-    expect(signals[0]?.aborted).toBe(true)
+    expect(call.signal?.aborted).toBe(true)
     expect(screen.getByRole('button', { name: t.exportCsv })).toBeTruthy()
+    // The last page arriving anyway does not save a file.
+    call.answer({ totalSize: 6, done: true, records: rows(4, 2) })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(downloads).not.toHaveBeenCalled()
   })
 
   it('stops when the query runs again', async () => {
+    const downloads = watchDownloads()
     const signals: (AbortSignal | undefined)[] = []
+    const answers: ((page: Page) => void)[] = []
     mocked.query.mockResolvedValue({ totalSize: 6, done: false, nextRecordsUrl: '/next/1', records: rows(0, 2) })
     mocked.nextPage.mockImplementation((_u, _url, signal) => {
       signals.push(signal)
-      return new Promise(() => {})
+      return new Promise((resolve) => answers.push(resolve))
     })
     render(<App launch={launch} />)
     await waitFor(() => expect(mocked.nextPage).toHaveBeenCalledTimes(1))
@@ -172,5 +188,11 @@ describe('CSV export', () => {
     await userEvent.click(runButton())
     await waitFor(() => expect(mocked.query).toHaveBeenCalledTimes(2))
     expect(before.map((s) => s?.aborted)).toEqual([true, true])
+    // Their pages arriving anyway neither add rows nor save a file.
+    answers[0]({ totalSize: 6, done: true, records: rows(2, 2, 'Late') })
+    answers[1]({ totalSize: 6, done: true, records: rows(2, 4, 'Late') })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(screen.queryByText('Late 2')).toBeNull()
+    expect(downloads).not.toHaveBeenCalled()
   })
 })
