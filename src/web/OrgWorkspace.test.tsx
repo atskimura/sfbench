@@ -158,4 +158,26 @@ describe('org workspace', () => {
     await new Promise((r) => setTimeout(r, 50))
     expect(screen.queryByText(t.orgAuthError)).toBeNull()
   })
+
+  it('puts the launch query in without running when the launch org is not found', async () => {
+    render(<App launch={{ org: 'gone', query: 'SELECT Id FROM Account', run: true }} />)
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /two/ }))
+    await waitFor(() => expect(editorText()).toContain('SELECT Id FROM Account'))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(mocked.query).not.toHaveBeenCalled()
+  })
+
+  it('does not run the launch query when the first org list fails', async () => {
+    mocked.orgs.mockRejectedValueOnce(new ApiRequestError(500, 'SF_CLI_ERROR', 'sf failed'))
+    render(<App launch={{ org: 'one', query: 'SELECT Id FROM Account', run: true }} />)
+    expect(await screen.findByText('sf failed')).toBeTruthy()
+    // Closing and opening the list loads it again.
+    const switcher = screen.getByRole('button', { name: t.selectOrg })
+    await userEvent.click(switcher)
+    await userEvent.click(switcher)
+    await userEvent.click(await within(await screen.findByRole('dialog')).findByRole('button', { name: /one/ }))
+    await waitFor(() => expect(editorText()).toContain('SELECT Id FROM Account'))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(mocked.query).not.toHaveBeenCalled()
+  })
 })
