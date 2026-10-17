@@ -86,7 +86,7 @@ describe('toCsv', () => {
   it('writes a BOM, quotes commas, newlines and double quotes, and counts child rows', () => {
     const records = [{ Name: 'a,b', Note: 'say "hi"\nbye', Contacts: { totalSize: 2, records: [] } }, { Name: 'plain', Note: null, Contacts: null }]
     const columns = addColumns([], records)
-    expect(toCsv(columns, records)).toBe('﻿Name,Note,Contacts\r\n"a,b","say ""hi""\nbye",2 rows\r\nplain,,\r\n')
+    expect(toCsv(columns, records)).toBe('\uFEFFName,Note,Contacts\r\n"a,b","say ""hi""\nbye",2 rows\r\nplain,,\r\n')
   })
 
   it('names the file after the object', () => {
