@@ -72,7 +72,17 @@ const CONTENT_TYPES: Record<string, string> = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.json': 'application/json; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
   '.woff2': 'font/woff2',
+}
+
+/**
+ * Only the files under /assets/ have a hash in their names, so only they keep
+ * their content for good. The page, the favicon and licenses.txt change with
+ * the version under the same name.
+ */
+export function cacheControl(pathname: string): string {
+  return pathname.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-store'
 }
 
 const SECURITY_HEADERS = {
@@ -438,7 +448,7 @@ export class App {
     }
     res.writeHead(200, {
       'Content-Type': CONTENT_TYPES[extname(isPage ? '/index.html' : pathname)] ?? 'application/octet-stream',
-      'Cache-Control': isPage ? 'no-store' : 'public, max-age=31536000, immutable',
+      'Cache-Control': cacheControl(pathname),
       ...SECURITY_HEADERS,
     })
     res.end(req.method === 'HEAD' ? undefined : file)

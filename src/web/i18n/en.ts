@@ -12,6 +12,7 @@ export const en = {
   openOrg: 'Open the org in your browser, logged in',
   openingOrg: 'Opening…',
   documentation: 'Documentation',
+  licenses: 'Licenses',
   settings: 'Settings',
   production: 'PRODUCTION',
   apiUsage: (used: string, max: string) => `API ${used} / ${max}`,

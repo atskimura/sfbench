@@ -14,6 +14,7 @@ export const ja: Messages = {
   openOrg: 'ログイン済みの状態でブラウザに組織を開く',
   openingOrg: '開いています…',
   documentation: 'ドキュメント',
+  licenses: 'ライセンス',
   settings: '設定',
   production: '本番',
   apiUsage: (used: string, max: string) => `API ${used} / ${max}`,

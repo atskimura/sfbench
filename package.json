@@ -3,6 +3,23 @@
   "version": "0.0.0",
   "private": true,
   "description": "A local workbench for Salesforce: SOQL, Apex and REST API, powered by your sf CLI auth",
+  "keywords": [
+    "salesforce",
+    "soql",
+    "sf-cli",
+    "sfdx",
+    "apex",
+    "rest-api"
+  ],
+  "homepage": "https://github.com/atskimura/sfbench#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atskimura/sfbench.git"
+  },
+  "bugs": {
+    "url": "https://github.com/atskimura/sfbench/issues"
+  },
+  "author": "atskimura",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -29,7 +46,9 @@
     "lint": "oxlint",
     "test": "vitest run --passWithNoTests",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-    "build": "npm run clean && tsc -b && vite build"
+    "build": "npm run clean && tsc -b && vite build",
+    "prepublishOnly": "node scripts/check-release.mjs && npm run lint && npm test",
+    "prepack": "npm run build"
   },
   "devDependencies": {
     "@codemirror/autocomplete": "^6.20.3",
