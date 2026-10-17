@@ -20,7 +20,7 @@ export function Workspace() {
   if (!selected) {
     return (
       <section className={`${panel.panel} ${styles.noOrg}`} aria-busy={loading && !orgs}>
-        <p className={panel.empty}>{!orgs && loading ? t.loadingOrgs : t.selectOrgFirst}</p>
+        <p className={panel.empty}>{!orgs && loading ? t.loadingOrgs : orgs?.length === 0 ? t.noOrgs : t.selectOrgFirst}</p>
       </section>
     )
   }
@@ -33,7 +33,7 @@ function OrgWorkspace({ username, seed }: { username: string; seed: Seed | undef
   return (
     <SoqlProvider username={username} seed={seed}>
       <PanelsProvider>
-        <Layout username={username} />
+        <Layout username={username} initialText={seed?.query} />
       </PanelsProvider>
     </SoqlProvider>
   )
@@ -41,7 +41,7 @@ function OrgWorkspace({ username, seed }: { username: string; seed: Seed | undef
 
 // Layout does not read the SOQL state, so that typing (which changes it)
 // does not draw the result table again; only the small parts below do.
-function Layout({ username }: { username: string }) {
+function Layout({ username, initialText }: { username: string; initialText: string | undefined }) {
   const { open, setOpen } = usePanels()
   return (
     <div className={styles.workspace}>
@@ -55,7 +55,7 @@ function Layout({ username }: { username: string }) {
       <div className={styles.right}>
         {/* The editor stays mounted while closed: CodeMirror keeps the text and its undo history. */}
         <div className={styles.top} hidden={!open.editor}>
-          <EditorPanel username={username} />
+          <EditorPanel username={username} initialText={initialText} />
           {open.recent ? (
             <RecentPanel />
           ) : (

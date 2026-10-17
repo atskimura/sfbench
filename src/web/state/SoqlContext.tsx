@@ -33,8 +33,6 @@ export type EditorHandle = {
 
 type SoqlState = {
   names: NameContext
-  /** The launch query the editor starts with, if this workspace got one. */
-  seedQuery: string | undefined
   /** The parsed SOQL, or undefined while it cannot be parsed or is empty. */
   selection: Selection | undefined
   /** The first line of the editor text as last parsed (shown while the editor is closed). */
@@ -114,11 +112,9 @@ const SoqlContext = createContext<SoqlState | undefined>(undefined)
 const ResultContext = createContext<ResultState | undefined>(undefined)
 
 /** The workspace of one org: it is remade for each org (docs/web.md "非同期の流れ"). */
-export function SoqlProvider({ username, seed: givenSeed, children }: { username: string; seed: Seed | undefined; children: ReactNode }) {
+export function SoqlProvider({ username, seed, children }: { username: string; seed: Seed | undefined; children: ReactNode }) {
   const { settings, notify } = useApp()
   const { summaries, handleOrgError, reportOrgError, markAuthError, reportApiUsage } = useOrgs()
-  // What this workspace got when it was shown.
-  const [seed] = useState(givenSeed)
   const summary = summaries[username]
   const editor = useRef<EditorHandle | null>(null)
   const [selection, setSelection] = useState<Selection>()
@@ -189,8 +185,8 @@ export function SoqlProvider({ username, seed: givenSeed, children }: { username
     if (outcome.kind === 'done') setHistory(outcome.value.entries)
   }, [startHistory, username])
 
-  const run = useCallback(() => {
-    const soql = editor.current?.getText() ?? ''
+  /** Runs the given text: the editor's, or the launch query before the editor may exist. */
+  const runSoql = useCallback((soql: string) => {
     if (!soql.trim()) return
     runAbort.current?.abort()
     const abort = new AbortController()
@@ -243,6 +239,7 @@ export function SoqlProvider({ username, seed: givenSeed, children }: { username
       },
     )
   }, [username, tooling, queryAll, reportApiUsage, handleOrgError, markAuthError, refreshHistory])
+  const run = useCallback(() => runSoql(editor.current?.getText() ?? ''), [runSoql])
 
   // The workspace is remade for each org (docs/web.md "非同期の流れ"): on
   // mounting, load the history and take the seed; on going away, stop the
@@ -252,8 +249,8 @@ export function SoqlProvider({ username, seed: givenSeed, children }: { username
     // Run just after rendering, not here: StrictMode runs this effect, its
     // cleanup and the effect again, and the cleanup clears the first timer
     // before it fires, so the launch query runs once (docs/web.md "起動時のクエリ").
-    // The editor already starts with the query.
-    const timer = seed?.run ? setTimeout(run, 0) : undefined
+    // The editor starts with the same query (docs/web.md "起動時のクエリ").
+    const timer = seed?.run ? setTimeout(() => runSoql(seed.query), 0) : undefined
     const abort = runAbort
     const generation = runGeneration
     return () => {
@@ -268,7 +265,6 @@ export function SoqlProvider({ username, seed: givenSeed, children }: { username
   const soqlValue = useMemo<SoqlState>(
     () => ({
       names,
-      seedQuery: seed?.query,
       selection,
       firstLine,
       panelObject,
@@ -302,7 +298,7 @@ export function SoqlProvider({ username, seed: givenSeed, children }: { username
       },
       run,
     }),
-    [names, seed, selection, firstLine, panelObject, tooling, queryAll, history, applyText, setText, edit, run],
+    [names, selection, firstLine, panelObject, tooling, queryAll, history, applyText, setText, edit, run],
   )
   const loadNext = useCallback((retry = false) => {
     const current = result

@@ -9,100 +9,16 @@ import {
   useRef,
   type ReactNode,
 } from 'react'
-import type { ApiUsage, LaunchOptions, Org, OrgsResponse, OrgSummary } from '../../shared/api.ts'
+import type { ApiUsage, LaunchOptions, Org, OrgSummary } from '../../shared/api.ts'
 import { ApiRequestError, api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
 import { isProductionBySummary } from '../orgs/production.ts'
 import { useApp } from './AppContext.tsx'
+import { initialState, isNamed, reducer, type State } from './orgState.ts'
 
 const SELECTED_KEY = 'sfbench.selectedOrg'
 
-export type OrgStatus = { state: 'ok' } | { state: 'authError'; reloginCommand?: string }
-
-/** What the first workspace shown gets from the launch (docs/web.md "起動時のクエリ"). */
-export type Seed = { query: string; run: boolean }
-
-type State = {
-  orgs: Org[] | undefined
-  connectionCheck: OrgsResponse['connectionCheck']
-  loading: boolean
-  loadError: string | undefined
-  selected: string | undefined
-  summaries: Record<string, OrgSummary>
-  status: Record<string, OrgStatus>
-  apiUsage: Record<string, ApiUsage>
-  pickerOpen: boolean
-  /** A message at the top of the org list, such as "no default org". */
-  notice: string | undefined
-  /** The --org/--query/--run given at launch, until an org is selected. */
-  launch: { org: string | undefined; query: string; run: boolean } | undefined
-  /** For the workspace of the selected org, until another org is selected. */
-  seed: Seed | undefined
-}
-
-type Action =
-  | { type: 'loading' }
-  | { type: 'loaded'; orgs: Org[]; connectionCheck: OrgsResponse['connectionCheck'] }
-  | { type: 'checking' }
-  | { type: 'loadFailed'; message: string }
-  | { type: 'select'; username: string }
-  | { type: 'summary'; username: string; summary: OrgSummary }
-  | { type: 'status'; username: string; status: OrgStatus }
-  | { type: 'apiUsage'; username: string; usage: ApiUsage }
-  | { type: 'picker'; open: boolean; notice?: string }
-
-// Exported for its tests.
-// oxlint-disable-next-line react/only-export-components
-export function reducer(state: State, action: Action): State {
-  switch (action.type) {
-    case 'loading':
-      return { ...state, loading: true, loadError: undefined }
-    case 'loaded':
-      return { ...state, loading: false, orgs: action.orgs, connectionCheck: action.connectionCheck }
-    case 'checking':
-      return { ...state, connectionCheck: 'pending' }
-    case 'loadFailed':
-      return { ...state, loading: false, loadError: action.message }
-    case 'select': {
-      const closed = { ...state, pickerOpen: false, notice: undefined }
-      // The same org again: the workspace stays, and so does what it was given.
-      if (action.username === state.selected) return closed
-      // The only place that decides whether the launch query runs: in the org
-      // the launch named, and nowhere else.
-      const { launch } = state
-      const org = state.orgs?.find((o) => o.username === action.username)
-      const named = launch?.org !== undefined && (org?.alias === launch.org || org?.username === launch.org)
-      const seed = launch && { query: launch.query, run: launch.run && named }
-      return { ...closed, selected: action.username, launch: undefined, seed }
-    }
-    case 'summary':
-      return { ...state, summaries: { ...state.summaries, [action.username]: action.summary } }
-    case 'status':
-      return { ...state, status: { ...state.status, [action.username]: action.status } }
-    case 'apiUsage':
-      return { ...state, apiUsage: { ...state.apiUsage, [action.username]: action.usage } }
-    case 'picker':
-      return { ...state, pickerOpen: action.open, notice: action.open ? (action.notice ?? state.notice) : undefined }
-  }
-}
-
-// oxlint-disable-next-line react/only-export-components
-export function initialState(launch: LaunchOptions | undefined): State {
-  return {
-    orgs: undefined,
-    connectionCheck: 'pending',
-    loading: true,
-    loadError: undefined,
-    selected: undefined,
-    summaries: {},
-    status: {},
-    apiUsage: {},
-    pickerOpen: false,
-    notice: undefined,
-    launch: launch?.query ? { org: launch.org, query: launch.query, run: launch.run === true } : undefined,
-    seed: undefined,
-  }
-}
+export type { OrgStatus, Seed } from './orgState.ts'
 
 export type OrgContextValue = State & {
   selectedOrg: Org | undefined
@@ -280,7 +196,7 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
     chosen.current = true
     // A new launch uses only what the launch says; a tab reload restores the saved org.
     const wanted = launch ? launch.org : readSelected()
-    const found = wanted ? state.orgs.find((o) => o.alias === wanted || o.username === wanted) : undefined
+    const found = wanted ? state.orgs.find((o) => isNamed(o, wanted)) : undefined
     if (found) {
       selectOrg(found.username)
       return

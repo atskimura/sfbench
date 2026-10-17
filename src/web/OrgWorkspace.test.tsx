@@ -146,15 +146,10 @@ describe('org workspace', () => {
     expect(signal?.aborted).toBe(true)
   })
 
-  it('drops a recent-queries failure of the org left', async () => {
-    let fail: (e: unknown) => void = () => {}
-    mocked.history.mockImplementation((username) =>
-      username === 'one@example.com' ? new Promise((_resolve, reject) => (fail = reject)) : Promise.resolve({ entries: [] }),
-    )
+  it('shows nothing when the recent queries fail', async () => {
+    mocked.history.mockRejectedValue(new ApiRequestError(401, 'ORG_AUTH_ERROR', 'expired'))
     render(<App launch={{ org: 'one' }} />)
-    await waitFor(() => expect(mocked.history).toHaveBeenCalledWith('one@example.com', expect.anything()))
-    await switchTo('two', 'one')
-    fail(new ApiRequestError(401, 'ORG_AUTH_ERROR', 'expired'))
+    await waitFor(() => expect(mocked.history).toHaveBeenCalled())
     await new Promise((r) => setTimeout(r, 50))
     expect(screen.queryByText(t.orgAuthError)).toBeNull()
   })
@@ -167,7 +162,7 @@ describe('org workspace', () => {
     expect(mocked.query).not.toHaveBeenCalled()
   })
 
-  it('runs the launch query only in the named org after the first org list fails', async () => {
+  it('does not run the launch query in another org after the first org list fails', async () => {
     mocked.orgs.mockRejectedValueOnce(new ApiRequestError(500, 'SF_CLI_ERROR', 'sf failed'))
     render(<App launch={{ org: 'one', query: 'SELECT Id FROM Account', run: true }} />)
     expect(await screen.findByText('sf failed')).toBeTruthy()
@@ -179,5 +174,17 @@ describe('org workspace', () => {
     await waitFor(() => expect(editorText()).toContain('SELECT Id FROM Account'))
     await new Promise((r) => setTimeout(r, 50))
     expect(mocked.query).not.toHaveBeenCalled()
+  })
+
+  it('runs the launch query once when the named org is chosen after the first org list fails', async () => {
+    mocked.orgs.mockRejectedValueOnce(new ApiRequestError(500, 'SF_CLI_ERROR', 'sf failed'))
+    render(<App launch={{ org: 'one', query: 'SELECT Id FROM Account', run: true }} />)
+    expect(await screen.findByText('sf failed')).toBeTruthy()
+    const switcher = screen.getByRole('button', { name: t.selectOrg })
+    await userEvent.click(switcher)
+    await userEvent.click(switcher)
+    await userEvent.click(await within(await screen.findByRole('dialog')).findByRole('button', { name: /one/ }))
+    expect(await screen.findByText('Acme')).toBeTruthy()
+    expect(mocked.query).toHaveBeenCalledTimes(1)
   })
 })

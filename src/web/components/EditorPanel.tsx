@@ -23,7 +23,8 @@ export function RunButton() {
   )
 }
 
-export function EditorPanel({ username }: { username: string }) {
+/** `initialText` is the launch query, if this workspace got one. */
+export function EditorPanel({ username, initialText }: { username: string; initialText: string | undefined }) {
   const soql = useSoql()
   const queryAllId = useId()
   const toolingId = useId()
@@ -57,7 +58,7 @@ export function EditorPanel({ username }: { username: string }) {
           {t.format}
         </button>
       </div>
-      <SoqlEditor org={username} />
+      <SoqlEditor org={username} initialText={initialText} />
     </section>
   )
 }

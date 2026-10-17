@@ -1,7 +1,7 @@
 // The launch query's states and transitions (docs/web.md "起動時のクエリ").
 import { describe, expect, it } from 'vitest'
 import type { LaunchOptions, Org } from '../../shared/api.ts'
-import { initialState, reducer } from './OrgContext.tsx'
+import { initialState, reducer } from './orgState.ts'
 
 const org = (alias: string | undefined, username: string): Org => ({
   username,
@@ -29,6 +29,11 @@ describe('launch query', () => {
     const state = reducer(launched(true), select('two@example.com'))
     expect(state.seed).toEqual({ query: 'SELECT Id FROM Account', run: false })
     expect(state.launch).toBeUndefined()
+  })
+
+  it('runs in the named org by username even before it is in the list', () => {
+    const state = reducer(initialState({ org: 'new@example.com', query: 'SELECT Id FROM Account', run: true }), select('new@example.com'))
+    expect(state.seed?.run).toBe(true)
   })
 
   it('does not run without a launch org, even in an org without an alias', () => {

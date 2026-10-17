@@ -54,7 +54,7 @@ const OPTION_TYPE: Record<Candidate['kind'], string> = {
 }
 
 /** The editor of the workspace for `org`, which is remade for each org. */
-export function SoqlEditor({ org }: { org: string }) {
+export function SoqlEditor({ org, initialText }: { org: string; initialText: string | undefined }) {
   const host = useRef<HTMLDivElement>(null)
   const soql = useSoql()
   // CodeMirror is created once; it reads the latest values through these refs.
@@ -106,7 +106,7 @@ export function SoqlEditor({ org }: { org: string }) {
       parent: host.current,
       state: EditorState.create({
         // The first text, outside the undo history (docs/web.md "起動時のクエリ").
-        doc: claimEditorText(org, latest.current.soql.seedQuery),
+        doc: claimEditorText(org, initialText),
         extensions: [
           history(),
           sql({ dialect: SOQL }),
@@ -172,7 +172,7 @@ export function SoqlEditor({ org }: { org: string }) {
       latest.current.soql.registerEditor(null)
       view.destroy()
     }
-    // Once per workspace: the workspace, and so `org`, is remade for each org.
+    // Once per workspace: the workspace, and so `org` and `initialText`, is remade for each org.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
