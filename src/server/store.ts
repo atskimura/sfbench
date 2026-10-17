@@ -145,8 +145,10 @@ export function loadHistory(dir: string, username: string): HistoryEntry[] {
  * added twice, keeping the request to the AI that wrote it if this run has none.
  */
 export function addHistory(dir: string, username: string, entry: HistoryEntry): HistoryEntry[] {
+  // Spaces and line breaks do not make another query (Format only changes them).
+  const squash = (soql: string) => soql.trim().replace(/\s+/g, ' ')
   const sameQuery = (e: HistoryEntry) =>
-    e.soql.trim() === entry.soql.trim() && e.tooling === entry.tooling && e.queryAll === entry.queryAll
+    squash(e.soql) === squash(entry.soql) && e.tooling === entry.tooling && e.queryAll === entry.queryAll
   const previous = loadHistory(dir, username)
   const prompt = entry.prompt ?? previous.find(sameQuery)?.prompt
   const added = prompt ? { ...entry, prompt } : entry

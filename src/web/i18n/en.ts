@@ -29,6 +29,7 @@ export const en = {
   settingsAi: 'AI',
   aiNoObjects: 'The AI could not choose the objects to query. Open an object on the left and try again.',
   aiOff: 'AI is off.',
+  aiTooLong: 'The request and the editor text are too long to send with the fields. Shorten the request or do not send the editor text.',
   aiSetUp: 'Set up AI',
   aiSetUpNote: 'Choose an AI and enter its model and API key in the settings.',
   aiPlaceholder: 'Describe the query, e.g. opportunities won this month, largest first',

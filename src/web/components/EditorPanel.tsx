@@ -17,7 +17,7 @@ export function RunButton() {
       type="button"
       className={`${panel.button} ${panel.primary}`}
       disabled={!selected || result.state === 'running'}
-      onClick={soql.run}
+      onClick={() => soql.run()}
       aria-keyshortcuts="Meta+Enter Control+Enter"
     >
       {result.state === 'running' ? t.running : t.run}

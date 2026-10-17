@@ -10,7 +10,8 @@ const MAX_PICKLIST_VALUES = 50
 /** Objects that are rarely queried and would crowd the list (sharing, history, feeds, change events). */
 const NOISE = /(Share|History|Feed|ChangeEvent)$/
 
-const bytes = (text: string) => new TextEncoder().encode(text).length
+const encoder = new TextEncoder()
+const bytes = (text: string) => encoder.encode(text).length
 
 /**
  * How much detail is kept, from all of it down to API names only. Each step

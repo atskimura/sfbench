@@ -63,7 +63,8 @@ type SoqlState = {
   clearAll: () => void
   format: () => void
   loadHistory: (entry: HistoryEntry) => void
-  run: () => void
+  /** Runs the editor text; `tooling` overrides the toggle (an AI proposal runs with the API it was written for). */
+  run: (tooling?: boolean) => void
 }
 
 export type QueryResult =
@@ -220,7 +221,7 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
     [handleOrgError],
   )
 
-  const run = useCallback(() => {
+  const run = useCallback((toolingOverride?: boolean) => {
     if (!selected) return
     const soql = editor.current?.getText() ?? ''
     if (!soql.trim()) return
@@ -229,7 +230,7 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
     runAbort.current = abort
     const generation = ++runGeneration.current
     const started = performance.now()
-    const useTooling = tooling
+    const useTooling = toolingOverride ?? tooling
     setResult({ state: 'running' })
     const prompt = promptFor(soql)
     api.query(selected, { soql, tooling: useTooling, queryAll: !useTooling && queryAll, ...(prompt ? { prompt } : {}) }, abort.signal).then(
@@ -285,6 +286,8 @@ export function SoqlProvider({ children }: { children: ReactNode }) {
     setResult({ state: 'idle' })
     setHistory([])
     historyOrg.current = selected
+    // A proposal applied in the old org does not give its request to queries in this one.
+    applied.current = undefined
     if (!selected) return
     loadHistoryFor(selected)
     const launch = takeLaunchQuery()

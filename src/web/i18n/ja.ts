@@ -29,6 +29,7 @@ export const ja: Messages = {
   settingsAi: 'AI',
   aiNoObjects: '対象のオブジェクトを選べませんでした。左の一覧でオブジェクトを開いてから、もう一度試してください。',
   aiOff: 'AI は使えません。',
+  aiTooLong: '要望とエディタの内容が長く、項目の情報と一緒に送れません。要望を短くするか、エディタの内容を送らないでください。',
   aiSetUp: 'AI を設定',
   aiSetUpNote: '設定で AI を選び、モデルと API キーを入れてください。',
   aiPlaceholder: 'やりたいことを書く（例: 今月成約した商談を金額の大きい順に）',

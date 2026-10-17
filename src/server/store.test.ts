@@ -19,9 +19,10 @@ const entry = (soql: string, executedAt = '2026-10-16T00:00:00.000Z') => ({
 })
 
 describe('history', () => {
-  it('keeps the request to the AI when the same query runs again without one', () => {
+  it('keeps the request to the AI when the same query runs again without one, even after Format', () => {
     addHistory(dir, 'u@example.com', { ...entry('SELECT Id FROM Account'), prompt: 'list accounts' })
-    addHistory(dir, 'u@example.com', entry('SELECT Id FROM Account', '2026-10-17T00:00:00.000Z'))
+    addHistory(dir, 'u@example.com', entry('SELECT Id\nFROM Account', '2026-10-17T00:00:00.000Z'))
+    expect(loadHistory(dir, 'u@example.com')).toHaveLength(1)
     expect(loadHistory(dir, 'u@example.com')[0].prompt).toBe('list accounts')
   })
 
