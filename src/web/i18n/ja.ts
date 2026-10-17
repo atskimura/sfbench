@@ -4,6 +4,7 @@ export const ja: Messages = {
   appName: 'sfbench',
   loadingOrgs: 'sf CLI から組織の一覧を読み込んでいます…',
   selectOrg: '組織を選択',
+  selectOrgFirst: '右上の組織の切り替えから、組織を選んでください。',
   findOrg: 'エイリアスかユーザー名で探す',
   noOrgs: '組織がありません。sf CLI で組織にログインしてください:',
   addOrg: 'sf CLI で組織を追加してから、この一覧を開き直してください:',
