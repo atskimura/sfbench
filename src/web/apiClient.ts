@@ -126,11 +126,11 @@ export const api = {
     setSessionToken(res.sessionToken)
     return res
   },
-  orgs: (refresh = false, waitForCheck = false) =>
-    request<OrgsResponse>('GET', `/api/orgs${query(flag('refresh', refresh), flag('waitForCheck', waitForCheck))}`),
+  orgs: (refresh = false, waitForCheck = false, signal?: AbortSignal) =>
+    request<OrgsResponse>('GET', `/api/orgs${query(flag('refresh', refresh), flag('waitForCheck', waitForCheck))}`, undefined, signal),
   /** Checks every org's connection again (about 10 seconds or more). */
-  checkConnections: () => request<OrgsResponse>('POST', '/api/orgs/check'),
-  summary: (username: string) => request<WithApiUsage<OrgSummary>>('GET', `${org(username)}/summary`),
+  checkConnections: (signal?: AbortSignal) => request<OrgsResponse>('POST', '/api/orgs/check', undefined, signal),
+  summary: (username: string, signal?: AbortSignal) => request<WithApiUsage<OrgSummary>>('GET', `${org(username)}/summary`, undefined, signal),
   sobjects: (username: string, tooling: boolean, refresh = false) =>
     request<DescribeGlobal>('GET', `${org(username)}/sobjects${query(flag('tooling', tooling), flag('refresh', refresh))}`),
   describe: (username: string, name: string, tooling: boolean, refresh = false) =>
@@ -143,9 +143,9 @@ export const api = {
   nextPage: (username: string, nextRecordsUrl: string, signal?: AbortSignal) =>
     request<WithApiUsage<QueryResponse>>('POST', `${org(username)}/query/next`, { nextRecordsUrl }, signal),
   history: (username: string, signal?: AbortSignal) => request<HistoryResponse>('GET', `${org(username)}/history`, undefined, signal),
-  openOrg: (username: string) => request<{ ok: true }>('POST', `${org(username)}/open`),
-  settings: () => request<Settings>('GET', '/api/settings'),
-  saveSettings: (settings: SettingsUpdate) => request<Settings>('PUT', '/api/settings', settings),
+  openOrg: (username: string, signal?: AbortSignal) => request<{ ok: true }>('POST', `${org(username)}/open`, undefined, signal),
+  settings: (signal?: AbortSignal) => request<Settings>('GET', '/api/settings', undefined, signal),
+  saveSettings: (settings: SettingsUpdate, signal?: AbortSignal) => request<Settings>('PUT', '/api/settings', settings, signal),
   aiGenerate: <T extends AiTask>(req: AiTaskRequest & { task: T }, signal?: AbortSignal) =>
     request<{ output: AiOutput<T> }>('POST', '/api/ai/generate', req, signal),
   aiTest: (body: AiTestRequest, signal?: AbortSignal) => request<AiTestResponse>('POST', '/api/ai/test', body, signal),
