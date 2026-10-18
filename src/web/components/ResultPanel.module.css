@@ -74,13 +74,6 @@
   border-top: 2px solid var(--color-line);
 }
 
-.csvStatus {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-small);
-}
-
 .error {
   margin: var(--space-3);
   padding: var(--space-2) var(--space-3);
@@ -99,18 +92,6 @@
   font-size: var(--font-size-small);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-.details {
-  max-height: 200px;
-  overflow: auto;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  background: var(--color-panel);
-  color: var(--color-ink);
-  padding: var(--space-2);
-  border-radius: var(--radius);
-  margin: var(--space-1) 0 0;
 }
 
 .running {

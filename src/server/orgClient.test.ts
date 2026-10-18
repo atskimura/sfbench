@@ -5,8 +5,8 @@ vi.mock('./sf/apiRequest.ts', () => ({ apiRequest: vi.fn() }))
 
 const { getAccessToken } = await import('./sf/commands.ts')
 const { apiRequest } = await import('./sf/apiRequest.ts')
-const { OrgClient, SalesforceUnreachableError } = await import('./salesforce.ts')
-const { OrgAuthError, SfCliError } = await import('./sf/errors.ts')
+const { OrgClient, SalesforceTimeoutError, SalesforceUnreachableError } = await import('./salesforce.ts')
+const { OrgAuthError, SfCliError, SfTimeoutError } = await import('./sf/errors.ts')
 
 const tokenMock = vi.mocked(getAccessToken)
 const cliMock = vi.mocked(apiRequest)
@@ -82,6 +82,18 @@ describe('OrgClient', () => {
   it('does not send a data-changing request again after a network error', async () => {
     fetchMock.mockImplementation(networkError)
     await expect(newClient().request(post)).rejects.toBeInstanceOf(SalesforceUnreachableError)
+    expect(cliMock).not.toHaveBeenCalled()
+  })
+
+  it('reports a timeout of sf api request as a Salesforce timeout', async () => {
+    fetchMock.mockImplementation(networkError)
+    cliMock.mockRejectedValue(new SfTimeoutError('sf api request timed out'))
+    await expect(newClient().request(get)).rejects.toBeInstanceOf(SalesforceTimeoutError)
+  })
+
+  it('does not send a GET marked as changing data again after a network error', async () => {
+    fetchMock.mockImplementation(networkError)
+    await expect(newClient().request({ ...get, changesData: true })).rejects.toBeInstanceOf(SalesforceUnreachableError)
     expect(cliMock).not.toHaveBeenCalled()
   })
 

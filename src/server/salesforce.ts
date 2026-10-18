@@ -8,7 +8,7 @@ import type { ApiUsage } from '../shared/api.ts'
 import { log } from './log.ts'
 import { apiRequest, type RawResponse } from './sf/apiRequest.ts'
 import { getAccessToken } from './sf/commands.ts'
-import { OrgAuthError, SfCliError, SfNotFoundError, isAuthErrorMessage } from './sf/errors.ts'
+import { OrgAuthError, SfCliError, SfNotFoundError, SfTimeoutError, isAuthErrorMessage } from './sf/errors.ts'
 
 /** Salesforce answered with an HTTP error. `body` is its parsed JSON when possible. */
 export class SalesforceError extends Error {
@@ -35,6 +35,17 @@ export type SalesforceRequest = {
   path: string
   headers?: Record<string, string>
   body?: string
+  /**
+   * The request may change data although its method reads (such as the
+   * Tooling API's executeAnonymous, a GET that runs Apex). Such a request,
+   * like any other method than GET and HEAD, is never sent twice.
+   */
+  changesData?: boolean
+}
+
+/** Whether a request may change data: decided here only (docs/design.md "経路の選択"). */
+export function mayChangeData(req: Pick<SalesforceRequest, 'method' | 'changesData'>): boolean {
+  return req.changesData === true || (req.method !== 'GET' && req.method !== 'HEAD')
 }
 
 export type SalesforceResponse = {
@@ -136,7 +147,7 @@ export class OrgClient {
 
   private async send(req: SalesforceRequest): Promise<RawResponse> {
     if (this.forceCli) return this.sendWithCli(req)
-    const readOnly = req.method === 'GET' || req.method === 'HEAD'
+    const readOnly = !mayChangeData(req)
     // After switching to sf, fetch is tried again after a while, but only with
     // a read-only request: a request that changes data must not be the one
     // that discovers fetch still fails, because it could not be sent again.
@@ -200,7 +211,10 @@ export class OrgClient {
       { method: req.method, path: req.path, headers, body: req.body },
       this.tmpDir,
       this.timeoutMs(),
-    )
+    ).catch((e: unknown) => {
+      // The same answer as fetch's timeout: Salesforce may have processed the request.
+      throw e instanceof SfTimeoutError ? new SalesforceTimeoutError() : e
+    })
   }
 
   /**

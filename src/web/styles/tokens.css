@@ -39,8 +39,23 @@
 
   --font-sans: system-ui, -apple-system, 'Segoe UI', 'Hiragino Sans', 'Yu Gothic UI', sans-serif;
   --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
-  --font-size: 13px;
+  /* Text sizes, smallest first. */
+  --font-size-badge: 10.5px;
+  --font-size-xsmall: 11px;
+  --font-size-meta: 11.5px;
   --font-size-small: 12px;
+  --font-size: 13px;
+  --font-size-heading: 14px;
+  --font-size-brand: 15px;
+  --font-size-title: 16px;
+  --font-size-glyph: 18px;
+
+  /* Heights of buttons and inputs. */
+  --control-height-xsmall: 22px;
+  --control-height-small: 26px;
+  --control-height: 28px;
+  --control-height-large: 30px;
+  --control-height-xlarge: 32px;
 
   --space-0: 2px;
   --space-1: 4px;

@@ -84,6 +84,17 @@ describe('App', () => {
     expect(document.body.textContent).toMatch(/PRODUCTION|本番/)
   })
 
+  it('keeps the production band for the selected org once it is no longer in the list', async () => {
+    render(<App launch={{ org: 'demo' }} />)
+    await screen.findByRole('button', { name: /demo/ })
+    expect(screen.queryAllByRole('status').some((el) => /PRODUCTION|本番/.test(el.textContent ?? ''))).toBe(false)
+    mocked.orgs.mockResolvedValue({ orgs: [prod], connectionCheck: 'done' })
+    await userEvent.click(screen.getByRole('button', { name: /demo/ }))
+    // The band names the org by its username once the list no longer has its alias.
+    const band = () => screen.queryAllByRole('status').find((el) => el.textContent?.includes(dev.username))
+    await waitFor(() => expect(band()?.textContent).toMatch(/本番|PRODUCTION/))
+  })
+
   it('opens the org list with a notice when the launch org is unknown', async () => {
     render(<App launch={{ org: 'nope', query: 'SELECT Id FROM Account', run: true }} />)
     const dialog = await screen.findByRole('dialog')

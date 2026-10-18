@@ -11,6 +11,8 @@ export const ja: Messages = {
   noDefaultOrg:
     'sf CLI に既定の組織が設定されていません。組織を選んでください。次回からは `npx sfbench -o <alias>` で起動するか、`sf config set target-org <alias>` で既定の組織を設定できます。',
   unknownLaunchOrg: (name: string) => `sf CLI に ${name} という組織はありません。一覧から選んでください。`,
+  salesforceTimeout: 'Salesforce が時間内に応答しませんでした。Salesforce の側で処理が終わっている場合があります。待つ時間は設定で延ばせます。',
+  salesforceUnreachable: 'Salesforce への送信の途中で接続が切れました。Salesforce が処理した場合があるので、送り直していません。Salesforce で結果を確かめてください。',
   orgAuthError: 'セッションが切れています。ターミナルでログインし直してください:',
   openOrg: 'ログイン済みの状態でブラウザに組織を開く',
   openingOrg: '開いています…',

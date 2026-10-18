@@ -13,11 +13,12 @@ import { useApp } from '../state/AppContext.tsx'
 import { useTask } from '../state/useTask.ts'
 import { aiDraftValid, aiInput, initialAiDraft, type AiDraft } from '../ai/draft.ts'
 import { AiSettings } from './AiSettings.tsx'
+import dialog from './Dialog.module.css'
 import styles from './SettingsDialog.module.css'
 
 
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
-  const { handleCommonError, notify, saveSettings, savingSettings } = useApp()
+  const { reportError, saveSettings, savingSettings } = useApp()
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [settings, setSettings] = useState<Settings>()
   const [timeoutText, setTimeoutText] = useState('')
@@ -29,9 +30,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const timeoutNoteId = useId()
 
   // The latest callbacks, so that loading runs once per opening of the dialog.
-  const callbacks = useRef({ handleCommonError, notify, onClose })
+  const callbacks = useRef({ reportError, onClose })
   useEffect(() => {
-    callbacks.current = { handleCommonError, notify, onClose }
+    callbacks.current = { reportError, onClose }
   })
 
   useEffect(() => {
@@ -43,8 +44,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         setAiDraft(initialAiDraft(outcome.value.ai))
       }
       if (outcome.kind === 'error') {
-        const { handleCommonError, notify, onClose } = callbacks.current
-        if (!handleCommonError(outcome.error)) notify({ message: (outcome.error as Error).message })
+        const { reportError, onClose } = callbacks.current
+        reportError(outcome.error)
         onClose()
       }
     })
@@ -65,7 +66,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <dialog ref={dialogRef} className={styles.dialog} aria-label={t.settings} onCancel={onClose}>
+    <dialog ref={dialogRef} className={dialog.dialog} aria-label={t.settings} onCancel={onClose}>
       <form
         method="dialog"
         onSubmit={(e) => {
@@ -73,15 +74,15 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           void save()
         }}
       >
-        <div className={styles.head}>
-          <h2 className={styles.title}>{t.settings}</h2>
+        <div className={dialog.head}>
+          <h2 className={dialog.title}>{t.settings}</h2>
           <button type="button" className={styles.close} aria-label={t.close} onClick={onClose}>
             ×
           </button>
         </div>
         {settings && (
           <>
-            <section className={styles.section}>
+            <section className={dialog.section}>
               <h3 className={styles.sectionTitle}>{t.settingsSoql}</h3>
               <label className={styles.check} htmlFor={namespaceId}>
                 <input
@@ -96,7 +97,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                 </span>
               </label>
             </section>
-            <section className={styles.section}>
+            <section className={dialog.section}>
               <h3 className={styles.sectionTitle}>{t.settingsConnection}</h3>
               <label htmlFor={timeoutId}>{t.settingsTimeout}</label>
               <input
@@ -119,11 +120,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             <AiSettings saved={settings.ai} draft={aiDraft} onChange={setAiDraft} />
           </>
         )}
-        <div className={styles.actions}>
-          <button type="button" className={styles.button} onClick={onClose}>
+        <div className={dialog.actions}>
+          <button type="button" className={dialog.button} onClick={onClose}>
             {t.cancel}
           </button>
-          <button type="submit" className={`${styles.button} ${styles.primary}`} disabled={!settings || !timeoutValid || !(aiDraftValid(aiDraft) || !aiDraft.touched) || savingSettings}>
+          <button type="submit" className={`${dialog.button} ${dialog.primary}`} disabled={!settings || !timeoutValid || !(aiDraftValid(aiDraft) || !aiDraft.touched) || savingSettings}>
             {t.save}
           </button>
         </div>

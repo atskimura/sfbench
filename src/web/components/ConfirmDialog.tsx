@@ -1,8 +1,8 @@
 // A modal question with Cancel and a confirm button (such as before a CSV
-// export that loads many pages). Shares the look of the settings dialog.
+// export that loads many pages). Shares the look of the settings dialog (Dialog.module.css).
 import { useEffect, useId, useRef } from 'react'
 import { t } from '../i18n/i18n.ts'
-import styles from './SettingsDialog.module.css'
+import styles from './Dialog.module.css'
 
 type Props = {
   title: string

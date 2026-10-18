@@ -8,6 +8,7 @@ import { useApp } from '../state/AppContext.tsx'
 import { useAi, type Rejected } from '../state/AiContext.tsx'
 import { useSoql } from '../state/SoqlContext.tsx'
 import styles from './AiBar.module.css'
+import { ErrorDetails } from './ErrorDetails.tsx'
 import panel from './Panel.module.css'
 
 export function AiBar() {
@@ -90,14 +91,7 @@ export function AiBar() {
       {failure && (
         <div role="alert" className={styles.error}>
           <span>{failure.message}</span>
-          {failure.details !== undefined && (
-            <details>
-              <summary>{t.errorDetails}</summary>
-              <pre className={styles.details}>
-                {typeof failure.details === 'string' ? failure.details : JSON.stringify(failure.details, null, 2)}
-              </pre>
-            </details>
-          )}
+          <ErrorDetails details={failure.details} />
         </div>
       )}
     </div>

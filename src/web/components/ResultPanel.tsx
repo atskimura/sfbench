@@ -1,7 +1,8 @@
 // Query results: the result table with its later pages, the row filter, the
 // child records of a subquery cell, and CSV export (docs/web.md "結果の表").
 import { useCallback, useDeferredValue, useEffect, useId, useMemo, useReducer, useState } from 'react'
-import { ApiRequestError, api } from '../apiClient.ts'
+import { api } from '../apiClient.ts'
+import { isLocatorGone } from '../errors.ts'
 import { t } from '../i18n/i18n.ts'
 import { pagesReducer, type Pages } from '../results/pages.ts'
 import { addColumns, cellText, cellValue, type ChildRecords, type Column, type SObjectRecord } from '../results/columns.ts'
@@ -10,6 +11,7 @@ import { useResult, type QueryResult } from '../state/SoqlContext.tsx'
 import { useTask } from '../state/useTask.ts'
 import { FixWithAi } from './AiBar.tsx'
 import { CopyCommand } from './CopyCommand.tsx'
+import { ErrorDetails } from './ErrorDetails.tsx'
 import { CsvExport } from './CsvExport.tsx'
 import panel from './Panel.module.css'
 import styles from './ResultPanel.module.css'
@@ -50,12 +52,7 @@ function Shown({ result }: { result: QueryResult }) {
               <FixWithAi error={result.message} rejected={result.rejected} />
             </div>
           )}
-          {result.details !== undefined && (
-            <details>
-              <summary>{t.errorDetails}</summary>
-              <pre className={styles.details}>{JSON.stringify(result.details, null, 2)}</pre>
-            </details>
-          )}
+          <ErrorDetails details={result.details} />
         </div>
       )}
       {/* A new run starts a new table, with new column widths, and stops what the old one was loading. */}
@@ -85,11 +82,6 @@ function matchingRows(result: Done, records: readonly SObjectRecord[], columns: 
   return matches
 }
 type OpenChild = { row: number; column: Column; child: ChildRecords }
-
-/** The query locator behind nextRecordsUrl expired or was dropped: the same request can never succeed. */
-function isLocatorGone(e: unknown): boolean {
-  return e instanceof ApiRequestError && e.code === 'SALESFORCE_ERROR' && JSON.stringify(e.body?.details ?? '').includes('INVALID_QUERY_LOCATOR')
-}
 
 /**
  * The later pages of the shown result (docs/web.md "流れごとの指定"). The

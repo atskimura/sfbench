@@ -10,7 +10,8 @@ import {
   type ReactNode,
 } from 'react'
 import type { ApiUsage, LaunchOptions, Org, OrgsResponse, OrgSummary } from '../../shared/api.ts'
-import { ApiRequestError, api } from '../apiClient.ts'
+import { api } from '../apiClient.ts'
+import { errorDetails, errorKind, errorMessage, isShownElsewhere, reloginCommand } from '../errors.ts'
 import { t } from '../i18n/i18n.ts'
 import { isProductionBySummary } from '../orgs/production.ts'
 import { useApp } from './AppContext.tsx'
@@ -78,7 +79,7 @@ function saveSelected(username: string): void {
 }
 
 export function OrgProvider({ launch, children }: { launch: LaunchOptions | undefined; children: ReactNode }) {
-  const { handleCommonError, notify } = useApp()
+  const { handleCommonError, notify, reportError } = useApp()
   const [state, dispatch] = useReducer(reducer, launch, initialState)
   // Loading the list, waiting for the background check and checking again
   // all write the list, so they share one task: the newest replaces the rest
@@ -106,7 +107,7 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
       if (outcome.kind === 'done') dispatch({ type: 'loaded', ...outcome.value })
       if (outcome.kind === 'error') {
         const handled = handleCommonError(outcome.error)
-        dispatch({ type: 'loadFailed', message: handled ? '' : (outcome.error as Error).message })
+        dispatch({ type: 'loadFailed', message: handled ? '' : errorMessage(outcome.error) })
       }
     },
     [runList, handleCommonError],
@@ -115,13 +116,14 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
   const handleOrgError = useCallback(
     (username: string, e: unknown) => {
       if (handleCommonError(e)) return true
-      if (!(e instanceof ApiRequestError)) return false
-      if (e.code === 'ORG_AUTH_ERROR') {
-        dispatch({ type: 'status', username, status: { state: 'authError', reloginCommand: e.body?.reloginCommand } })
-        notify({ message: t.orgAuthError, command: e.body?.reloginCommand })
+      const kind = errorKind(e)
+      if (kind === 'orgAuth') {
+        const command = reloginCommand(e)
+        dispatch({ type: 'status', username, status: { state: 'authError', reloginCommand: command } })
+        notify({ message: t.orgAuthError, command })
         return true
       }
-      if (e.code === 'NOT_FOUND') {
+      if (kind === 'orgNotFound') {
         void loadOrgs(true)
         dispatch({ type: 'picker', open: true })
         return true
@@ -134,9 +136,7 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
   const reportOrgError = useCallback(
     (username: string, e: unknown) => {
       if (handleOrgError(username, e)) return
-      if (e instanceof ApiRequestError && e.code === 'ABORTED') return
-      const details = e instanceof ApiRequestError && e.code === 'SALESFORCE_ERROR' ? e.body?.details : undefined
-      notify({ message: e instanceof Error ? e.message : String(e), details })
+      notify({ message: errorMessage(e), details: errorDetails(e) })
     },
     [handleOrgError, notify],
   )
@@ -159,9 +159,7 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
         }
         if (outcome.kind === 'error') {
           // Other failures (such as a user who cannot read Organization) are not shown.
-          const e = outcome.error
-          const shown = ['ORG_AUTH_ERROR', 'NOT_FOUND', 'SF_CLI_NOT_FOUND']
-          if (e instanceof ApiRequestError && (shown.includes(e.code) || e.isSessionLost)) handleOrgError(username, e)
+          if (isShownElsewhere(errorKind(outcome.error))) handleOrgError(username, outcome.error)
         }
       })
     },
@@ -189,7 +187,7 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
       if (outcome.kind === 'done') dispatch({ type: 'loaded', ...outcome.value })
       if (outcome.kind === 'error') {
         // Not shown, apart from a lost session or a missing sf CLI.
-        if (outcome.error instanceof ApiRequestError) handleCommonError(outcome.error)
+        handleCommonError(outcome.error)
         dispatch({ type: 'waitFailed' })
       }
     })
@@ -198,8 +196,8 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
   const recheckConnections = useCallback(async () => {
     const outcome = await runList('check', (signal) => api.checkConnections(signal))
     if (outcome.kind === 'done') dispatch({ type: 'loaded', ...outcome.value })
-    if (outcome.kind === 'error' && !handleCommonError(outcome.error)) notify({ message: (outcome.error as Error).message })
-  }, [runList, handleCommonError, notify])
+    if (outcome.kind === 'error') reportError(outcome.error)
+  }, [runList, reportError])
 
   // Choose the org once, when the first org list arrives, whichever load
   // delivered it (the user may open the list while the first load runs).
@@ -247,7 +245,8 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
       connectionCheck: listRequest === 'check' ? 'pending' : state.connectionCheck,
       selectedOrg,
       selectedSummary,
-      isProduction: selectedOrg ? isProductionBySummary(selectedOrg, selectedSummary) : false,
+      // An org no longer in the list counts as production (docs/screens.md).
+      isProduction: selectedOrg ? isProductionBySummary(selectedOrg, selectedSummary) : state.selected !== undefined,
       recheckConnections,
       selectOrg,
       setPickerOpen,

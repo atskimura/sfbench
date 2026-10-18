@@ -196,6 +196,12 @@ export type ApiErrorCode =
   | 'SF_CLI_NOT_FOUND'
   | 'SF_CLI_ERROR'
   | 'SALESFORCE_ERROR'
+  /** Salesforce did not answer in time. Whether it processed the request is unknown. */
+  | 'SALESFORCE_TIMEOUT'
+  /** The connection broke while sending a request that may change data: it may have been processed, and was not sent again. */
+  | 'SALESFORCE_UNREACHABLE'
+  /** The org is not in the org list (any other unknown path is NOT_FOUND). */
+  | 'ORG_NOT_FOUND'
   | 'AI_NOT_CONFIGURED'
   | 'AI_ERROR'
   | 'AI_BAD_OUTPUT'

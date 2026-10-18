@@ -1,51 +1,11 @@
-.dialog {
-  width: 560px;
-  max-width: calc(100vw - 2 * var(--space-4));
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-large);
-  background: var(--color-panel);
-  color: var(--color-ink);
-  box-shadow: var(--shadow-popover);
-}
-
-.small {
-  width: 440px;
-}
-
-.dialog::backdrop {
-  background: var(--color-scrim);
-}
-
-.head {
-  display: flex;
-  align-items: center;
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--color-line);
-}
-
-.title {
-  flex: 1;
-  margin: 0;
-  font-size: 16px;
-}
-
 .close {
   width: 32px;
-  height: 32px;
+  height: var(--control-height-xlarge);
   border: 0;
   background: none;
-  font-size: 18px;
+  font-size: var(--font-size-glyph);
   color: var(--color-muted);
   cursor: pointer;
-}
-
-.section {
-  padding: var(--space-3) var(--space-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  border-bottom: 1px solid var(--color-line);
 }
 
 .sectionTitle {
@@ -77,40 +37,11 @@
 
 .number {
   width: 120px;
-  height: 30px;
+  height: var(--control-height-large);
   border: 1px solid var(--color-line);
   border-radius: var(--radius);
   padding: 0 var(--space-2);
   background: var(--color-panel);
-}
-
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-panel-muted);
-}
-
-.button {
-  height: 30px;
-  padding: 0 var(--space-3);
-  border-radius: var(--radius);
-  border: 1px solid var(--color-line);
-  background: var(--color-panel);
-  cursor: pointer;
-}
-
-.primary {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: var(--color-accent-ink);
-  font-weight: 600;
-}
-
-.button:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 .footer {
@@ -137,7 +68,7 @@
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  height: 30px;
+  height: var(--control-height-large);
   padding: 0 var(--space-2);
   border: 1px solid var(--color-line);
   border-radius: var(--radius);

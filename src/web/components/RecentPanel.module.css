@@ -23,7 +23,7 @@
 
 .soql {
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: var(--font-size-meta);
   line-height: 16px;
   overflow: hidden;
   display: -webkit-box;

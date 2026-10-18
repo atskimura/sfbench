@@ -47,7 +47,7 @@ const answer = (soql: string, explanation = 'x') => ({ output: { soql, explanati
 const replies = (soql: string, explanation = 'x', objects = ['Account']) =>
   mocked.aiGenerate.mockImplementation((async (req: { task: string }) =>
     req.task === 'chooseObjects' ? { output: { objects } } : answer(soql, explanation)) as never)
-const rejected = (message: string) => new ApiRequestError(400, 'SALESFORCE_ERROR', message, { code: 'SALESFORCE_ERROR', message })
+const rejected = (message: string) => new ApiRequestError(400, 'SALESFORCE_ERROR', message, { code: 'SALESFORCE_ERROR', message, status: 400 })
 
 /** A promise to settle by hand. */
 function deferred<T>() {

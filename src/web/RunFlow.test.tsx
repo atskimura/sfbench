@@ -199,7 +199,7 @@ describe('CSV export', () => {
   it('cannot start when the rest of the result has expired', async () => {
     mocked.query.mockResolvedValue({ totalSize: 6, done: false, nextRecordsUrl: '/next/1', records: rows(0, 2) })
     mocked.nextPage.mockRejectedValue(
-      new ApiRequestError(400, 'SALESFORCE_ERROR', 'invalid', { code: 'SALESFORCE_ERROR', message: 'invalid', details: [{ errorCode: 'INVALID_QUERY_LOCATOR' }] }),
+      new ApiRequestError(400, 'SALESFORCE_ERROR', 'invalid', { code: 'SALESFORCE_ERROR', message: 'invalid', status: 400, details: [{ errorCode: 'INVALID_QUERY_LOCATOR' }] }),
     )
     render(<App launch={launch} />)
     expect(await screen.findByText(t.locatorExpired)).toBeTruthy()
