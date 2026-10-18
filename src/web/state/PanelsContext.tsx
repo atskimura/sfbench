@@ -2,11 +2,11 @@
 // in localStorage under the screen's own key; without it, every panel starts open.
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 
-/** The SOQL screen's (objects, editor, recent) and the REST API screen's (restRequest, restHistory). */
-export type PanelName = 'objects' | 'editor' | 'recent' | 'restRequest' | 'restHistory'
+/** The SOQL screen's (objects, editor, recent), the REST API screen's (restRequest, restHistory) and the Apex screen's (apexEditor, apexHistory). */
+export type PanelName = 'objects' | 'editor' | 'recent' | 'restRequest' | 'restHistory' | 'apexEditor' | 'apexHistory'
 type Open = Record<PanelName, boolean>
 
-const ALL_OPEN: Open = { objects: true, editor: true, recent: true, restRequest: true, restHistory: true }
+const ALL_OPEN: Open = { objects: true, editor: true, recent: true, restRequest: true, restHistory: true, apexEditor: true, apexHistory: true }
 
 /** The screen's own panels as saved; the others' are not read. */
 function read(key: string, names: readonly PanelName[]): Open {

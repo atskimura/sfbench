@@ -1,5 +1,6 @@
 // Whether to ask before sending (docs/rest.md "確認するかどうか"). Decided here only.
 import type { RestHistoryEntry } from '../../shared/api.ts'
+import { confirmReasons, type ConfirmReason } from '../execution.ts'
 import { restMayChangeData } from './changes.ts'
 import { sameRequest, type RestSnapshot } from './request.ts'
 
@@ -12,14 +13,6 @@ function sameRecorded(entry: RestHistoryEntry, request: RestSnapshot): boolean {
   if (entry.bodyOmitted) return entry.method === request.method && entry.path === request.path
   return sameRequest(entry, request)
 }
-
-export type ConfirmReason =
-  /** The same request was sent before and its outcome is not known. */
-  | 'unknownOutcome'
-  /** The history has not been loaded, so an earlier unknown outcome cannot be told. */
-  | 'historyUnknown'
-  /** A request that may change data, in a production org. */
-  | 'production'
 
 /**
  * The reasons to ask, or none. The history is the server's, so the unknown
@@ -34,12 +27,10 @@ export function needsConfirm(
     historyLoaded: boolean
   },
 ): ConfirmReason[] {
-  const reasons: ConfirmReason[] = []
-  // Sending a request that changes no data again does no harm, whatever happened to it before.
-  const changesData = restMayChangeData(request.method, request.path)
-  if (changesData && !context.historyLoaded) reasons.push('historyUnknown')
-  const unknown = context.history.some((e) => (e.outcome.state === 'pending' || e.outcome.state === 'unknown') && sameRecorded(e, request))
-  if (changesData && unknown) reasons.push('unknownOutcome')
-  if (context.isProduction && changesData) reasons.push('production')
-  return reasons
+  return confirmReasons({
+    changesData: restMayChangeData(request.method, request.path),
+    isProduction: context.isProduction,
+    historyLoaded: context.historyLoaded,
+    sameUnknown: context.history.some((e) => (e.outcome.state === 'pending' || e.outcome.state === 'unknown') && sameRecorded(e, request)),
+  })
 }

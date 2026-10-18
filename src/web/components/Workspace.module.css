@@ -1,4 +1,4 @@
-/* One screen (SOQL or REST API); the one not chosen is hidden, not unmounted. */
+/* One screen (SOQL, REST API or Apex); those not chosen are hidden, not unmounted. */
 .screen {
   flex: 1;
   min-width: 0;

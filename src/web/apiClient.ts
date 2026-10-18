@@ -5,6 +5,9 @@ import type {
   AiTaskRequest,
   AiTestRequest,
   AiTestResponse,
+  ApexHistoryResponse,
+  ApexRequest,
+  ApexResponse,
   ApiError,
   ApiErrorCode,
   ApiUsage,
@@ -163,6 +166,9 @@ export const api = {
   rest: (username: string, body: RestRequest, signal?: AbortSignal) =>
     request<WithApiUsage<RestResponse>>('POST', `${org(username)}/rest`, body, signal),
   restHistory: (username: string, signal?: AbortSignal) => request<RestHistoryResponse>('GET', `${org(username)}/rest/history`, undefined, signal),
+  /** Runs anonymous Apex; a compile error or an exception comes back as a result (docs/apex.md "応答の形"). */
+  apex: (username: string, body: ApexRequest, signal?: AbortSignal) => request<ApexResponse>('POST', `${org(username)}/apex`, body, signal),
+  apexHistory: (username: string, signal?: AbortSignal) => request<ApexHistoryResponse>('GET', `${org(username)}/apex/history`, undefined, signal),
 }
 
 export type { ApiUsage }

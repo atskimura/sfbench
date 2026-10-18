@@ -11,7 +11,7 @@ import { OrgProvider } from './state/OrgContext.tsx'
 
 export function App({ launch }: { launch: LaunchOptions | undefined }) {
   return (
-    <AppProvider initialMode={launch?.rest ? 'rest' : undefined}>
+    <AppProvider initialMode={launch?.rest ? 'rest' : launch?.apex ? 'apex' : undefined}>
       <OrgProvider launch={launch}>
         <Shell />
       </OrgProvider>

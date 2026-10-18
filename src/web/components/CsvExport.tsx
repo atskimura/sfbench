@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { ApiUsage } from '../../shared/api.ts'
 import { api } from '../apiClient.ts'
+import { downloadText } from '../download.ts'
 import { t } from '../i18n/i18n.ts'
 import { addColumns, type SObjectRecord } from '../results/columns.ts'
 import { csvFileName, toCsv } from '../results/csv.ts'
@@ -52,7 +53,7 @@ export function CsvExport({ result, pages }: { result: Done; pages: Pages }) {
     if (outcome.kind !== 'done') return
     const { extra, usage } = outcome.value
     reportApiUsage(username, usage)
-    download(toCsv(addColumns(columns, extra), extra.length ? base.concat(extra) : base), csvFileName(result.object))
+    downloadText(toCsv(addColumns(columns, extra), extra.length ? base.concat(extra) : base), csvFileName(result.object), 'text/csv;charset=utf-8')
   }
 
   const start = () => {
@@ -100,16 +101,4 @@ export function CsvExport({ result, pages }: { result: Done; pages: Pages }) {
     )
   }
   return button
-}
-
-function download(text: string, fileName: string): void {
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }))
-  const link = document.createElement('a')
-  link.href = url
-  link.download = fileName
-  // Some browsers start the download later and need the link in the document and the URL alive.
-  document.body.append(link)
-  link.click()
-  link.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }

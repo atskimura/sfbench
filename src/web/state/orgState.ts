@@ -9,7 +9,7 @@ export function isNamed(org: Pick<Org, 'username' | 'alias'>, name: string): boo
 
 export type OrgStatus = { state: 'ok' } | { state: 'authError'; reloginCommand?: string }
 
-/** What the first workspace shown gets from the launch (docs/web.md "起動時のクエリ", docs/rest.md "`--rest` の起動時の指定"). */
+/** What the first workspace shown gets from the launch (docs/web.md "起動時のクエリ", docs/rest.md "`--rest` の起動時の指定", docs/apex.md "`--apex` の起動時の指定"). */
 export type Seed = {
   query?: string
   run: boolean
@@ -17,6 +17,10 @@ export type Seed = {
   rest?: NonNullable<LaunchOptions['rest']>
   /** The --rest request was for this org (the launch's --org), not the one chosen: it was left out. */
   restLeftOutFor?: string
+  /** The --apex code, given only to the org the launch named. */
+  apex?: NonNullable<LaunchOptions['apex']>
+  /** The --apex code was for this org, not the one chosen: it was left out. */
+  apexLeftOutFor?: string
 }
 
 export type State = {
@@ -32,7 +36,7 @@ export type State = {
   /** A message at the top of the org list, such as "no default org". */
   notice: string | undefined
   /** The --org/--query/--run given at launch, until an org is selected. */
-  launch: { org: string | undefined; query?: string; run: boolean; rest?: LaunchOptions['rest'] } | undefined
+  launch: { org: string | undefined; query?: string; run: boolean; rest?: LaunchOptions['rest']; apex?: LaunchOptions['apex'] } | undefined
   /** For the workspace of the selected org, until another org is selected. */
   seed: Seed | undefined
 }
@@ -67,7 +71,8 @@ export function reducer(state: State, action: Action): State {
       const named = launch?.org !== undefined && isNamed(org, launch.org)
       // A request that may change data goes only into the org it was meant for.
       const rest = launch?.rest && (named ? { rest: launch.rest } : { restLeftOutFor: launch.org ?? '' })
-      const seed = launch && { query: launch.query, run: launch.run && named, ...rest }
+      const apex = launch?.apex && (named ? { apex: launch.apex } : { apexLeftOutFor: launch.org ?? '' })
+      const seed = launch && { query: launch.query, run: launch.run && named, ...rest, ...apex }
       return { ...closed, selected: action.username, launch: undefined, seed }
     }
     case 'summary':
@@ -92,7 +97,10 @@ export function initialState(launch: LaunchOptions | undefined): State {
     apiUsage: {},
     pickerOpen: false,
     notice: undefined,
-    launch: launch?.query || launch?.rest ? { org: launch.org, query: launch.query, run: launch.run === true, rest: launch.rest } : undefined,
+    launch:
+      launch?.query || launch?.rest || launch?.apex
+        ? { org: launch.org, query: launch.query, run: launch.run === true, rest: launch.rest, apex: launch.apex }
+        : undefined,
     seed: undefined,
   }
 }

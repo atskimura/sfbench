@@ -85,3 +85,19 @@ describe('launch REST request', () => {
     expect(seed?.restLeftOutFor).toBe('one')
   })
 })
+
+// docs/apex.md "`--apex` の起動時の指定"
+describe('launch Apex code', () => {
+  const apex = { code: "delete [SELECT Id FROM Account WHERE Name = 'x'];" }
+  const launchedApex = (launchOrg: string | undefined) => reducer(initialState({ org: launchOrg, apex }), { type: 'loaded', orgs, connectionCheck: 'done' })
+
+  it('goes into the org the launch named', () => {
+    expect(reducer(launchedApex('one'), select('one@example.com')).seed).toEqual({ query: undefined, run: false, apex })
+  })
+
+  it('is left out of another org, which is told why', () => {
+    const seed = reducer(launchedApex('one'), select('two@example.com')).seed
+    expect(seed?.apex).toBeUndefined()
+    expect(seed?.apexLeftOutFor).toBe('one')
+  })
+})

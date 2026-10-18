@@ -48,13 +48,14 @@ const AppContext = createContext<AppState | undefined>(undefined)
 
 let nextId = 1
 
-export type Mode = 'soql' | 'rest'
+export type Mode = 'soql' | 'rest' | 'apex'
 
 const MODE_KEY = 'sfbench.mode'
 
 function readMode(): Mode {
   try {
-    return sessionStorage.getItem(MODE_KEY) === 'rest' ? 'rest' : 'soql'
+    const saved = sessionStorage.getItem(MODE_KEY)
+    return saved === 'rest' || saved === 'apex' ? saved : 'soql'
   } catch {
     return 'soql'
   }
@@ -68,7 +69,7 @@ function saveMode(mode: Mode): void {
   }
 }
 
-/** `initialMode` is the launch's (--rest opens the REST API screen); a tab reload keeps the screen it showed. */
+/** `initialMode` is the launch's (--rest and --apex open their screens); a tab reload keeps the screen it showed. */
 export function AppProvider({ initialMode, children }: { initialMode?: Mode; children: ReactNode }) {
   const [sessionLost, setSessionLost] = useState(false)
   const [sfNotFound, setSfNotFound] = useState(false)

@@ -2,7 +2,7 @@
 // reducer, so that it can be tested as the table in docs/rest.md "状態と遷移".
 // Whether a request is being sent is the send task's, not kept here.
 import type { RestResponse } from '../../shared/api.ts'
-import type { ConfirmReason } from './confirm.ts'
+import type { ConfirmReason } from '../execution.ts'
 import type { RestSnapshot } from './request.ts'
 
 export type RestResult =
