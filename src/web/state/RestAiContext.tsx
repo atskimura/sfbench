@@ -59,6 +59,12 @@ export function RestAiProvider({ username, children }: { username: string; child
     if (on) setAttention((n) => n + 1)
   }, [])
   const last = rest.result.state === 'response' ? rest.result.response : undefined
+  // A new result is not the one chosen: it is not sent unless chosen again.
+  const [chosenFor, setChosenFor] = useState(last)
+  if (chosenFor !== last) {
+    setChosenFor(last)
+    setSendPrevious(false)
+  }
   const hasCurrent = rest.path.trim() !== ''
   const { availability, request, start, proposal, applied } = session
   const { getBody, setMethod, setPath, setBody } = rest
@@ -69,13 +75,15 @@ export function RestAiProvider({ username, children }: { username: string; child
     // The values when it was pressed: the body reads only these.
     const current = sendCurrent && hasCurrent ? agentRequest({ method: rest.method, path: rest.path, body: getBody() }) : undefined
     const previous = sendPrevious && last ? { status: last.status, body: cutRunText(last.body) } : undefined
+    // Sent once: the record values in it do not go along with the requests after this one.
+    if (previous && !session.running) setSendPrevious(false)
     const input = { request: text, language: uiLanguage, timeZone: timeZone(), ...(current ? { current } : {}), ...(previous ? { previous } : {}) }
     start(async (signal, progress) => {
       progress('think')
       const { output } = await api.aiAgent(username, { task: 'generateRest', input }, signal)
       return { ...output, fixing: false }
     }, getBody)
-  }, [request, availability, sendCurrent, hasCurrent, sendPrevious, last, rest.method, rest.path, getBody, username, start])
+  }, [request, availability, sendCurrent, hasCurrent, sendPrevious, last, session.running, rest.method, rest.path, getBody, username, start])
 
   const fix = useCallback(
     (sent: RestSnapshot, status: number, responseBody: string) => {

@@ -57,6 +57,12 @@ export function ApexAiProvider({ username, children }: { username: string; child
     if (on) setAttention((n) => n + 1)
   }, [])
   const last = apex.result.state === 'response' ? apex.result.response : undefined
+  // A new result is not the one chosen: it is not sent unless chosen again.
+  const [chosenFor, setChosenFor] = useState(last)
+  if (chosenFor !== last) {
+    setChosenFor(last)
+    setSendPrevious(false)
+  }
   const hasCode = !apex.empty
   const { availability, request, start, proposal, applied } = session
   const { getCode, setCode } = apex
@@ -67,12 +73,14 @@ export function ApexAiProvider({ username, children }: { username: string; child
     // The values when it was pressed: the body reads only these.
     const code = sendCode && hasCode ? getCode() : undefined
     const previous = sendPrevious && last ? previousOf(last) : undefined
+    // Sent once: the record values in it do not go along with the requests after this one.
+    if (previous && !session.running) setSendPrevious(false)
     const input = { request: text, language: uiLanguage, timeZone: timeZone(), ...(code !== undefined ? { code } : {}), ...(previous ? { previous } : {}) }
     start(async (signal, progress) => {
       progress('think')
       return (await api.aiAgent(username, { task: 'generateApex', input }, signal)).output
     }, getCode)
-  }, [request, availability, sendCode, hasCode, sendPrevious, last, getCode, username, start])
+  }, [request, availability, sendCode, hasCode, sendPrevious, last, session.running, getCode, username, start])
 
   const fix = useCallback(
     (failed: { code: string; problem: string; line?: number; column?: number }) => {

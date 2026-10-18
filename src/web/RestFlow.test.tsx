@@ -406,6 +406,23 @@ describe('REST API AI', () => {
     await userEvent.click(pill)
     await ask()
     expect(mocked.aiAgent.mock.calls[1][1].input).toMatchObject({ previous: { status: 200, body: JSON.stringify({ records: [{ Id: '001x' }] }) } })
+    // Sent once: the next request goes without it unless chosen again.
+    expect(within(requestRegion()).getByRole('button', { name: new RegExp(t.aiSendPrevious) }).getAttribute('aria-pressed')).toBe('false')
+    await ask()
+    expect(mocked.aiAgent.mock.calls[2][1].input).not.toHaveProperty('previous')
+  })
+
+  it('does not send a newer result than the one chosen', async () => {
+    mocked.rest.mockResolvedValue(answer(200))
+    await openRest()
+    await fill('GET', path)
+    await userEvent.click(screen.getByRole('button', { name: t.restSend }))
+    await within(response()).findByText('200')
+    await userEvent.click(within(response()).getByRole('button', { name: t.aiUseResult }))
+    mocked.rest.mockResolvedValue(answer(201))
+    await userEvent.click(screen.getByRole('button', { name: t.restSend }))
+    await within(response()).findByText('201')
+    expect(within(requestRegion()).getByRole('button', { name: new RegExp(t.aiSendPrevious) }).getAttribute('aria-pressed')).toBe('false')
   })
 
   it('turns on the last result from the response, opening the request area and focusing the AI input', async () => {
