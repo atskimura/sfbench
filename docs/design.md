@@ -90,7 +90,7 @@ Windows では `sf` の実体が `sf.cmd` で、Node はシェルを通さない
 - `--skip-connection-status` を付けた `sf org list` は、`instanceUrl`、`isSandbox`、`isScratch`、`isDevHub` を含む。多くの組織では `orgEdition`（`Developer Edition`、`Enterprise Edition` など）も含むが、空の組織もある。組織が約90ある環境では、出力まで約9秒かかった。
 - `sf config get target-org --json` は、既定の組織が未設定だと `result[0]` に `value` を含まない。
 - `SF_TARGET_ORG` は `api request rest` と `show-access-token` に効く。
-- `api request rest --file` の JSON は `{ "url", "method", "header": [{ "key", "value" }], "body": { "mode": "raw", "raw" } }` の形で書く。ヘッダーを `{ "名前": "値" }` の形で書くとエラーになる。
+- `api request rest --file` の JSON は `{ "url", "method", "header": [{ "key", "value" }], "body": { "mode": "raw", "raw" } }` の形で書く。ヘッダーを `{ "名前": "値" }` の形で書くとエラーになる。`raw` は sf CLI が `JSON.stringify` して送るので、ボディは JSON として解析した値を入れる（文字列を入れると、引用符で囲まれた文字列として届く）。ボディのない要求では `raw` を入れない。
 - `api request rest` は、HTTP のエラー（400 など）でも終了コード 1 で、標準出力にステータス行とボディを出す。
 - リフレッシュトークンが失効した組織では、`api request rest` は `name` が `Error`、`message` が「Unable to refresh session due to: ... expired access/refresh token」のエラーを返す。`show-access-token` はエラーにならず、保存済みの古いトークンを返す。
 
