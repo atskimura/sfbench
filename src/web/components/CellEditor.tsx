@@ -1,7 +1,9 @@
 // The input that replaces a cell being edited (docs/edit.md "セルを書き換える"):
 // chosen by the field's type. Enter (Cmd+Enter in a text area) or leaving the
-// input keeps the value; Esc puts it back.
-import { useRef, type KeyboardEvent } from 'react'
+// input keeps the value; Esc puts it back. Only what the user changed is kept:
+// opening and leaving a cell never changes it (a browser input rewrites line
+// breaks, and a select would take the first value moved to).
+import { useEffect, useRef, type KeyboardEvent } from 'react'
 import type { FieldValue } from '../../shared/api.ts'
 import type { FieldDescribe } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
@@ -18,35 +20,72 @@ type Props = {
   onCancel: () => void
 }
 
+type Control = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+
 export function CellEditor({ field, value, label, onCommit, onCancel }: Props) {
+  const control = useRef<Control>(null)
   // Once kept or put back, a later blur (the input going away) does nothing.
   const ended = useRef(false)
+  // Whether the user changed the text; untouched, leaving keeps the value as it was.
+  const touched = useRef(false)
   // Safari can send the Enter that commits IME conversion just after it ends.
   const composedAt = useRef(0)
-  const end = (action: () => void) => {
+  const initial = inputText(value)
+  // A value with a line break opens in a text area, which keeps it.
+  const kind = inputKind(field) === 'text' && /[\r\n]/.test(initial) ? 'textarea' : inputKind(field)
+
+  const end = (keep: boolean) => {
     if (ended.current) return
     ended.current = true
-    action()
+    if (keep && touched.current && control.current) onCommit(fieldValue(control.current.value))
+    else onCancel()
   }
-  const commit = (text: string) => end(() => onCommit(fieldValue(text)))
-  const cancel = () => end(onCancel)
-  const kind = inputKind(field)
-  const initial = inputText(value)
+  const latest = useRef(end)
+  useEffect(() => {
+    latest.current = end
+  })
+  // A row scrolled out of the drawn rows takes its input away without a blur:
+  // keep what was typed. Checked a moment later, as StrictMode takes effects
+  // down and up again at once without the input going away.
+  const mounted = useRef(false)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      setTimeout(() => {
+        if (!mounted.current) latest.current(true)
+      }, 0)
+    }
+  }, [])
+
+  const onKeyDown = (e: KeyboardEvent<Control>) => {
+    if (e.nativeEvent.isComposing) return
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      end(false)
+      return
+    }
+    if (e.key !== 'Enter' || isImeEnter(e.nativeEvent, composedAt.current)) return
+    // A text area takes Enter for a new line; Cmd+Enter keeps the value.
+    if (kind === 'textarea' && !(e.metaKey || e.ctrlKey)) return
+    e.preventDefault()
+    end(true)
+  }
+  const common = {
+    'aria-label': label,
+    autoFocus: true,
+    defaultValue: initial,
+    onKeyDown,
+    onChange: () => (touched.current = true),
+    onBlur: () => end(true),
+  }
 
   if (kind === 'picklist') {
     const values = (field.picklistValues ?? []).filter((v) => v.active).map((v) => v.value)
     // A value no longer active stays choosable, so that opening the list changes nothing.
     if (initial && !values.includes(initial)) values.unshift(initial)
     return (
-      <select
-        className={styles.editor}
-        aria-label={label}
-        autoFocus
-        defaultValue={initial}
-        onChange={(e) => commit(e.target.value)}
-        onBlur={cancel}
-        onKeyDown={(e) => e.key === 'Escape' && cancel()}
-      >
+      <select ref={(el) => void (control.current = el)} className={styles.editor} {...common}>
         <option value="">{t.picklistNone}</option>
         {values.map((v) => (
           <option key={v} value={v}>
@@ -56,43 +95,23 @@ export function CellEditor({ field, value, label, onCommit, onCancel }: Props) {
       </select>
     )
   }
-
-  const onKeyDown = (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    if (e.key === 'Escape') {
-      e.preventDefault()
-      cancel()
-      return
-    }
-    if (e.key !== 'Enter' || isImeEnter(e.nativeEvent, composedAt.current)) return
-    // A text area takes Enter for a new line; Cmd+Enter keeps the value.
-    if (kind === 'textarea' && !(e.metaKey || e.ctrlKey)) return
-    e.preventDefault()
-    commit(e.currentTarget.value)
-  }
-
   if (kind === 'textarea') {
     return (
       <textarea
+        ref={(el) => void (control.current = el)}
         className={`${styles.editor} ${styles.textareaEditor}`}
-        aria-label={label}
-        autoFocus
-        defaultValue={initial}
-        onKeyDown={onKeyDown}
+        {...common}
         onCompositionEnd={() => (composedAt.current = Date.now())}
-        onBlur={(e) => commit(e.currentTarget.value)}
       />
     )
   }
   return (
     <input
+      ref={(el) => void (control.current = el)}
       className={styles.editor}
-      aria-label={label}
-      autoFocus
-      defaultValue={initial}
       spellCheck={false}
-      onKeyDown={onKeyDown}
+      {...common}
       onCompositionEnd={() => (composedAt.current = Date.now())}
-      onBlur={(e) => commit(e.currentTarget.value)}
     />
   )
 }

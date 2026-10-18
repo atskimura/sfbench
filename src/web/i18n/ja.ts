@@ -251,6 +251,7 @@ export const ja: Messages = {
   apexConfirmNoHistory: '実行履歴を読み込めていないので、前の実行の結果を確かめられません。',
   apexConfirmOtherPending: '別の実行が、まだ応答を待っています。その結果を確かめてから実行してください。',
   apexConfirmRun: '実行する',
+  cellChanged: '（変更あり、未保存）',
   editToggle: '編集',
   editTooling: 'Tooling API の結果は編集できません。',
   editAggregate: '集計の結果は編集できません。',

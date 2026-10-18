@@ -86,6 +86,8 @@
 
 .rowError {
   display: inline-flex;
+  border: 0;
+  padding: 0;
   align-items: center;
   justify-content: center;
   width: 16px;
@@ -96,7 +98,7 @@
   font-size: var(--font-size-xsmall);
   font-weight: 700;
   line-height: 1;
-  cursor: help;
+  cursor: pointer;
 }
 
 .editing {

@@ -140,7 +140,8 @@ describe('editing the result table', () => {
     await typeInto(1, 2, 'Name', '')
     await userEvent.click(screen.getByRole('button', { name: t.saveChanges(2) }))
     await screen.findByText(t.savedRows(1, 1))
-    expect(within(table()).getByRole('img', { name: t.rowError }).getAttribute('title')).toBe('Name is required (Name)')
+    await userEvent.click(within(table()).getByRole('button', { name: t.rowError }))
+    expect(screen.getByText('Name is required (Name)')).toBeTruthy()
     expect(screen.getByRole('button', { name: t.saveChanges(1) })).toBeTruthy()
     expect(mocked.recordsUpdate.mock.calls[0][1].records[1]).toEqual({ id: ids[1], fields: { Name: null } })
   })
@@ -218,6 +219,44 @@ describe('editing the result table', () => {
     expect(await screen.findByText(t.editsSending)).toBeTruthy()
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(mocked.query).toHaveBeenCalledTimes(1)
+  })
+
+  it('changes nothing when a cell is opened and left as it was, even with CRLF line breaks', async () => {
+    mocked.query.mockResolvedValue({ totalSize: 1, done: true, records: [{ ...row(ids[0], 'Line 1\r\nLine 2') }] })
+    await startEditing()
+    fireEvent.doubleClick(cellOf(0, 2))
+    const input = await screen.findByRole('textbox', { name: t.editCell('Name') })
+    // A value with a line break opens in a text area.
+    expect(input.tagName).toBe('TEXTAREA')
+    fireEvent.blur(input)
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: t.editCell('Name') })).toBeNull())
+    expect(screen.getByRole('button', { name: t.saveChanges(0) })).toBeTruthy()
+  })
+
+  it('keeps a picklist value only once it is chosen and kept, not when moved through', async () => {
+    await startEditing()
+    fireEvent.doubleClick(cellOf(0, 4))
+    const select = await screen.findByRole('combobox', { name: t.editCell('Rating') })
+    fireEvent.change(select, { target: { value: 'Cold' } })
+    // Still open: Enter or leaving keeps it.
+    expect(screen.getByRole('combobox', { name: t.editCell('Rating') })).toBeTruthy()
+    fireEvent.keyDown(select, { key: 'Enter' })
+    await waitFor(() => expect(screen.getByRole('button', { name: t.saveChanges(1) })).toBeTruthy())
+  })
+
+  it('does not link a lookup Id in a column being edited', async () => {
+    mocked.describe.mockResolvedValue({
+      name: 'Account',
+      label: 'Account',
+      fields: [field('Id', 'id', false), field('Name', 'string'), field('IsActive__c', 'boolean'), field('Rating', 'string'), field('OwnerId', 'reference')],
+      childRelationships: [],
+      fetchedAt: now,
+    })
+    mocked.query.mockResolvedValue({ totalSize: 1, done: true, records: [{ ...row(ids[0], 'A'), OwnerId: '005000000000001AAA' }] })
+    await startEditing()
+    expect(within(cellOf(0, 5)).queryByRole('link')).toBeNull()
+    // The Id column is not edited, and stays a link.
+    expect(within(cellOf(0, 1)).getByRole('link')).toBeTruthy()
   })
 
   it('does not edit a result without Id', async () => {

@@ -253,6 +253,7 @@ export const en = {
   apexConfirmNoHistory: 'The history has not been loaded, so the outcome of earlier runs cannot be checked.',
   apexConfirmOtherPending: 'Another run is still waiting for its answer. Check its outcome before running.',
   apexConfirmRun: 'Run',
+  cellChanged: ' (changed, not saved)',
   editToggle: 'Edit',
   editTooling: 'Tooling API results cannot be edited.',
   editAggregate: 'Aggregate results cannot be edited.',

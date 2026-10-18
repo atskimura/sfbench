@@ -16,6 +16,7 @@ import { useOrgs } from './OrgContext.tsx'
 import { useTask } from './useTask.ts'
 
 const ALL_OR_NONE_KEY = 'sfbench.allOrNone'
+const encoder = new TextEncoder()
 
 function readAllOrNone(): boolean {
   try {
@@ -101,6 +102,12 @@ export function useRecordEdits({ username, result, records, columns, shownIds, p
     [state.changes, fields],
   )
 
+  /** The save split into calls: 200 rows, and the body's size in bytes (UTF-8, as it is sent). */
+  const saveCalls = useCallback(
+    (ids: readonly string[]) => chunks(ids, undefined, (id) => encoder.encode(JSON.stringify(payload(id))).length),
+    [payload],
+  )
+
   /** Sends the calls one after another; stops at the first that fails, keeping what came before. */
   const send = useCallback(
     async (kind: 'save' | 'delete', ids: string[]) => {
@@ -109,7 +116,7 @@ export function useRecordEdits({ username, result, records, columns, shownIds, p
       // Each call's values are fixed now: the table cannot change while they are sent.
       const calls =
         kind === 'save'
-          ? chunks(ids, undefined, (id) => JSON.stringify(payload(id)).length).map((call) => {
+          ? saveCalls(ids).map((call) => {
               const records = call.map((id) => ({ id, fields: payload(id) as Record<string, FieldValue> }))
               return (signal: AbortSignal) => api.recordsUpdate(username, { object: object!, records, allOrNone, ...version }, signal)
             })
@@ -160,7 +167,7 @@ export function useRecordEdits({ username, result, records, columns, shownIds, p
       if (failedCall.orgAuth) markAuthError(username, failedCall.reloginCommand)
       setMessage({ kind: 'error', text: `${done}${failedCall.message}\n${t.editsStopped}`, details: failedCall.details, reloginCommand: failedCall.reloginCommand })
     },
-    [start, payload, object, allOrNone, username, result.apiVersion, reportApiUsage, patchRows, removeRows, state.changes, handleCommonError, handleOrgError, markAuthError],
+    [start, payload, saveCalls, object, allOrNone, username, result.apiVersion, reportApiUsage, patchRows, removeRows, state.changes, handleCommonError, handleOrgError, markAuthError],
   )
 
   const orgName = selectedOrg?.alias ?? username
@@ -184,8 +191,9 @@ export function useRecordEdits({ username, result, records, columns, shownIds, p
     void send(confirming.kind, confirming.kind === 'save' ? [...state.changes.keys()] : [...state.selected])
   }, [confirming, send, state.changes, state.selected])
 
-  /** Too many rows for one call, which is all "undo all if one fails" can cover. */
-  const tooManyForAllOrNone = (count: number) => allOrNone && count > 200
+  /** More than one call, and "undo all if one fails" covers one call only (docs/edit.md 前提の6). */
+  const saveTooManyForAllOrNone = useMemo(() => allOrNone && saveCalls([...state.changes.keys()]).length > 1, [allOrNone, saveCalls, state.changes])
+  const deleteTooManyForAllOrNone = allOrNone && state.selected.size > 200
 
   return {
     target,
@@ -197,7 +205,8 @@ export function useRecordEdits({ username, result, records, columns, shownIds, p
     recordById,
     allOrNone,
     setAllOrNone,
-    tooManyForAllOrNone,
+    saveTooManyForAllOrNone,
+    deleteTooManyForAllOrNone,
     save,
     remove,
     confirming,

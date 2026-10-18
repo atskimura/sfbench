@@ -36,8 +36,8 @@ export function EditBar({ edits }: { edits: Edits }) {
   const { state, sending, progress, message } = edits
   const changes = state.changes.size
   const selected = state.selected.size
-  const tooManySave = edits.tooManyForAllOrNone(changes)
-  const tooManyDelete = edits.tooManyForAllOrNone(selected)
+  const tooManySave = edits.saveTooManyForAllOrNone
+  const tooManyDelete = edits.deleteTooManyForAllOrNone
   return (
     <div className={styles.editBar}>
       {edits.fieldsError !== undefined ? (

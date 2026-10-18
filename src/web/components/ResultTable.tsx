@@ -44,14 +44,16 @@ export type TableEdit = {
   shownIds: readonly string[]
   /** Salesforce's message for a row whose save or delete failed. */
   errorOf: (id: string) => string | undefined
+  /** Shows a failed row's message (its mark is a button). */
+  onShowError: (id: string) => void
   /** A save or delete is being sent: nothing can be changed. */
   disabled: boolean
 }
 
 const SELECT_COLUMN = '3.5em'
 
-function idOf(record: SObjectRecord): string {
-  return typeof record.Id === 'string' ? record.Id : ''
+function idOf(record: SObjectRecord | undefined): string {
+  return typeof record?.Id === 'string' ? record.Id : ''
 }
 
 type Props = {
@@ -140,7 +142,7 @@ export function ResultTable({ records, loaded = records.length, rows, columns, i
     if (!edit || edit.disabled) return
     const field = edit.fieldOf(cell.column)
     const record = records[cell.row]
-    if (!field || !isEditableValue(cellValue(record, cell.column))) return
+    if (!field || !record || !isEditableValue(cellValue(record, cell.column))) return
     if (field.type === 'boolean') {
       const now = edit.changed(idOf(record), cell.column)?.value ?? cellValue(record, cell.column)
       edit.onSet(cell.row, cell.column, now !== true)
@@ -201,9 +203,9 @@ export function ResultTable({ records, loaded = records.length, rows, columns, i
                     onChange={(e) => edit.onSelectRows([id], e.target.checked)}
                   />
                   {error && (
-                    <span className={styles.rowError} role="img" aria-label={t.rowError} title={error}>
+                    <button type="button" className={styles.rowError} aria-label={t.rowError} title={error} onClick={() => edit.onShowError(id)}>
                       !
-                    </span>
+                    </button>
                   )}
                 </div>
               )}
@@ -241,6 +243,8 @@ export function ResultTable({ records, loaded = records.length, rows, columns, i
                     instanceUrl={instanceUrl}
                     selected={isSelected}
                     changed={changed !== undefined}
+                    // A double click to edit a lookup must not follow its link.
+                    linkable={!field}
                     title={rounded ? t.editRounded : undefined}
                     onSelect={onSelect && (() => onSelect({ row: index, column }))}
                     onDoubleClick={field ? () => startEdit({ row: index, column }) : undefined}
@@ -263,6 +267,7 @@ function Cell({
   instanceUrl,
   selected,
   changed = false,
+  linkable = true,
   title,
   onSelect,
   onDoubleClick,
@@ -274,6 +279,8 @@ function Cell({
   selected: boolean
   /** Changed and not saved yet. */
   changed?: boolean
+  /** A record Id shows as a link (not in a column being edited). */
+  linkable?: boolean
   title?: string
   onSelect?: () => void
   onDoubleClick?: () => void
@@ -288,7 +295,7 @@ function Cell({
         {text}
       </button>
     )
-  } else if (isRecordId(value) && instanceUrl) {
+  } else if (isRecordId(value) && instanceUrl && linkable) {
     content = (
       <a href={`${instanceUrl}/${value}`} target="_blank" rel="noreferrer">
         {text}
@@ -298,6 +305,8 @@ function Cell({
   return (
     <div role="cell" className={className} title={title} onClick={onSelect} onDoubleClick={onDoubleClick}>
       {content}
+      {/* Not by colour alone. */}
+      {changed && <span className="visually-hidden">{t.cellChanged}</span>}
     </div>
   )
 }

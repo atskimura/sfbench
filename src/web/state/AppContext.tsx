@@ -112,11 +112,12 @@ export function AppProvider({ initialMode, children }: { initialMode?: Mode; chi
   const dismiss = useCallback((id: number) => setNotifications((list) => list.filter((n) => n.id !== id)), [])
 
   // Kept in a ref too: guardDiscard reads it when called, not when last drawn.
-  const [unsavedEdits, setUnsavedState] = useState(0)
+  // Whether closing the tab asks: changes not saved, or a save or delete still being sent.
+  const [unsavedEdits, setUnsavedState] = useState(false)
   const unsaved = useRef({ count: 0, sending: false })
   const setUnsavedEdits = useCallback((count: number, sending = false) => {
     unsaved.current = { count, sending }
-    setUnsavedState(count)
+    setUnsavedState(count > 0 || sending)
   }, [])
   const [pendingDiscard, setPendingState] = useState<{ count: number; action: () => void }>()
   const pending = useRef(pendingDiscard)
@@ -140,7 +141,7 @@ export function AppProvider({ initialMode, children }: { initialMode?: Mode; chi
   const cancelDiscard = useCallback(() => setPendingDiscard(undefined), [setPendingDiscard])
   // Closing or reloading the tab asks too, with the browser's own question.
   useEffect(() => {
-    if (unsavedEdits === 0) return
+    if (!unsavedEdits) return
     const ask = (e: BeforeUnloadEvent) => e.preventDefault()
     window.addEventListener('beforeunload', ask)
     return () => window.removeEventListener('beforeunload', ask)

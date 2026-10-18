@@ -160,6 +160,21 @@ function Records({ result }: { result: Done }) {
   const ns = (settings?.omitNamespace ?? true) ? summaries[result.username]?.namespacePrefix : undefined
   const edits = useRecordEdits({ username: result.username, result, records, columns, shownIds, patchRows: pages.patchRows, removeRows: pages.removeRows, ns })
   const [editingCell, setEditingCell] = useState<CellRef>()
+  const [errorShown, setErrorShown] = useState<string>()
+  // Deleted rows shift the rows after them: a cell or child table kept by index would point at another record.
+  const [seenRemoved, setSeenRemoved] = useState(pages.removed)
+  if (seenRemoved !== pages.removed) {
+    setSeenRemoved(pages.removed)
+    setSelected(undefined)
+    setChild(undefined)
+    setEditingCell(undefined)
+  }
+  // An input open in a row the filter now hides would come back unasked.
+  const [seenRows, setSeenRows] = useState(rows)
+  if (seenRows !== rows) {
+    setSeenRows(rows)
+    setEditingCell(undefined)
+  }
   const { state: editState, dispatch: editDispatch, fields, sending } = edits
   const tableEdit = useMemo<TableEdit | undefined>(() => {
     if (!editState.editing || !fields) return undefined
@@ -180,6 +195,7 @@ function Records({ result }: { result: Done }) {
       onSelectRows: (ids, on) => editDispatch({ type: 'select', ids, on }),
       shownIds,
       errorOf: (id) => editState.errors.get(id),
+      onShowError: setErrorShown,
       disabled: sending,
     }
   }, [editState, fields, editingCell, records, editDispatch, shownIds, sending])
@@ -250,6 +266,12 @@ function Records({ result }: { result: Done }) {
           </div>
         )}
         {selected && <CellDetail records={records} cell={selected} />}
+        {errorShown && editState.errors.has(errorShown) && (
+          <div className={styles.detail} role="status">
+            <span className={`${panel.meta} ${panel.mono}`}>{errorShown}</span>
+            <span className={styles.detailText}>{editState.errors.get(errorShown)}</span>
+          </div>
+        )}
         {child && (
           <ChildTable
             key={`${child.row}\n${child.column.key}`}
