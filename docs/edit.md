@@ -19,7 +19,7 @@ SOQL の結果の表で、レコードの値を書き換えて保存し、行を
 
 ## 前提にする事実
 
-kimura-demo（API 66.0）に、存在しない ID への更新を送って確かめた（データは変えていない）。
+検証用の Developer Edition 組織（API 66.0）に、存在しない ID への更新を送って確かめた（データは変えていない）。
 
 1. **sObject Collections の更新（`PATCH /composite/sobjects`）は、送った順に1件ずつ成否を返す。** `{ success, errors: [{ statusCode, message, fields }] }` の配列で、失敗した行には `id` が付かない。1回に200件まで送れる。
 2. **項目の値の形の誤りは、その行だけの失敗になる。** 数値の項目に `"abc"` を送ると、その行が `JSON_PARSER_ERROR` になり、ほかの行は続けて処理される。

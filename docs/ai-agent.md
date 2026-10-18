@@ -28,7 +28,7 @@ REST API と Apex で使ってみて安定していたら、SOQL も同じ形に
 
 ## 前提にする事実
 
-kimura-demo（オブジェクト1,555個）のメタデータで、試作のスクリプトを Claude Haiku 5.5 と Claude Sonnet 5.5 に動かして確かめた。
+検証用の Developer Edition 組織（オブジェクト1,555個）のメタデータで、試作のスクリプトを Claude Haiku 5.5 と Claude Sonnet 5.5 に動かして確かめた。
 
 1. **REST API のエンドポイントと Apex は、AI の知識で書ける。** `/limits`、`/sobjects/Opportunity`、`/query`、`/composite/tree`、Apex の SOQL、DML、`Schema` の describe を、ツールなしの知識で正しく書いた。
 2. **組織ごとのものは、ツールで読ませれば正しく使う。** 「Lプロジェクト」は、オブジェクトを名前で探して `Project__c` にたどり着いた。ラベルが重なるもの（標準の Quote とカスタムの Quote__c がどちらも「見積」）では、一方で書き、説明でもう一方に触れた。
