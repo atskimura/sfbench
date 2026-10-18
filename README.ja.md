@@ -5,6 +5,8 @@ sfbench は、Salesforce の SOQL、REST API、匿名 Apex を手元のブラウ
 
 [English README](README.md)
 
+![sfbench の SOQL の画面。AI がクエリを提案している](help/images/ja/soql-ai.webp)
+
 sfbench は [lwc-soql-builder](https://github.com/lwc-soql-builder/lwc-soql-builder) の後継です。
 lwc-soql-builder は、Salesforce が OAuth のユーザーエージェントフローを使えなくしたため、ログインできなくなりました。
 
@@ -71,6 +73,7 @@ npx sfbench
 
 画面の上のタブで、SOQL、REST API、Apex を切り替えます。
 タブを切り替えても、それぞれの画面の入力や結果は残ります。
+各画面の使い方は、[ヘルプ](help/ja/README.md)にあります。
 
 ### コマンドライン引数
 
