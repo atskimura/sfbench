@@ -14,7 +14,7 @@ import { findObject, METADATA_TOOLS, newReadState, readObject, runTool, shown, t
 export const AI_TIMEOUT_MS = 300_000
 
 /** The most metadata tool calls in one request (docs/ai-agent.md). */
-export const MAX_TOOL_CALLS = 6
+export const MAX_TOOL_CALLS = 8
 /** The most text the tools return in one request, about 30,000 tokens. */
 export const MAX_TOOL_BYTES = 100_000
 
@@ -53,7 +53,7 @@ async function givenMetadata(req: AgentTaskRequest, source: MetadataSource, stat
   }
   if (req.task === 'fixSoql' && req.input.object) {
     // Within the most of one read, as the AI's own read would be; complete, it counts as read.
-    const fields = await readObject(source, req.input.object, [], MAX_TOOL_BYTES, state)
+    const fields = await readObject(source, req.input.object, MAX_TOOL_BYTES, state)
     return fields ? { fields } : {}
   }
   return {}

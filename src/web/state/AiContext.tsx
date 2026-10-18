@@ -5,10 +5,9 @@
 // request and drops the proposal. Kept apart from the SOQL state so that the
 // AI's steps do not redraw the editor.
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
-import { MAX_AI_SOQL_TEXT } from '../../shared/api.ts'
 import type { AiStep, Proposal } from '../ai/aiState.ts'
 import { cutRunText } from '../ai/cut.ts'
-import { api } from '../apiClient.ts'
+import { api, ApiRequestError } from '../apiClient.ts'
 import { t, uiLanguage } from '../i18n/i18n.ts'
 import { fromObjectOf } from '../soql/context.ts'
 import { usePanels } from './PanelsContext.tsx'
@@ -35,6 +34,14 @@ type AiValue = AiSession<Proposal, AiStep> & {
 }
 
 const AiContext = createContext<AiValue | undefined>(undefined)
+
+/**
+ * The server's refusal of a text too long to send, in the screen's words:
+ * generating can only be refused for the editor text, fixing for the query.
+ */
+const tooLong = (message: string) => (e: unknown) => {
+  throw e instanceof ApiRequestError && e.code === 'AI_INPUT_TOO_LONG' ? new Error(message) : e
+}
 
 export function AiProvider({ username, children }: { username: string; children: ReactNode }) {
   const soql = useSoql()
@@ -63,9 +70,8 @@ export function AiProvider({ username, children }: { username: string; children:
       ...(panelObject ? { openObject: panelObject } : {}),
     }
     start(async (signal, progress) => {
-      if (editor.length > MAX_AI_SOQL_TEXT) throw new Error(t.aiEditorTooLong)
       progress('think')
-      const { output } = await api.aiAgent(username, { task: 'generateSoql', input, ...(apiVersion ? { apiVersion } : {}) }, signal)
+      const { output } = await api.aiAgent(username, { task: 'generateSoql', input, ...(apiVersion ? { apiVersion } : {}) }, signal).catch(tooLong(t.aiEditorTooLong))
       return { ...output, tooling, apiVersion, prompt: text }
     }, getText)
   }, [request, availability, username, editorChip, soql, start, getText])
@@ -81,9 +87,8 @@ export function AiProvider({ username, children }: { username: string; children:
       // Salesforce's error, as the REST API and Apex screens send theirs (src/web/ai/cut.ts).
       const input = { soql: query, error: cutRunText(error), tooling, language: uiLanguage, timeZone: browserTimeZone(), ...(object ? { object } : {}) }
       start(async (signal, progress) => {
-        if (query.length > MAX_AI_SOQL_TEXT) throw new Error(t.aiQueryTooLong)
         progress('think')
-        const { output } = await api.aiAgent(username, { task: 'fixSoql', input, ...(apiVersion ? { apiVersion } : {}) }, signal)
+        const { output } = await api.aiAgent(username, { task: 'fixSoql', input, ...(apiVersion ? { apiVersion } : {}) }, signal).catch(tooLong(t.aiQueryTooLong))
         // The fixed query keeps the request of the query it fixes, if that one had one.
         return { ...output, tooling, apiVersion, prompt }
       }, getText)

@@ -130,13 +130,6 @@ export type UiLanguage = 'en' | 'ja'
 
 export type SoqlOutput = { soql: string; explanation: string }
 
-/**
- * The most characters of a query or an editor text sent to the SOQL AI: far
- * beyond a real query, as it is sent again with every turn of the exchange
- * (docs/ai-agent.md "タスク"). The screen checks it; the server refuses more.
- */
-export const MAX_AI_SOQL_TEXT = 50_000
-
 /** A REST API request as the AI writes it or is given it (docs/ai-agent.md "答えの形"). */
 export type AgentRestRequest = { method: RestMethod; path: string; body: string }
 
@@ -353,6 +346,8 @@ export type ApiErrorCode =
   | 'AI_ERROR'
   | 'AI_BAD_OUTPUT'
   | 'AI_TIMEOUT'
+  /** The SOQL AI's editor text or query is too long to send (docs/ai-agent.md "タスク"); the screen says which in its own words. */
+  | 'AI_INPUT_TOO_LONG'
   | 'PAYLOAD_TOO_LARGE'
   | 'INTERNAL_ERROR'
 

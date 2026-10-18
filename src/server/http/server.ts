@@ -50,7 +50,7 @@ import { openOrg, reloginCommand } from '../sf/commands.ts'
 import { OrgAuthError, SfCliError, SfNotFoundError, SfTimeoutError } from '../sf/errors.ts'
 import { AiError } from '../ai/errors.ts'
 import { NO_METADATA, runAgent, TEST_AGENT_REQUEST } from '../ai/agent.ts'
-import { invalidAgentRequest } from '../ai/agentTasks.ts'
+import { invalidAgentRequest, tooLongInput } from '../ai/agentTasks.ts'
 import type { MetadataSource } from '../ai/tools.ts'
 import { addApexPending, addHistory, addRestPending, finishApex, loadApexHistory, AiSettingsError, finishRest, loadHistory, loadRestHistory, mergeAiSettings, settingsView, type SettingsStore } from '../store.ts'
 import { isAdminRequestOrigin, isAllowedHost, isSameOriginRequest } from './security.ts'
@@ -455,6 +455,8 @@ export class App {
     const body = await readJsonObject(req, { bytes: MAX_AI_INPUT_BYTES, code: 'PAYLOAD_TOO_LARGE', message: 'Too much to send to the AI.' })
     const invalid = invalidAgentRequest(body)
     if (invalid) throw new HttpError(400, 'BAD_REQUEST', invalid)
+    const tooLong = tooLongInput(body)
+    if (tooLong) throw new HttpError(400, 'AI_INPUT_TOO_LONG', tooLong)
     const request = body as AgentRequest
     const requested = versionOf(request.apiVersion)
     const version = await client.version(requested)

@@ -1,10 +1,13 @@
 // What the AI is asked to do with tools (docs/ai-agent.md "答えの形", "タスク"): the
 // instructions, the shape of the answer (the submit tool), and the check of
 // what comes back.
-import { isServicesPath, MAX_AI_SOQL_TEXT, REST_METHODS, type AgentOutput, type AgentRestRequest, type AgentTask, type AgentTaskRequest, type UiLanguage } from '../../shared/api.ts'
+import { isServicesPath, REST_METHODS, type AgentOutput, type AgentRestRequest, type AgentTask, type AgentTaskRequest, type UiLanguage } from '../../shared/api.ts'
 import { AiError } from './errors.ts'
 
 const LANGUAGE_NAMES: Record<UiLanguage, string> = { en: 'English', ja: 'Japanese' }
+
+/** The most characters of an editor text or a query sent to the SOQL AI: far beyond a real query, as it is sent again with every turn. */
+const MAX_SOQL_TEXT = 50_000
 
 const REST_SCHEMA = {
   type: 'object',
@@ -67,7 +70,7 @@ export type Given = {
 const LOOKUP = {
   knowledge:
     'For anything specific to this org (custom objects, custom fields, picklist values), look it up with findObjects and describeObject first; never guess such names. Standard objects and fields can be used from your knowledge, but check them with describeObject when unsure.',
-  soql: 'Find the objects with findObjects and read every object you query (including parents and children you read through) with describeObject before writing the query; never guess names.',
+  soql: 'Find the objects with findObjects and read every object you query (including parents and children you read through) with describeObject before writing the query, and findFields for fields it leaves out; never guess names.',
 }
 
 function commonRules(c: Context, lookup: keyof typeof LOOKUP = 'knowledge'): string[] {
@@ -95,6 +98,7 @@ function soqlRules(tooling: boolean): string[] {
     'The query must run as it is: no bind variables, placeholders or comments.',
     "Quote text and picklist values with single quotes. Prefer date literals such as THIS_MONTH where they fit.",
     'Read parent fields through the relationship name (Account.Name) and child records with a subquery on the child relationship name.',
+    'Follow a reference only through the relationship name its field lists ("relationship X"); a reference field without one cannot be followed in SOQL.',
   ].filter(Boolean)
 }
 
@@ -135,7 +139,7 @@ export function agentPrompt(req: AgentTaskRequest, apiVersion: string, today: st
           'You fix a Salesforce SOQL query that failed with the given error. Keep what the query was meant to do.',
           ...soqlRules(i.tooling),
           ...commonRules(c, 'soql'),
-          given.fields ? 'The fields in <data name="metadata"> are those of the object the query reads from, as describeObject returns them: they count as read.' : '',
+          given.fields ? 'The object the query reads from is in <data name="metadata">, as describeObject returns it: do not read it again, and use findFields for anything it leaves out.' : '',
         ]
           .filter(Boolean)
           .join('\n'),
@@ -247,20 +251,15 @@ export function invalidAgentRequest(body: Record<string, unknown>): string | und
     return !!x && typeof x.method === 'string' && typeof x.path === 'string' && typeof x.body === 'string'
   }
   const isName = (v: unknown) => v === undefined || (typeof v === 'string' && v.length <= 255)
-  // Text sent to the AI with every turn of the exchange: kept to what a query is.
-  const tooLong = (v: unknown, what: string) =>
-    typeof v === 'string' && v.length > MAX_AI_SOQL_TEXT ? `The ${what} is too long to send to the AI (at most ${MAX_AI_SOQL_TEXT.toLocaleString('en')} characters).` : undefined
   switch (body.task) {
     case 'generateSoql':
       if (typeof input.request !== 'string' || !input.request.trim()) return 'input.request is required'
       if (input.editor !== undefined && typeof input.editor !== 'string') return 'input.editor must be text'
-      if (tooLong(input.editor, 'editor text')) return `${tooLong(input.editor, 'editor text')} Turn off the editor text and try again.`
       if (!isName(input.openObject)) return 'input.openObject must be an object name'
       if (typeof input.tooling !== 'boolean') return 'input.tooling must be a boolean'
       return undefined
     case 'fixSoql':
       if (typeof input.soql !== 'string' || typeof input.error !== 'string') return 'input.soql and input.error are required'
-      if (tooLong(input.soql, 'query') || tooLong(input.error, 'error')) return tooLong(input.soql, 'query') ?? tooLong(input.error, 'error')
       if (!isName(input.object)) return 'input.object must be an object name'
       if (typeof input.tooling !== 'boolean') return 'input.tooling must be a boolean'
       return undefined
@@ -288,4 +287,16 @@ export function invalidAgentRequest(body: Record<string, unknown>): string | und
     default:
       return 'task must be generateSoql, fixSoql, generateRest, fixRest, generateApex or fixApex'
   }
+}
+
+/**
+ * Whether the SOQL AI's editor text or query is too long to send, as the one
+ * place that judges it (docs/ai-agent.md "タスク"): what is too long, or undefined.
+ */
+export function tooLongInput(body: Record<string, unknown>): string | undefined {
+  const input = body.input as Record<string, unknown>
+  const over = (v: unknown) => typeof v === 'string' && v.length > MAX_SOQL_TEXT
+  if (body.task === 'generateSoql' && over(input.editor)) return `The editor text is too long to send to the AI (at most ${MAX_SOQL_TEXT} characters).`
+  if (body.task === 'fixSoql' && over(input.soql)) return `The query is too long to send to the AI (at most ${MAX_SOQL_TEXT} characters).`
+  return undefined
 }

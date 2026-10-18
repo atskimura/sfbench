@@ -317,11 +317,15 @@ describe('AI', () => {
     expect((await card()).closest('[hidden]')).toBeNull()
   })
 
-  it('says the editor text is too long to send, in the screen\'s words, and sends nothing', async () => {
-    replies('SELECT Name FROM Account')
-    await ask('名前', `SELECT Id FROM Account WHERE Name IN ('${'x'.repeat(50_000)}')`)
-    expect((await screen.findByRole('alert')).textContent).toContain(t.aiEditorTooLong)
-    expect(mocked.aiAgent).not.toHaveBeenCalled()
+  it('says in the screen\'s words what the server found too long to send', async () => {
+    mocked.aiAgent.mockRejectedValue(new ApiRequestError(400, 'AI_INPUT_TOO_LONG', 'The editor text is too long to send to the AI.'))
+    await ask('名前')
+    expect((await screen.findByRole('alert')).textContent).toBe(t.aiEditorTooLong)
+    mocked.query.mockRejectedValue(rejected("No such column 'Nmae'"))
+    cleanup()
+    render(<App launch={{ org: 'demo', query: 'SELECT Nmae FROM Account', run: true }} />)
+    await userEvent.click(await screen.findByRole('button', { name: t.aiFix }))
+    expect(await screen.findByText(t.aiQueryTooLong)).toBeTruthy()
   })
 
   it('shows the API error under the input and drops the proposal', async () => {
