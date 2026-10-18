@@ -25,6 +25,7 @@ vi.mock('./apiClient.ts', async (importOriginal) => {
       checkConnections: vi.fn(),
       rest: vi.fn(),
       restHistory: vi.fn(),
+      aiAgent: vi.fn(),
     },
   }
 })
@@ -323,5 +324,65 @@ describe('REST API screen', () => {
     await userEvent.click(await within(screen.getByRole('region', { name: t.restHistory })).findByRole('button', { name: /describe/ }))
     expect((screen.getByLabelText(t.restPath) as HTMLInputElement).value).toBe(path + '/describe')
     expect(mocked.rest).not.toHaveBeenCalled()
+  })
+})
+
+// docs/ai-agent.md "画面": the REST API screen's AI.
+describe('REST API AI', () => {
+  const ready = { provider: 'anthropic' as const, model: 'claude-x', hasApiKey: true, keyProvider: 'anthropic' as const }
+  const proposal = { method: 'POST' as const, path, body: '{"Name":"Acme"}', explanation: '取引先を作ります。' }
+  const requestRegion = () => screen.getByRole('region', { name: t.restRequest })
+
+  beforeEach(() => {
+    mocked.settings.mockResolvedValue({ omitNamespace: true, requestTimeoutSeconds: 120, ai: ready })
+  })
+
+  it('asks the AI with the request now, and puts its proposal in the fields without sending', async () => {
+    mocked.aiAgent.mockResolvedValue({ output: proposal })
+    await openRest()
+    await fill('GET', path)
+    await userEvent.type(within(requestRegion()).getByRole('textbox', { name: t.aiRequestLabel }), '取引先を作る{Enter}')
+    const card = await within(requestRegion()).findByRole('region', { name: t.aiProposal })
+    expect(card.textContent).toContain('取引先を作ります。')
+    // Only Replace: the request may change data.
+    expect(within(card).queryByRole('button', { name: t.aiReplaceRun })).toBeNull()
+    const sent = mocked.aiAgent.mock.calls[0]
+    expect(sent[0]).toBe('admin@demo.example.com')
+    expect(sent[1]).toMatchObject({ task: 'generateRest', input: { request: '取引先を作る', current: { method: 'GET', path, body: '' } } })
+    await userEvent.click(within(card).getByRole('button', { name: t.aiReplace }))
+    expect((screen.getByLabelText(t.restMethod) as HTMLSelectElement).value).toBe('POST')
+    expect(screen.getByRole('textbox', { name: t.restBodyLabel }).textContent).toBe('{"Name":"Acme"}')
+    expect(mocked.rest).not.toHaveBeenCalled()
+  })
+
+  it('does not send the request now once its pill is unticked', async () => {
+    mocked.aiAgent.mockResolvedValue({ output: proposal })
+    await openRest()
+    await fill('GET', path)
+    await userEvent.click(within(requestRegion()).getByRole('button', { name: new RegExp(t.aiSendCurrentRequest) }))
+    await userEvent.type(within(requestRegion()).getByRole('textbox', { name: t.aiRequestLabel }), 'x{Enter}')
+    await within(requestRegion()).findByRole('region', { name: t.aiProposal })
+    expect(mocked.aiAgent.mock.calls[0][1].input).not.toHaveProperty('current')
+  })
+
+  it('fixes a request Salesforce refused, as it was sent, and offers it only for an error', async () => {
+    mocked.rest.mockResolvedValueOnce(answer(400, [{ errorCode: 'REQUIRED_FIELD_MISSING', message: 'CloseDate' }]))
+    mocked.aiAgent.mockResolvedValue({ output: proposal })
+    await openRest()
+    await fill('POST', path)
+    await userEvent.click(screen.getByRole('button', { name: t.restSend }))
+    await within(response()).findByText('400')
+    // Changed after sending: the fix is for what was sent.
+    await fill('GET', path + '/x')
+    await userEvent.click(within(response()).getByRole('button', { name: t.aiFix }))
+    await within(requestRegion()).findByRole('region', { name: t.aiProposal })
+    expect(mocked.aiAgent.mock.calls[0][1]).toMatchObject({
+      task: 'fixRest',
+      input: { sent: { method: 'POST', path, body: '' }, status: 400, responseBody: JSON.stringify([{ errorCode: 'REQUIRED_FIELD_MISSING', message: 'CloseDate' }]) },
+    })
+    mocked.rest.mockResolvedValueOnce(answer(200))
+    await userEvent.click(screen.getByRole('button', { name: t.restSend }))
+    await within(response()).findByText('200')
+    expect(within(response()).queryByRole('button', { name: t.aiFix })).toBeNull()
   })
 })

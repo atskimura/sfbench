@@ -5,6 +5,9 @@ import type {
   AiTaskRequest,
   AiTestRequest,
   AiTestResponse,
+  AgentOutput,
+  AgentRequest,
+  AgentTask,
   ApexHistoryResponse,
   ApexRequest,
   ApexResponse,
@@ -174,6 +177,9 @@ export const api = {
   saveSettings: (settings: SettingsUpdate, signal?: AbortSignal) => request<Settings>('PUT', '/api/settings', settings, signal),
   aiGenerate: <T extends AiTask>(req: AiTaskRequest & { task: T }, signal?: AbortSignal) =>
     request<{ output: AiOutput<T> }>('POST', '/api/ai/generate', req, signal),
+  /** The AI writing a REST API request or Apex, reading the org's metadata through tools (docs/ai-agent.md). */
+  aiAgent: <T extends AgentTask>(username: string, body: AgentRequest & { task: T }, signal?: AbortSignal) =>
+    request<{ output: AgentOutput<T> }>('POST', `${org(username)}/ai/agent`, body, signal),
   aiTest: (body: AiTestRequest, signal?: AbortSignal) => request<AiTestResponse>('POST', '/api/ai/test', body, signal),
   /** Sends a REST API request; Salesforce's answer comes back whatever its status (docs/rest.md). */
   rest: (username: string, body: RestRequest, signal?: AbortSignal) =>
