@@ -8,7 +8,7 @@ import { anthropicConversation } from './anthropic.ts'
 import type { Conversation, ConversationRequest, ToolSpec } from './conversation.ts'
 import { AiError } from './errors.ts'
 import { openAiConversation } from './openai.ts'
-import { describeObjectText, findObject, METADATA_TOOLS, runTool, shown, type MetadataSource } from './tools.ts'
+import { findObject, METADATA_TOOLS, readObject, runTool, shown, type MetadataSource } from './tools.ts'
 
 /** Local models are out, but large models can still take minutes (docs/ai.md "API"). */
 export const AI_TIMEOUT_MS = 300_000
@@ -31,9 +31,9 @@ export function todayIn(timeZone: string, now = new Date()): string {
 }
 
 /**
- * The tiny request of "Test connection" for tools (docs/ai-agent.md "接続を試す"):
- * proves the model calls tools, submit included, before the REST API or Apex
- * screen finds out. The org is not read: the tools find nothing.
+ * The tiny request of "Test connection" (docs/ai-agent.md "接続を確かめる"):
+ * proves the model calls tools, submit included, before a screen finds out.
+ * The org is not read: the tools find nothing.
  */
 export const TEST_AGENT_REQUEST: AgentTaskRequest & { task: 'generateApex' } = {
   task: 'generateApex',
@@ -61,18 +61,22 @@ export function cutToBudget(text: string, budget: number): string {
   return kept.join('\n') + note
 }
 
+/** The most of the budget the fields given before the first message may take: the rest is left for the AI's own reads. */
+const MAX_GIVEN_BYTES = MAX_TOOL_BYTES / 2
+
 /**
  * What the screen named, matched against the org's objects: the open object
  * as a hint, and the fields of the object a failed query read from
  * (docs/ai-agent.md "タスク"). A name the org does not have is left out.
  */
-async function givenMetadata(req: AgentTaskRequest, source: MetadataSource): Promise<Given> {
+async function givenMetadata(req: AgentTaskRequest, source: MetadataSource): Promise<Given & { read?: string }> {
   if (req.task === 'generateSoql' && req.input.openObject) {
     const open = await findObject(source, req.input.openObject)
     return open ? { openObject: shown(source, open.name) } : {}
   }
-  if (req.task === 'fixSoql' && req.input.object && (await findObject(source, req.input.object))) {
-    return { fields: await describeObjectText(source, req.input.object) }
+  if (req.task === 'fixSoql' && req.input.object) {
+    const from = await readObject(source, req.input.object, MAX_GIVEN_BYTES)
+    return from ? { fields: cutToBudget(from.text, MAX_GIVEN_BYTES), read: from.name } : {}
   }
   return {}
 }
@@ -82,6 +86,17 @@ export type AgentRun<T extends AgentTask> = {
   /** For the log: counts only. */
   aiCalls: number
   toolCalls: number
+}
+
+/** Runs one tool call within what is left of the budget; an object read before is not sent again. */
+async function runCall(source: MetadataSource, call: { name: string; input: unknown }, budget: number, read: Set<string>): Promise<string> {
+  const name = (call.input as { name?: unknown } | undefined)?.name
+  if (call.name === 'describeObject' && typeof name === 'string') {
+    const object = await findObject(source, name)
+    if (object && read.has(object.name)) return `The fields of ${name} are already above in this conversation: use them.`
+    if (object) read.add(object.name)
+  }
+  return cutToBudget(await runTool(source, call.name, call.input, budget), budget)
 }
 
 /**
@@ -112,10 +127,12 @@ export async function runAgent<T extends AgentTask>(
   let nudgedAtLimit = false
   try {
     const given = await givenMetadata(req, source)
+    // Objects whose fields the AI has: read again, they are not sent twice.
+    const read = new Set<string>()
     // Fields given from the start count as read by the tools.
-    if (given.fields) {
-      given.fields = cutToBudget(given.fields, MAX_TOOL_BYTES)
+    if (given.fields && given.read) {
       toolBytes += encoder.encode(given.fields).length
+      read.add(given.read)
     }
     const prompt = agentPrompt(req, apiVersion, todayIn(req.input.timeZone), given)
     const submit: ToolSpec = { name: 'submit', description: 'Gives the final answer. Call it once, when done.', schema: prompt.submitSchema }
@@ -152,7 +169,7 @@ export async function runAgent<T extends AgentTask>(
         if (both.aborted) throw both.reason
         toolCalls++
         const over = toolCalls > MAX_TOOL_CALLS || toolBytes >= MAX_TOOL_BYTES
-        const content = over ? 'Not run: the limit of tool calls is reached. Call submit now.' : cutToBudget(await runTool(source, call.name, call.input), MAX_TOOL_BYTES - toolBytes)
+        const content = over ? 'Not run: the limit of tool calls is reached. Call submit now.' : await runCall(source, call, MAX_TOOL_BYTES - toolBytes, read)
         toolBytes += encoder.encode(content).length
         results.push({ id: call.id, content })
       }

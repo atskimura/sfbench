@@ -448,7 +448,7 @@ export class App {
   }
 
   /**
-   * The AI writing a REST API request or Apex, reading this org's metadata
+   * The AI writing SOQL, a REST API request or Apex, reading this org's metadata
    * through tools (docs/ai-agent.md "サーバー"). Logs counts only.
    */
   private async runAgentRequest(req: IncomingMessage, res: ServerResponse, client: OrgClient): Promise<void> {

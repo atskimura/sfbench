@@ -6,6 +6,9 @@ import { AiError } from './errors.ts'
 
 const LANGUAGE_NAMES: Record<UiLanguage, string> = { en: 'English', ja: 'Japanese' }
 
+/** The most characters of a query, an editor text or an error sent to the AI: far beyond a real query (Salesforce takes 100,000). */
+export const MAX_SOQL_TEXT = 50_000
+
 const REST_SCHEMA = {
   type: 'object',
   properties: {
@@ -131,9 +134,14 @@ export function agentPrompt(req: AgentTaskRequest, apiVersion: string, today: st
       const i = req.input
       return {
         submitSchema: SOQL_SCHEMA,
-        system: ['You fix a Salesforce SOQL query that failed with the given error. Keep what the query was meant to do.', ...soqlRules(i.tooling), ...commonRules(c, 'soql')].join(
-          '\n',
-        ),
+        system: [
+          'You fix a Salesforce SOQL query that failed with the given error. Keep what the query was meant to do.',
+          ...soqlRules(i.tooling),
+          ...commonRules(c, 'soql'),
+          given.fields ? 'The fields in <data name="metadata"> are those of the object the query reads from, as describeObject returns them: they count as read.' : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
         user: [given.fields ? data('metadata', given.fields) : '', data('query', i.soql), data('error', i.error), tail].filter(Boolean).join('\n\n'),
       }
     }
@@ -242,15 +250,20 @@ export function invalidAgentRequest(body: Record<string, unknown>): string | und
     return !!x && typeof x.method === 'string' && typeof x.path === 'string' && typeof x.body === 'string'
   }
   const isName = (v: unknown) => v === undefined || (typeof v === 'string' && v.length <= 255)
+  // Text sent to the AI with every turn of the exchange: kept to what a query is.
+  const tooLong = (v: unknown, what: string) =>
+    typeof v === 'string' && v.length > MAX_SOQL_TEXT ? `The ${what} is too long to send to the AI (at most ${MAX_SOQL_TEXT.toLocaleString('en')} characters).` : undefined
   switch (body.task) {
     case 'generateSoql':
       if (typeof input.request !== 'string' || !input.request.trim()) return 'input.request is required'
       if (input.editor !== undefined && typeof input.editor !== 'string') return 'input.editor must be text'
+      if (tooLong(input.editor, 'editor text')) return `${tooLong(input.editor, 'editor text')} Turn off the editor text and try again.`
       if (!isName(input.openObject)) return 'input.openObject must be an object name'
       if (typeof input.tooling !== 'boolean') return 'input.tooling must be a boolean'
       return undefined
     case 'fixSoql':
       if (typeof input.soql !== 'string' || typeof input.error !== 'string') return 'input.soql and input.error are required'
+      if (tooLong(input.soql, 'query') || tooLong(input.error, 'error')) return tooLong(input.soql, 'query') ?? tooLong(input.error, 'error')
       if (!isName(input.object)) return 'input.object must be an object name'
       if (typeof input.tooling !== 'boolean') return 'input.tooling must be a boolean'
       return undefined

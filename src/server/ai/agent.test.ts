@@ -287,8 +287,8 @@ describe('SOQL', () => {
   )
   const soqlSource: MetadataSource = { objects: async () => orgObjects, describe: describeInvoice, soql: true, omitNamespace: ns }
 
-  it('searches queryable objects only, without the noise, marking custom ones and leaving out the namespace', () => {
-    expect(findObjectsText(orgObjects, ['invoice', 'share'], soqlSource).split('\n')).toEqual(['Invoice Invoice', 'Invoice__c Invoice (custom)'])
+  it('searches queryable objects only, the noise last, marking custom ones and leaving out the namespace', () => {
+    expect(findObjectsText(orgObjects, ['share', 'invoice'], soqlSource).split('\n')).toEqual(['Invoice Invoice', 'Invoice__c Invoice (custom)', 'AccountShare Account Share'])
     // REST API and Apex see every object, with full names.
     expect(findObjectsText(orgObjects, ['invoice'])).toContain('acme__Invoice__c Invoice (custom)')
   })
@@ -344,6 +344,55 @@ describe('SOQL', () => {
   it('takes only a SELECT query as the answer', async () => {
     anthropicReplies([use('t1', 'submit', { soql: 'FIND {Acme} RETURNING Account', explanation: 'x' })])
     await expect(runAgent(anthropic, soqlRequest, soqlSource, '66.0', never)).rejects.toMatchObject({ code: 'AI_BAD_OUTPUT' })
+  })
+
+  it('names every field of a large object, leaving out picklist values and then labels to fit', async () => {
+    const big = {
+      name: 'Big__c',
+      label: 'Big',
+      fields: Array.from({ length: 200 }, (_, i) => ({
+        name: `F${i}__c`,
+        label: `A long label for field number ${i}`,
+        type: 'picklist',
+        picklistValues: [{ value: 'One value', active: true }, { value: 'Another value', active: true }],
+      })),
+    }
+    const bigSource: MetadataSource = { objects: async () => [{ name: 'Big__c', label: 'Big' }], describe: async () => big }
+    const full = await runTool(bigSource, 'describeObject', { name: 'Big__c' })
+    expect(full).toContain('F199__c picklist A long label for field number 199 [One value, Another value]')
+    const smaller = await runTool(bigSource, 'describeObject', { name: 'Big__c' }, new TextEncoder().encode(full).length - 1)
+    expect(smaller).toContain('Picklist values are left out')
+    expect(smaller).toContain('F199__c picklist A long label for field number 199')
+    expect(smaller).not.toContain('One value')
+    const smallest = await runTool(bigSource, 'describeObject', { name: 'Big__c' }, 4000)
+    expect(smallest).toContain('Labels and picklist values are left out')
+    expect(smallest).toContain('F199__c picklist')
+  })
+
+  it('does not send an object read before again', async () => {
+    const fetch = anthropicReplies(
+      [use('t1', 'describeObject', { name: 'Invoice__c' })],
+      [use('t2', 'describeObject', { name: 'acme__invoice__c' })],
+      [use('t3', 'submit', { soql: 'SELECT Id FROM Invoice__c', explanation: 'x' })],
+    )
+    await runAgent(anthropic, soqlRequest, soqlSource, '66.0', never)
+    const results = sentBody(fetch, 2).messages.filter((m: { role: string }) => m.role === 'user').slice(1).map((m: { content: { content: string }[] }) => m.content[0].content)
+    expect(results[0]).toContain('Object Invoice__c')
+    expect(results[1]).toBe('The fields of acme__invoice__c are already above in this conversation: use them.')
+  })
+
+  it('gives the FROM object of a fix within half the budget, as read', async () => {
+    const fetch = anthropicReplies([use('t1', 'describeObject', { name: 'Invoice__c' })], [use('t2', 'submit', { soql: 'SELECT Id FROM Invoice__c', explanation: 'x' })])
+    const req: AgentTaskRequest = { task: 'fixSoql', input: { soql: 'SELECT X FROM Invoice__c', error: 'e', object: 'invoice__c', tooling: false, language: 'en', timeZone: 'UTC' } }
+    await runAgent(anthropic, req, soqlSource, '66.0', never)
+    expect(sentBody(fetch, 0).system).toContain('they count as read')
+    expect(sentBody(fetch, 1).messages.at(-1).content[0].content).toContain('already above')
+  })
+
+  it('refuses an editor text, a query or an error too long to send', () => {
+    const long = 'x'.repeat(50_001)
+    expect(invalidAgentRequest({ ...soqlRequest, input: { ...soqlRequest.input, editor: long } })).toContain('Turn off the editor text')
+    expect(invalidAgentRequest({ task: 'fixSoql', input: { language: 'en', timeZone: 'UTC', soql: long, error: 'e', tooling: false } })).toContain('query is too long')
   })
 
   it('checks SOQL requests', () => {
