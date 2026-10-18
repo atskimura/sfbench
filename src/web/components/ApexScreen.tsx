@@ -3,6 +3,7 @@
 // the width (docs/screens.md "Apex の画面", docs/apex.md). The code area and
 // the history can be closed.
 import { useEffect, useMemo, useState } from 'react'
+import { flushSync } from 'react-dom'
 import type { ApexHistoryEntry } from '../../shared/api.ts'
 import { firstLineOf, type ApexResult } from '../apex/apexState.ts'
 import { findMatches, MAX_MATCHES, userDebugOnly } from '../apex/log.ts'
@@ -175,6 +176,12 @@ function Running() {
 
 function Shown({ result }: { result: ApexResult }) {
   const apex = useApex()
+  const { setOpen } = usePanels()
+  const goTo = (line: number, column: number | undefined) => {
+    // The editor must be shown before it can take the cursor and the focus.
+    flushSync(() => setOpen('apexEditor', true))
+    apex.goTo(line, column)
+  }
   if (result.state === 'idle') return <p className={panel.empty}>{t.apexNotRun}</p>
   if (result.state === 'unknown') {
     return (
@@ -213,7 +220,7 @@ function Shown({ result }: { result: ApexResult }) {
         <div className={styles.problem} role="alert">
           <p className={styles.errorMessage}>{response.result === 'compileError' ? response.compileProblem : response.exceptionMessage}</p>
           {position && (
-            <button type="button" className={panel.button} aria-label={t.apexGoTo(position)} onClick={() => apex.goTo(response.line!, response.column)}>
+            <button type="button" className={panel.button} aria-label={t.apexGoTo(position)} onClick={() => goTo(response.line!, response.column)}>
               {position}
             </button>
           )}

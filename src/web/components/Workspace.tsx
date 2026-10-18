@@ -7,6 +7,7 @@ import { t } from '../i18n/i18n.ts'
 import { AiProvider } from '../state/AiContext.tsx'
 import { useApp } from '../state/AppContext.tsx'
 import { ApexProvider } from '../state/ApexContext.tsx'
+import { APEX_DRAFT_KEY, claimEditorText } from '../state/editorStorage.ts'
 import { RestProvider } from '../state/RestContext.tsx'
 import { ApexScreen } from './ApexScreen.tsx'
 import { RestScreen } from './RestScreen.tsx'
@@ -51,6 +52,9 @@ function OrgWorkspace({ username, seed }: { username: string; seed: Seed | undef
   const [restOpened, setRestOpened] = useState(mode === 'rest')
   if (mode === 'rest' && !restOpened) setRestOpened(true)
   const [apexOpened, setApexOpened] = useState(mode === 'apex')
+  // The Apex draft is claimed with the workspace, not with the Apex screen:
+  // another org's draft must not wait in the storage to come back (editorStorage.ts).
+  const [apexCode] = useState(() => claimEditorText(username, seed?.apex?.code, APEX_DRAFT_KEY))
   if (mode === 'apex' && !apexOpened) setApexOpened(true)
   return (
     <>
@@ -73,7 +77,7 @@ function OrgWorkspace({ username, seed }: { username: string; seed: Seed | undef
       )}
       {apexOpened && (
         <div className={styles.screen} hidden={mode !== 'apex'}>
-          <ApexProvider username={username} seed={seed}>
+          <ApexProvider username={username} seed={seed} initialCode={apexCode}>
             <ApexScreen />
           </ApexProvider>
         </div>

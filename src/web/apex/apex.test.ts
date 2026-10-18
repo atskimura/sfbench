@@ -104,12 +104,17 @@ describe('debug log', () => {
     expect(findMatches('a'.repeat(MAX_MATCHES + 5), 'a')).toHaveLength(MAX_MATCHES)
   })
 
-  it('keeps match positions right when lower case changes the length', () => {
+  it('keeps ignoring case and the positions right when lower case changes the length', () => {
     // 'İ' becomes two characters in lower case.
-    expect(findMatches('İx x', 'x')).toEqual([
-      { from: 1, to: 2 },
-      { from: 3, to: 4 },
+    expect(findMatches('İ Account account', 'ACCOUNT')).toEqual([
+      { from: 2, to: 9 },
+      { from: 10, to: 17 },
     ])
+  })
+
+  it('takes the query as text, not as a pattern', () => {
+    expect(findMatches('a.b axb (x)', '.')).toEqual([{ from: 1, to: 2 }])
+    expect(findMatches('a.b axb (x)', '(x)')).toEqual([{ from: 8, to: 11 }])
   })
 })
 

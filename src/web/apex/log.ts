@@ -35,18 +35,14 @@ export const MAX_MATCHES = 10_000
 
 export type Match = { from: number; to: number }
 
-/** Where `query` is in `text`, ignoring case where it can. An empty query finds nothing. */
+/** Where `query` is in `text`, ignoring case. An empty query finds nothing. */
 export function findMatches(text: string, query: string): Match[] {
   if (!query) return []
-  // Lower case can change a text's length ('İ' becomes two characters): then
-  // the positions would not be the text's, so case counts.
-  const lower = text.toLowerCase()
-  const folded = lower.length === text.length
-  const haystack = folded ? lower : text
-  const needle = folded ? query.toLowerCase() : query
+  // On the text itself, not a lower-cased copy, whose length can differ ('İ' becomes two characters).
+  const pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
   const matches: Match[] = []
-  for (let at = haystack.indexOf(needle); at !== -1 && matches.length < MAX_MATCHES; at = haystack.indexOf(needle, at + needle.length)) {
-    matches.push({ from: at, to: at + needle.length })
+  for (let m = pattern.exec(text); m && matches.length < MAX_MATCHES; m = pattern.exec(text)) {
+    matches.push({ from: m.index, to: m.index + m[0].length })
   }
   return matches
 }

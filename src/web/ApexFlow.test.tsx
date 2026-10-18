@@ -84,6 +84,10 @@ const result = () => screen.getByRole('region', { name: t.apexResult })
 const historyPanel = () => screen.getByRole('region', { name: t.apexHistory })
 const runButton = () => within(screen.getByRole('region', { name: t.apexEditor })).getByRole('button', { name: t.apexRun })
 
+// jsdom lays nothing out; CodeMirror measures ranges when it scrolls to a search match.
+Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList
+Range.prototype.getBoundingClientRect ??= () => ({ x: 0, y: 0, width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, toJSON: () => ({}) })
+
 // jsdom has no modal dialogs; opening one only needs to show it.
 HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
   this.setAttribute('open', '')
@@ -137,6 +141,17 @@ describe('Apex screen', () => {
     expect(await within(result()).findByText('Variable does not exist: a')).toBeTruthy()
     await userEvent.click(within(result()).getByRole('button', { name: t.apexGoTo(t.apexPosition(2, 5)) }))
     expect(view.state.selection.main.head).toBe('Integer y = 1;\n'.length + 4)
+  })
+
+  it('opens the closed code area to move to the place of a compile error', async () => {
+    mocked.apex.mockResolvedValue(answer({ result: 'compileError', compileProblem: 'Variable does not exist: a', line: 1, column: 13 }))
+    await openApex()
+    const view = write('Integer x = a;')
+    await userEvent.click(screen.getByRole('button', { name: t.hideApexEditor }))
+    await userEvent.click(screen.getByRole('button', { name: t.apexRun }))
+    await userEvent.click(await within(result()).findByRole('button', { name: t.apexGoTo(t.apexPosition(1, 13)) }))
+    expect(screen.getByRole('region', { name: t.apexEditor }).closest('[hidden]')).toBeNull()
+    expect(view.state.selection.main.head).toBe(12)
   })
 
   it('says when the code has changed since the result shown was run', async () => {
@@ -265,6 +280,20 @@ describe('Apex screen', () => {
     await userEvent.click(await within(historyPanel()).findByRole('button', { name: /System\.debug\(2\);/ }))
     expect(view.state.doc.toString()).toBe('System.debug(2);')
     expect(mocked.apex).not.toHaveBeenCalled()
+  })
+
+  it('does not bring back a draft after switching to another org and back', async () => {
+    mocked.orgs.mockResolvedValue({ orgs: [org, prod], connectionCheck: 'done' })
+    await openApex()
+    write(code)
+    await userEvent.click(screen.getByRole('button', { name: t.modeSoql }))
+    for (const [to, from] of [['acme-prod', 'demo'], ['demo', 'acme-prod']]) {
+      await userEvent.click(await screen.findByRole('button', { name: new RegExp(from) }))
+      await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: new RegExp(to) }))
+    }
+    await userEvent.click(screen.getByRole('button', { name: t.modeApex }))
+    const editor = await screen.findByRole('textbox', { name: t.apexEditorLabel })
+    expect(EditorView.findFromDOM(editor)!.state.doc.toString()).toBe('')
   })
 
   it('keeps the code over a reload in the same org', async () => {

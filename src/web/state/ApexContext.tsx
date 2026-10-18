@@ -10,7 +10,7 @@ import { api } from '../apiClient.ts'
 import { runFailed } from '../execution.ts'
 import { t } from '../i18n/i18n.ts'
 import { useApp } from './AppContext.tsx'
-import { APEX_DRAFT_KEY, claimEditorText, saveEditorText } from './editorStorage.ts'
+import { APEX_DRAFT_KEY, saveEditorText } from './editorStorage.ts'
 import { useOrgs, type Seed } from './OrgContext.tsx'
 import type { EditorHandle } from './SoqlContext.tsx'
 import { useTask } from './useTask.ts'
@@ -53,11 +53,20 @@ function localUnknown(run: ApexSnapshot): ApexHistoryEntry {
   return { id: `local-${Date.now()}`, code: run.code, sentAt: run.ranAt, outcome: { state: 'unknown', reason: 'error' } }
 }
 
-export function ApexProvider({ username, seed, children }: { username: string; seed: Seed | undefined; children: ReactNode }) {
+export function ApexProvider({
+  username,
+  seed,
+  initialCode,
+  children,
+}: {
+  username: string
+  seed: Seed | undefined
+  /** Claimed when the workspace was made (Workspace.tsx). */
+  initialCode: string
+  children: ReactNode
+}) {
   const { handleCommonError } = useApp()
   const { isProduction, handleOrgError, markAuthError } = useOrgs()
-  // The --apex code, else the one saved for this org.
-  const [initialCode] = useState(() => claimEditorText(username, seed?.apex?.code, APEX_DRAFT_KEY))
   const code = useRef(initialCode)
   const editor = useRef<ApexEditorHandle | null>(null)
   const [state, dispatch] = useReducer(reducer, Boolean(seed?.apex), initialState)
