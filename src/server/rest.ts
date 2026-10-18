@@ -92,7 +92,8 @@ export function restLaunch(input: { path: unknown; method?: unknown; body?: unkn
   const m = method as RestMethod
   if (typeof input.path !== 'string' || !isServicesPath(input.path)) throw new RestRequestError('--rest needs a path that starts with /services/.')
   if (input.path.length > MAX_PATH) throw new RestRequestError('The --rest path is too long.')
-  if (input.body === undefined) return { method: m, path: input.path }
+  // An empty body is no body, as on the screen (checkRestRequest).
+  if (input.body === undefined || input.body === '') return { method: m, path: input.path }
   if (typeof input.body !== 'string') throw new RestRequestError('--body must be text.')
   if (!methodTakesBody(m)) throw new RestRequestError(`A ${m} request has no body.`)
   if (Buffer.byteLength(input.body) > MAX_LAUNCH_BODY) throw new RestRequestError('The --body is too long.')

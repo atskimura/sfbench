@@ -34,10 +34,13 @@ describe('apiRequest', () => {
   it('refuses a number sf would round, and sends ordinary numbers', async () => {
     await expect(
       apiRequest('u@example.com', { method: 'POST', path: '/services/data/v66.0/sobjects/Account', headers: {}, body: '{"Amount__c":123456789012345678}' }, dir, 1000),
-    ).rejects.toThrow(/15 digits/)
+    ).rejects.toThrow(/would change/)
+    await expect(
+      apiRequest('u@example.com', { method: 'PATCH', path: '/services/data/v66.0/sobjects/Account/001', headers: {}, body: '{"Amount__c":1e400}' }, dir, 1000),
+    ).rejects.toThrow(/would change/)
     expect(runMock).not.toHaveBeenCalled()
-    await apiRequest('u@example.com', { method: 'POST', path: '/services/data/v66.0/sobjects/Account', headers: {}, body: '{"A":1.50,"B":-0.001,"C":123456789012345,"D":1e21}' }, dir, 1000)
-    expect(sent?.body.raw).toEqual({ A: 1.5, B: -0.001, C: 123456789012345, D: 1e21 })
+    await apiRequest('u@example.com', { method: 'POST', path: '/services/data/v66.0/sobjects/Account', headers: {}, body: '{"A":1.50,"B":-0.001,"C":1234567890123456,"D":1e21,"E":0.0}' }, dir, 1000)
+    expect(sent?.body.raw).toEqual({ A: 1.5, B: -0.001, C: 1234567890123456, D: 1e21, E: 0 })
   })
 
   it('leaves the body out when there is none', async () => {

@@ -386,28 +386,35 @@ export class App {
     // A path refused here was never sent, so it is checked before it is recorded.
     const pathname = new URL(salesforcePath(request.path, client.instanceUrl), client.instanceUrl).pathname
     const dir = this.options.paths.restHistoryDir
-    const record = (write: () => void) => {
+    const warn = (e: unknown) => log.warn(`${client.username}: could not write the REST history (${(e as Error).message})`)
+    // Without a record (it could not be written), the request is still sent.
+    let id: string | undefined
+    try {
+      id = addRestPending(dir, client.username, request, this.bootId)
+    } catch (e) {
+      warn(e)
+    }
+    const finish = (outcome: RestOutcome | undefined) => {
+      if (!id) return
       try {
-        write()
+        finishRest(dir, client.username, id, outcome)
       } catch (e) {
-        log.warn(`${client.username}: could not write the REST history (${(e as Error).message})`)
+        warn(e)
       }
     }
-    let id: string | undefined
-    record(() => (id = addRestPending(dir, client.username, request, this.bootId)))
     const started = performance.now()
     let raw: RawResponse
     try {
       // Never sent twice, whatever the method (docs/rest.md "送り方").
       raw = await client.requestRaw({ ...request, changesData: true }, { maxBodyBytes: MAX_REST_RESPONSE_BYTES })
     } catch (e) {
-      if (id) record(() => finishRest(dir, client.username, id!, restOutcomeOf(e)))
+      finish(restOutcomeOf(e))
       log.info(`rest ${request.method} ${pathname} ${(e as Error).name} ${Math.round(performance.now() - started)}ms`)
       throw e
     }
     // From here Salesforce has answered: whatever fails below, the record says so.
     const elapsedMs = Math.round(performance.now() - started)
-    if (id) record(() => finishRest(dir, client.username, id!, { state: 'done', status: raw.status, elapsedMs }))
+    finish({ state: 'done', status: raw.status, elapsedMs })
     // No query string, body or header values in the log: they may hold record data.
     log.info(`rest ${request.method} ${pathname} ${raw.status} ${elapsedMs}ms`)
     sendJson(res, 200, { ...({ id, status: raw.status, ...restResponseBody(raw), elapsedMs } satisfies RestResponse), apiUsage: client.apiUsage })

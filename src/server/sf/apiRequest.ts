@@ -52,16 +52,29 @@ export class NotJsonBodyError extends Error {
     super(
       reason === 'notJson'
         ? 'Only a JSON body can be sent while sfbench uses sf api request rest. Try again once Salesforce can be reached directly.'
-        : 'A number with more than 15 digits would be rounded while sfbench uses sf api request rest, so the request was not sent. Write it as text, or try again once Salesforce can be reached directly.',
+        : 'A number in the body would change (it has more digits than a double holds, or is out of its range) while sfbench uses sf api request rest, so the request was not sent. Write it as text, or try again once Salesforce can be reached directly.',
     )
     this.name = 'NotJsonBodyError'
   }
 }
 
-/** More than 15 significant digits: a double may not hold the number as written. */
-function hasLongNumber(source: string): boolean {
-  const mantissa = source.replace(/^-/, '').replace(/[eE].*$/, '').replace('.', '')
-  return mantissa.replace(/^0+/, '').replace(/0+$/, '').length > 15
+/** A JSON number as its significant digits and exponent, so that 1.50 and 1.5e0 compare equal. */
+function decimal(text: string): string {
+  const m = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(text)
+  if (!m) return text
+  const fraction = m[3] ?? ''
+  let digits = (m[2] + fraction).replace(/^0+/, '')
+  let exponent = Number(m[4] ?? 0) - fraction.length
+  while (digits.endsWith('0')) {
+    digits = digits.slice(0, -1)
+    exponent++
+  }
+  return digits ? `${m[1]}${digits}e${exponent}` : '0'
+}
+
+/** Whether sf would send the number as written: it parses it into a double and writes that back. */
+function survivesSf(source: string, value: number): boolean {
+  return Number.isFinite(value) && decimal(source) === decimal(JSON.stringify(value))
 }
 
 /** The body as sf will send it, or an error when sf would change it. */
@@ -71,7 +84,7 @@ function bodyForSf(body: string): unknown {
   try {
     // The reviver's third argument (the source text) tells the number as written.
     parsed = JSON.parse(body, function (this: unknown, _key: string, value: unknown, context?: { source?: string }) {
-      if (typeof value === 'number' && context?.source && hasLongNumber(context.source)) long = true
+      if (typeof value === 'number' && context?.source && !survivesSf(context.source, value)) long = true
       return value
     } as (this: unknown, key: string, value: unknown) => unknown)
   } catch {
