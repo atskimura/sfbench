@@ -3,6 +3,7 @@
 // The object list, the editor area and the recent queries can be closed
 // (docs/screens.md "パネルの開閉").
 import { t } from '../i18n/i18n.ts'
+import { AiProvider } from '../state/AiContext.tsx'
 import { useOrgs, type Seed } from '../state/OrgContext.tsx'
 import { PanelsProvider, usePanels } from '../state/PanelsContext.tsx'
 import { SoqlProvider, useSoql } from '../state/SoqlContext.tsx'
@@ -33,7 +34,10 @@ function OrgWorkspace({ username, seed }: { username: string; seed: Seed | undef
   return (
     <SoqlProvider username={username} seed={seed}>
       <PanelsProvider>
-        <Layout username={username} initialText={seed?.query} />
+        {/* Inside both: Replace writes the editor, and Fix with AI opens the editor area. */}
+        <AiProvider username={username}>
+          <Layout username={username} initialText={seed?.query} />
+        </AiProvider>
       </PanelsProvider>
     </SoqlProvider>
   )

@@ -57,6 +57,11 @@
   flex: none;
 }
 
+/* Room for the AI input above the editor (docs/screens.md). */
+.top:has([data-ai-bar]) {
+  height: 380px;
+}
+
 .top > :first-child {
   flex: 1;
   min-width: 0;

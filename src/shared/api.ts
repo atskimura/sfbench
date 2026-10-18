@@ -46,6 +46,8 @@ export type QueryRequest = {
   soql: string
   tooling?: boolean
   queryAll?: boolean
+  /** The request to the AI that wrote this query, kept in the history (docs/ai.md "最近のクエリへの記録"). */
+  prompt?: string
 }
 
 export type NextPageRequest = { nextRecordsUrl: string }
@@ -127,6 +129,8 @@ export type AiTaskRequest =
         request: string
         /** One object per line: `ApiName (Label)`. */
         objects: string
+        /** The object open on the left (its API name), a hint only: the AI still chooses (docs/ai.md "Generate の流れ"). */
+        openObject?: string
         tooling: boolean
         language: UiLanguage
       }
@@ -209,4 +213,13 @@ export type ApiError = {
     status?: number
     details?: unknown
   }
+}
+
+/**
+ * A query with its spaces and line breaks squashed, so that Format does not
+ * make another query: the history (addHistory) and the request to the AI
+ * behind a query (src/web/ai/promptMark.ts) compare queries this way.
+ */
+export function squashSoql(soql: string): string {
+  return soql.trim().replace(/\s+/g, ' ')
 }

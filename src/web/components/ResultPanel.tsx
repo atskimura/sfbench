@@ -8,6 +8,7 @@ import { addColumns, cellText, cellValue, type ChildRecords, type Column, type S
 import { useOrgs } from '../state/OrgContext.tsx'
 import { useResult, type QueryResult } from '../state/SoqlContext.tsx'
 import { useTask } from '../state/useTask.ts'
+import { FixWithAi } from './AiBar.tsx'
 import { CopyCommand } from './CopyCommand.tsx'
 import { CsvExport } from './CsvExport.tsx'
 import panel from './Panel.module.css'
@@ -44,6 +45,11 @@ function Shown({ result }: { result: QueryResult }) {
         <div className={styles.error} role="alert">
           <p className={styles.message}>{result.message}</p>
           {result.reloginCommand && <CopyCommand command={result.reloginCommand} />}
+          {result.rejected && (
+            <div>
+              <FixWithAi error={result.message} rejected={result.rejected} />
+            </div>
+          )}
           {result.details !== undefined && (
             <details>
               <summary>{t.errorDetails}</summary>

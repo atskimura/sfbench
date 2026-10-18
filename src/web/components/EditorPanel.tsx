@@ -4,6 +4,7 @@ import { t } from '../i18n/i18n.ts'
 import { useResult, useSoql } from '../state/SoqlContext.tsx'
 import styles from './EditorPanel.module.css'
 import panel from './Panel.module.css'
+import { AiBar, ProposalCard } from './AiBar.tsx'
 import { SoqlEditor } from './SoqlEditor.tsx'
 
 export function RunButton() {
@@ -31,6 +32,8 @@ export function EditorPanel({ username, initialText }: { username: string; initi
 
   return (
     <section className={panel.panel} aria-label={t.editorLabel}>
+      <AiBar />
+      <ProposalCard />
       <div className={`${panel.header} ${styles.toolbar}`}>
         <RunButton />
         <label className={styles.check} htmlFor={queryAllId} title={t.queryAllTitle}>

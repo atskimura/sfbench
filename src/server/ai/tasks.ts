@@ -57,12 +57,15 @@ export function promptFor(req: AiTaskRequest): Prompt {
         system: [
           `You pick the Salesforce objects that a SOQL query for the user's request needs to read.`,
           `Choose at most ${MAX_OBJECTS} API names from the object list, most important first. Choose only names in the list.`,
+          i.openObject
+            ? 'The user has the object in <data name="open"> open on screen. Choose it if the request is about it; if the request is about other objects, choose those instead and leave it out.'
+            : '',
           i.tooling ? 'The query runs on the Tooling API.' : '',
           DATA_RULE,
         ]
           .filter(Boolean)
           .join('\n'),
-        user: `${data('objects', i.objects)}\n\nRequest: ${i.request}`,
+        user: [data('objects', i.objects), i.openObject ? data('open', i.openObject) : '', `Request: ${i.request}`].filter(Boolean).join('\n\n'),
       }
     }
     case 'generateSoql': {
@@ -75,7 +78,7 @@ export function promptFor(req: AiTaskRequest): Prompt {
           ...SOQL_RULES,
           i.tooling ? 'The query runs on the Tooling API.' : '',
           'If the editor already holds a query and the request asks to change it, change that query.',
-          `Write the explanation in the language of the request; when that is unclear, in ${LANGUAGE_NAMES[i.language]}.`,
+          `Write the explanation in ${LANGUAGE_NAMES[i.language]}, whatever the language of the request or the metadata.`,
           DATA_RULE,
         ]
           .filter(Boolean)
@@ -84,6 +87,7 @@ export function promptFor(req: AiTaskRequest): Prompt {
           data('metadata', i.objectInfo),
           i.editorText.trim() ? data('editor', i.editorText) : '',
           `Request: ${i.request}`,
+          `(Write the explanation in ${LANGUAGE_NAMES[i.language]}.)`,
         ]
           .filter(Boolean)
           .join('\n\n'),
@@ -107,6 +111,7 @@ export function promptFor(req: AiTaskRequest): Prompt {
           i.objectInfo.trim() ? data('metadata', i.objectInfo) : '',
           data('query', i.soql),
           data('error', i.error),
+          `(Write the explanation in ${LANGUAGE_NAMES[i.language]}.)`,
         ]
           .filter(Boolean)
           .join('\n\n'),
@@ -191,6 +196,7 @@ export function invalidTaskRequest(body: unknown): string | undefined {
   const names = typeof task === 'string' && Object.hasOwn(strings, task) ? strings[task] : undefined
   if (!names) return 'task must be chooseObjects, generateSoql or fixSoql.'
   for (const name of names) if (typeof input[name] !== 'string') return `input.${name} must be a string.`
+  if (input.openObject !== undefined && typeof input.openObject !== 'string') return 'input.openObject must be a string.'
   if (typeof input.tooling !== 'boolean') return 'input.tooling must be a boolean.'
   if (input.language !== 'en' && input.language !== 'ja') return 'input.language must be en or ja.'
   return undefined
