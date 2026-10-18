@@ -56,7 +56,10 @@ export function openAiConversation(req: ConversationRequest): Conversation {
       )) as ChatResponse
       const choice = body.choices?.[0]
       const message = choice?.message ?? {}
-      messages.push({ role: 'assistant', content: message.content ?? null, ...(message.tool_calls?.length ? { tool_calls: message.tool_calls } : {}) })
+      // An assistant message needs its content unless it calls tools: an empty turn is not kept.
+      if (message.content || message.tool_calls?.length) {
+        messages.push({ role: 'assistant', content: message.content ?? null, ...(message.tool_calls?.length ? { tool_calls: message.tool_calls } : {}) })
+      }
       if (message.refusal) throw new AiError('AI_ERROR', `The model declined to answer. ${message.refusal}`)
       if (choice?.finish_reason === 'content_filter') throw new AiError('AI_ERROR', "The provider's content filter blocked the output.")
       if (choice?.finish_reason === 'length') throw new AiError('AI_BAD_OUTPUT', 'The output was cut off at the length limit.', message.content ?? '')

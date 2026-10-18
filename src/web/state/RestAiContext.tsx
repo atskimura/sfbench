@@ -31,6 +31,9 @@ type RestAiValue = AiSession<RestProposal, AgentStep> & {
 
 const RestAiContext = createContext<RestAiValue | undefined>(undefined)
 
+/** The most of a response body sent to fix a request: Salesforce's error bodies are far smaller. */
+const MAX_ERROR_BODY = 16_000
+
 const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
 function agentRequest(r: { method: AgentRestRequest['method']; path: string; body?: string }): AgentRestRequest {
@@ -62,7 +65,9 @@ export function RestAiProvider({ username, children }: { username: string; child
   const fix = useCallback(
     (sent: RestSnapshot, status: number, responseBody: string) => {
       if (availability !== 'ready') return
-      const input = { sent: agentRequest(sent), status, responseBody, language: uiLanguage, timeZone: timeZone() }
+      // The start of the body is what tells the error; a whole HTML error page would not fit what the server takes.
+      const body = responseBody.length > MAX_ERROR_BODY ? `${responseBody.slice(0, MAX_ERROR_BODY)}\n(cut)` : responseBody
+      const input = { sent: agentRequest(sent), status, responseBody: body, language: uiLanguage, timeZone: timeZone() }
       start(async (signal, progress) => {
         progress('think')
         const { output } = await api.aiAgent(username, { task: 'fixRest', input }, signal)

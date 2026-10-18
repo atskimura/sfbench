@@ -1,7 +1,7 @@
 // docs/ai-agent.md "サーバー": the AI reading metadata through tools and answering through submit.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentTaskRequest } from '../../shared/api.ts'
-import { MAX_TOOL_CALLS, runAgent, todayIn } from './agent.ts'
+import { cutToBudget, MAX_TOOL_CALLS, runAgent, todayIn } from './agent.ts'
 import { invalidAgentRequest } from './agentTasks.ts'
 import { describeText, findObjectsText, runTool, type MetadataSource } from './tools.ts'
 
@@ -90,6 +90,31 @@ describe('runAgent', () => {
     expect(second.messages.at(-1).content).toContain('Object Project__c')
   })
 
+  it('does not send back an empty turn, which the API refuses, and nudges', async () => {
+    const fetch = anthropicReplies([], [use('s', 'submit', answer)])
+    await expect(runAgent(anthropic, request, source, '66.0', never)).resolves.toMatchObject({ output: answer })
+    const messages = sentBody(fetch, 1).messages
+    expect(messages.every((m: { content: unknown }) => !(Array.isArray(m.content) && m.content.length === 0))).toBe(true)
+    expect(messages.at(-1)).toEqual({ role: 'user', content: 'Give your answer by calling the submit tool.' })
+  })
+
+  it('still tells the AI about the limit after it was nudged once to submit', async () => {
+    const reads = Array.from({ length: MAX_TOOL_CALLS }, (_, i) => [use(`t${i}`, 'describeObject', { name: 'Project__c' })])
+    anthropicReplies([{ type: 'text', text: 'thinking' }], ...reads, [use('x', 'describeObject', { name: 'A' })], [use('s', 'submit', answer)])
+    await expect(runAgent(anthropic, request, source, '66.0', never)).resolves.toMatchObject({ output: answer })
+  })
+
+  it('reads nothing more once the screen has gone', async () => {
+    const gone = new AbortController()
+    const reading = vi.fn(async () => {
+      gone.abort()
+      return undefined
+    })
+    anthropicReplies([use('a', 'describeObject', { name: 'A' }), use('b', 'describeObject', { name: 'B' })])
+    await expect(runAgent(anthropic, request, { ...source, describe: reading }, '66.0', gone.signal)).rejects.toBeDefined()
+    expect(reading).toHaveBeenCalledTimes(1)
+  })
+
   it('needs the AI set up', async () => {
     await expect(runAgent({ ...anthropic, apiKey: '' }, request, source, '66.0', never)).rejects.toMatchObject({ code: 'AI_NOT_CONFIGURED' })
   })
@@ -126,6 +151,20 @@ describe('tools', () => {
       'Child relationships:',
       'OpportunityLineItems -> OpportunityLineItem',
     ])
+  })
+
+  it('takes only a describe for an object, never another cached answer such as the object list', async () => {
+    const odd = { ...source, describe: async () => ({ sobjects: [] }) as never }
+    expect(await runTool(odd, 'describeObject', { name: 'global' })).toContain('no object named global')
+  })
+
+  it('cuts a result at the budget, on a line, and says so', () => {
+    const text = Array.from({ length: 100 }, (_, i) => `Field${i} string Label`).join('\n')
+    const cut = cutToBudget(text, 300)
+    expect(new TextEncoder().encode(cut).length).toBeLessThanOrEqual(300)
+    expect(cut).toMatch(/^Field0 string Label\n/)
+    expect(cut).toContain('(Cut here')
+    expect(cutToBudget('short', 300)).toBe('short')
   })
 
   it('answers a call of the wrong shape with what is wrong, so that the AI can try again', async () => {

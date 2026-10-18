@@ -345,7 +345,8 @@ export class App {
       const tooling = url.searchParams.get('tooling') === '1'
       const requested = versionOf(url.searchParams.get('version') ?? undefined)
       const prefix = requested ? `v${requested}:` : ''
-      const described = await this.options.orgs.cachedDescribe(client, `${prefix}${tooling ? 'tooling:' : ''}${name}`, refresh, async () => {
+      // "object:": an object named like the list's key ("global") is never taken for the list.
+      const described = await this.options.orgs.cachedDescribe(client, `${prefix}${tooling ? 'tooling:' : ''}object:${name}`, refresh, async () => {
         const version = await client.version(requested)
         return (
           await client.request({
@@ -500,7 +501,7 @@ export class App {
         ((await orgs.cachedDescribe(client, `${prefix}global`, false, async () => (await client.request({ method: 'GET', path: `/services/data/v${version}/sobjects/` })).body)).body as { sobjects: { name: string; label: string }[] }).sobjects,
       describe: async (name) => {
         try {
-          return (await orgs.cachedDescribe(client, `${prefix}${name}`, false, () => describe(name))).body as Awaited<ReturnType<MetadataSource['describe']>>
+          return (await orgs.cachedDescribe(client, `${prefix}object:${name}`, false, () => describe(name))).body as Awaited<ReturnType<MetadataSource['describe']>>
         } catch (e) {
           // An object the org does not have is the AI's mistake to correct, not a failure of the request.
           if (e instanceof SalesforceError && e.status === 404) return undefined

@@ -50,7 +50,8 @@ export function anthropicConversation(req: ConversationRequest): Conversation {
         req.signal,
       )) as MessageResponse
       const content = body.content ?? []
-      messages.push({ role: 'assistant', content })
+      // The API refuses an empty assistant message before another: an empty turn (seen after tool results) is not kept.
+      if (content.length > 0) messages.push({ role: 'assistant', content })
       const text = content.filter((c) => c.type === 'text').map((c) => c.text ?? '').join('')
       if (body.stop_reason === 'refusal') throw new AiError('AI_ERROR', `The model declined to answer. ${text}`.trim())
       if (body.stop_reason === 'max_tokens') throw new AiError('AI_BAD_OUTPUT', 'The output was cut off at the length limit.', text)
