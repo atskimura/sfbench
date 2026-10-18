@@ -148,11 +148,12 @@ API バージョンは、組織ごとに最初の呼び出しで `/services/data
 `sf api request rest` で成功した場合だけ、その組織の経路を切り替える。
 失敗した場合は切り替えず、エラーを画面に出す（ネットワークそのものが落ちているときに、遅い経路に移っても結果は変わらないため）。
 切り替えた組織は、10分経ったあとの最初の読み取りの要求（GET と HEAD）で、もう一度 `fetch` を試す。
+サーバーは自動では止まらないので、一時的な失敗で遅い経路に移ったままにならないようにするためである。
 データを変えうる要求で試さないのは、`fetch` がまだ失敗する場合に、その要求を送り直せないからである。
 `fetch` で接続が途中で切れたデータを変えうる要求は、「Salesforce が処理した可能性があるので送り直していない」と伝えるエラー（`SALESFORCE_UNREACHABLE`）にする。
 応答を待つ時間を過ぎたときは、`fetch` でも `sf api request rest` でも `SALESFORCE_TIMEOUT` にする。
-どちらも、Salesforce がエラーを返した `SALESFORCE_ERROR` とは別のコードにする。画面が、Salesforce が断ったのか、処理されたかもしれないのかを見分けられるようにするためである。
-サーバーは自動では止まらないので、一時的な失敗で遅い経路に移ったままにならないようにするためである。
+どちらも、Salesforce がエラーを返した `SALESFORCE_ERROR` とは別のコードにする。
+画面が、Salesforce が断ったのか、処理されたかもしれないのかを見分けられるようにするためである。
 
 次のいずれかを認証エラーとみなす。
 エラーの `name` は汎用的な `Error` のことがあり、それだけでは判定できないからである。
@@ -161,7 +162,7 @@ API バージョンは、組織ごとに最初の呼び出しで `/services/data
 - `sf api request rest` が 401 を返した。
 - sf CLI のエラー文が、リフレッシュトークンの失効を示している（「Unable to refresh session」「expired access/refresh token」「invalid_grant」を含む）。
 
-認証エラーのときは経路を切り替えず、画面に再ログインのコマンド（`sf org login web -a <alias>`）を表示する。
+認証エラーのときは経路を切り替えず、画面に再ログインのコマンド（`sf org login web --instance-url <URL> -a <alias>`）を表示する。
 `sf api request rest` に切り替えても同じ認証情報を使うので、結果は変わらないからである。
 
 ### プロキシ
@@ -193,8 +194,9 @@ Salesforce の呼び出しも AI の API の呼び出しも、これでプロキ
 | `GET /api/orgs/:user/summary` | 画面用 | 組織の詳しい種別（`Organization` の `OrganizationType`、`IsSandbox`）と名前空間 |
 | `GET /api/orgs/:user/sobjects` | 画面用 | describeGlobal。`version=` で API バージョンを選べる |
 | `GET /api/orgs/:user/sobjects/:name` | 画面用 | describe。`version=` で API バージョンを選べる |
-| `POST /api/orgs/:user/query` | 画面用 | SOQL の実行（`{ soql, tooling, queryAll, apiVersion? }`） |
+| `POST /api/orgs/:user/query` | 画面用 | SOQL の実行（`{ soql, tooling, queryAll, apiVersion?, prompt? }`） |
 | `POST /api/orgs/:user/query/next` | 画面用 | 続きのページ（`{ nextRecordsUrl }`） |
+| `POST /api/orgs/:user/ai/agent` | 画面用 | REST API と Apex の AI。ツールで組織のメタデータを読ませて組む（[ai-agent.md](ai-agent.md)） |
 | `POST /api/orgs/:user/rest` | 画面用 | REST API の実行（`{ method, path, headers, body }`）。Salesforce が返したステータスによらず、200 で `{ id, status, headers, body, size, elapsedMs }` を返す（[rest.md](rest.md)） |
 | `GET /api/orgs/:user/rest/history` | 画面用 | REST API の実行履歴 |
 | `POST /api/orgs/:user/records/update` | 画面用 | 結果の表の保存（`{ object, records, allOrNone, apiVersion? }`、200件まで）。1件ずつの成否を返す（[edit.md](edit.md)） |
@@ -208,7 +210,8 @@ Salesforce の呼び出しも AI の API の呼び出しも、これでプロキ
 | `POST /api/ai/test` | 画面用 | AI の接続を試す |
 
 `:user` には組織のユーザー名が入る。
-`sf org list` に載っていない値は 404 の `ORG_NOT_FOUND` にする。知らない経路の 404 は `NOT_FOUND` にし、画面が組織が消えたと取り違えないようにする。
+`sf org list` に載っていない値は 404 の `ORG_NOT_FOUND` にする。
+知らない経路の 404 は `NOT_FOUND` にし、画面が組織が消えたと取り違えないようにする。
 
 describe の結果はサーバーのメモリに組織ごとに保持し、タブ間で共有する。
 再読み込みを指示されたときだけ取り直す。
@@ -280,9 +283,11 @@ describe の結果はサーバーのメモリに組織ごとに保持し、タ�
 
 サーバーは起動時に `http://localhost:5173/launch/dev` を表示する。
 Vite は `/launch/dev` には画面（`index.html`）を返し、`/api` だけをサーバー（`127.0.0.1:17717`）へ転送する。
-画面のモジュールは `src/web/api/` に置かない。置くと `/api/` で始まる URL で配信され、サーバーへ転送されてしまう。
+画面のモジュールは `src/web/api/` に置かない。
+置くと `/api/` で始まる URL で配信され、サーバーへ転送されてしまう。
 `npm run dev` は `npm run dev:server` と `npm run dev:web` を並べて起動し、Ctrl+C を押すか Vite が終わると両方を止める（`scripts/dev.mjs`）。
-サーバーは `node --watch` の下で動くので、起動に失敗しても（ポート 17717 が使用中など）終了せず、エラーを表示してファイルの変更を待つ。このとき Vite は動き続ける。
+サーバーは `node --watch` の下で動くので、起動に失敗しても（ポート 17717 が使用中など）終了せず、エラーを表示してファイルの変更を待つ。
+このとき Vite は動き続ける。
 画面のコードを保存すると Vite がその場で反映し、サーバーのコードを保存すると `node --watch` がサーバーを起動し直すので、`npm run build` は要らない。
 Vite の開発サーバーは `localhost:5173` に固定し、使用中なら起動に失敗する。
 `dev:server` は Node の型除去機能で TypeScript を直接実行する。
@@ -301,6 +306,8 @@ Vite の開発サーバーは `localhost:5173` に固定し、使用中なら起
 | `--apex "<code>" \| --apex-file <file>` | Apex の入力欄を埋めた状態で開く。実行はしない。組織が決まらないときはエラーで終える |
 | `--json` | 開いた URL などを JSON で出力する |
 | `--no-open` | ブラウザを開かず、URL だけを出力する（WSL や SSH 先で使う） |
+| `-h, --help` | 使い方を表示する |
+| `-v, --version` | バージョンを表示する |
 | `stop` | 起動中のサーバーを止める |
 
 AI のエージェントから呼ばれることを想定して、コマンドは画面を開いたらすぐ終了する。
@@ -418,7 +425,7 @@ Windows ではこの権限の指定が効かないので、ユーザーのプロ
 - 実行に成功したクエリだけを残す。`--run` で実行したものも含む。
 - 同じクエリは、新しく残さずに先頭へ移す。
 - 組織ごとに100件まで残し、古いものから消す。お気に入りの保存は作らない。
-- クエリと一緒に、Tooling API と Query All の指定、実行時刻、AI に頼んだ文（区切り3）、最新でないときの API バージョン（[web.md](web.md)「API バージョン」）を残す。
+- クエリと一緒に、Tooling API と Query All の指定、実行時刻、AI に頼んだ文、最新でないときの API バージョン（[web.md](web.md)「API バージョン」）を残す。
 - 書き込むのは `/query` の処理で、成功した場合だけである。
 
 ### 設定
@@ -426,7 +433,7 @@ Windows ではこの権限の指定が効かないので、ユーザーのプロ
 | 項目 | 既定 | 内容 |
 | --- | --- | --- |
 | 名前空間を省く | オン | 組織の名前空間を省いて SOQL を書けるようにする。全組織で共通 |
-| Salesforce の応答を待つ時間 | 120秒 | `fetch` と `sf api request rest` のタイムアウト。長いクエリや大きな describe で足りないときに延ばす（区切り2で実装） |
+| Salesforce の応答を待つ時間 | 120秒 | `fetch` と `sf api request rest` のタイムアウト。長いクエリや大きな describe で足りないときに延ばす |
 | AI | オフ | 使う AI の API と、その接続情報 |
 
 名前空間を省く設定がオンのとき、サーバーは `/query` と `/query/next` の呼び出しに `Sforce-Call-Options: defaultNamespace=<名前空間>` ヘッダーを付け、画面は SOQL の生成と補完で名前空間を省く。
@@ -462,18 +469,17 @@ Windows ではこの権限の指定が効かないので、ユーザーのプロ
 ## AI で組む機能
 
 利用者が書いた要望から、AI に SOQL、REST API のリクエスト、匿名 Apex を組ませる。
-詳細は区切り3で詰める。
-ここでは決まっている方針だけを書く。
+詳細は [ai.md](ai.md)（SOQL）と [ai-agent.md](ai-agent.md)（REST API と Apex）にある。
 
 - 既定は無効である。設定画面で選ぶまで、AI を一切呼ばない。
 - 未設定のときは、AI の入力欄の位置に設定への案内を出す。設定画面で Off を選んだ場合は、AI に関する表示をすべて隠す。
-- AI は API で呼ぶ。対応するのは Anthropic の Messages API と OpenAI の Chat Completions API の2つである。どちらもサーバーが `fetch` で呼ぶ。OpenAI 互換の API（Gemini、OpenRouter、手元で動かすモデルなど）には対応しない（理由は [ai.md](ai.md)）。
+- AI は API で呼ぶ。対応する提供元は Anthropic と OpenAI の2つである。Anthropic は Messages API で、OpenAI は SOQL の AI を Chat Completions API で、ツールを使う REST API と Apex の AI を Responses API で呼ぶ。どれもサーバーが `fetch` で呼ぶ。OpenAI 互換の API（Gemini、OpenRouter、手元で動かすモデルなど）には対応しない（理由は [ai.md](ai.md)）。
 - モデル ID と API キーを、設定画面で入れる。モデル ID は sfbench に埋め込まない。モデルが廃止されたときに、利用者が書き換えるだけで済むようにするためである。
 - API キーは `~/.sfbench/settings.json` に保存し、画面には返さない。
-- AI を呼ぶのは、利用者が Generate か Fix with AI を押したときだけである。
-- AI には組織を触らせない。Salesforce への問い合わせは sfbench が行い、AI にはテキストだけを渡す。渡すのはオブジェクトと項目の名前、型、選択リストの値、エディタの内容、エラー文で、クエリの結果とレコードは渡さない。
+- AI を呼ぶのは、利用者が「生成」か「AI で直す」を押したときだけである。
+- AI には組織を触らせない。Salesforce への問い合わせは sfbench が行い、AI にはテキストだけを渡す。REST API と Apex の AI がツールで読めるのも、sfbench が読んだメタデータだけである。渡すのはオブジェクトと項目の名前、型、選択リストの値、エディタの内容、エラー文である。SOQL の結果は渡さない。REST API と Apex の前の結果は、利用者が押したときだけ渡す（[ai-agent.md](ai-agent.md)）。
 - AI の出力は JSON の形で受け取る。Anthropic では `output_config.format`、OpenAI では `response_format` の JSON Schema で形を縛り、受け取った出力は sfbench の側でも検査する（[ai.md](ai.md)）。
-- 出力はいったん提案カードで見せ、利用者が反映を選んでからエディタを書き換える。SOQL に限り「反映して実行」を選べる。
+- 出力はいったん提案カードで見せ、利用者が置き換えを選んでからエディタを書き換える。SOQL に限り「置き換えて実行」を選べる。
 
 AI の CLI（Claude Code、Codex など）を呼ぶ案は採らなかった。
 CLI はツールや MCP サーバーを使えるので、渡した文章に指示が埋め込まれていた場合（プロンプトインジェクション）に組織を操作されないよう隔離する必要がある。
@@ -503,7 +509,7 @@ Apex の画面は、`sf apex run` で匿名 Apex を実行し、結果とデバ�
 - 画面は React と TypeScript で書き、Vite でビルドする。
 - サーバーは TypeScript で書き、公開前に JavaScript にコンパイルする。Node 標準の API だけを使う。
 - 利用者の実行時の npm 依存はゼロにする。画面のライブラリはビルド時に取り込み、npm にはビルド済みのファイルだけを公開する。
-- 画面で使う予定のライブラリは、`soql-parser-js`（SOQL の解析と整形）、CodeMirror 6（エディタと補完）、TanStack Virtual（結果の表の仮想スクロール）である。画面の技術設計は [web.md](web.md) にある。
+- 画面で使うライブラリは、`soql-parser-js`（SOQL の解析と整形）、CodeMirror 6（エディタと補完）、TanStack Virtual（結果の表の仮想スクロール）である。画面の技術設計は [web.md](web.md) にある。
 - テストは Vitest で書く。sf CLI の出力は、実際の出力を記録したものを使う。
 - CI は、Ubuntu と Windows のそれぞれで、Node 22 と 24 の最新版を使って回す。下限の Node 22.21.0 は Ubuntu でだけ確かめる。
 
@@ -533,9 +539,9 @@ docs/       設計文書
 | PWA | あり | なし |
 | Google Analytics | あり | なし |
 
-## 区切り2のあとに作る機能
+## 結果の表での編集と削除
 
-- **結果の表での編集と削除**：結果の見出しの「編集」をオンにしたときだけ、セルを書き換えて保存し、行を選んで削除できる。編集できるのは FROM のオブジェクト自身の、describe で更新可能な項目だけである。保存と削除は sObject Collections で行う。区切り6で作る。設計は [edit.md](edit.md) にある。
+- **結果の表での編集と削除**：結果の見出しの「編集」をオンにしたときだけ、セルを書き換えて保存し、行を選んで削除できる。編集できるのは FROM のオブジェクト自身の、describe で更新可能な項目だけである。保存と削除は sObject Collections で行う。区切り6で作った。設計は [edit.md](edit.md) にある。
 
 ## 未決事項
 

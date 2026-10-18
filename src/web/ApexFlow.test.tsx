@@ -355,6 +355,8 @@ describe('Apex AI', () => {
     const card = await within(codeRegion()).findByRole('region', { name: t.aiProposal })
     expect(within(card).queryByRole('button', { name: t.aiReplaceRun })).toBeNull()
     expect(mocked.aiAgent.mock.calls[0][1]).toMatchObject({ task: 'generateApex', input: { request: '2 と出す', code: "System.debug('one');" } })
+    // No version chosen: none is sent, and the server reads the latest.
+    expect(mocked.aiAgent.mock.calls[0][1]).not.toHaveProperty('apiVersion')
     await userEvent.click(within(card).getByRole('button', { name: t.aiReplace }))
     expect(view.state.doc.toString()).toBe("System.debug('two');")
     expect(mocked.apex).not.toHaveBeenCalled()
@@ -399,5 +401,17 @@ describe('Apex AI', () => {
     expect(mocked.aiAgent.mock.calls[0][1].input).toMatchObject({
       previous: { outcome: 'Ran successfully.', debug: '16:52:14.24 (31275249)|USER_DEBUG|[2]|DEBUG|rows 2' },
     })
+  })
+
+  it('has the AI read the metadata of the API version the code runs on', async () => {
+    mocked.versions.mockResolvedValue({ versions: ['55.0', '66.0'] })
+    mocked.aiAgent.mockResolvedValue({ output: { code: 'x;', explanation: 'ok' } })
+    await openApex()
+    const select = within(codeRegion()).getByLabelText<HTMLSelectElement>(t.apiVersionLabel)
+    await within(select).findByRole('option', { name: '55.0' })
+    await userEvent.selectOptions(select, '55.0')
+    await userEvent.type(within(codeRegion()).getByRole('textbox', { name: t.aiRequestLabel }), 'x{Enter}')
+    await within(codeRegion()).findByRole('region', { name: t.aiProposal })
+    expect(mocked.aiAgent.mock.calls[0][1]).toMatchObject({ task: 'generateApex', apiVersion: '55.0' })
   })
 })

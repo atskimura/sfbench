@@ -82,7 +82,7 @@ export const en = {
   aiNoteOff: 'sfbench calls the AI only when you press Generate or Fix with AI. Off hides everything about AI.',
   aiNoteCost: 'Each call is charged by the provider to your API key.',
   aiNoteSent:
-    'Sent to the AI: names, labels and types of objects and fields, picklist values, the editor text (including values in conditions) and error messages. Query results and records are never sent.',
+    'Sent to the AI: names, labels and types of objects and fields, picklist values, the editor text (including values in conditions) and error messages. SOQL results are never sent. A REST API response or an Apex result is sent only when you press "Use this result with AI".',
   aiNoteKey: 'The key is saved in ~/.sfbench/settings.json on this computer, readable by you only, and never shown in the browser.',
   aiNoteTest: 'Test connection sends short requests with the settings above (unsaved): one for SOQL, and one with tools for REST API and Apex. They cost a few tokens.',
   settingsConnection: 'Connection',

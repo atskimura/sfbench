@@ -15,7 +15,7 @@
 
 次のものは区切り5に入れず、あとの PR にする。
 
-- **Apex の AI**：REST API と同じく、先に `AiContext` を、どの画面でも使う部分と画面ごとの部分に分ける必要がある（利用者と決めた順番で、表での編集のあとに作る）。
+- **Apex の AI**：REST API と同じく、先に `AiContext` を分ける必要があったので、別の PR にした。区切り7で作った（[ai-agent.md](ai-agent.md)）。
 - **選んだ部分だけの実行**（Developer Console の Execute Highlighted）と、Apex の補完。
 
 Apex の実行は、いつもデータを変えうる操作として扱う。
@@ -30,7 +30,7 @@ sf CLI 2.153.5 で、組織のデータを変えない Apex（`System.debug` と
    - 実行時の例外：`{ status: 1, name: 'executeRuntimeFailure', data: { compiled: 'True', exceptionMessage: 'System.MathException: Divide by 0', exceptionStackTrace: 'AnonymousBlock: line 1, column 1', logs: '...' } }`
    - 1回に数秒かかる（sf CLI の起動の分）。
 2. **`sf apex run` の中身は、SOAP の Apex API の executeAnonymous である**（`@salesforce/apex-node`）。DebuggingHeader を付けてログを受け取るので、組織に TraceFlag を作らなくてよい。セッション切れの応答（500 で `INVALID_SESSION_ID`）を受けたときだけ、認証を取り直して1回送り直す（実行されていないので二重にならない）。下で使う HTTP の部品（jsforce）は、POST を送り直さない（送り直すのは GET、PUT、HEAD、OPTIONS、DELETE だけ）。ほかの失敗はすべて `unexpectedExecuteCommandError` で包んで返す。
-3. **Tooling API の REST の executeAnonymous は、デバッグログを返さない。** design.md の「Tooling API の executeAnonymous で実行」は、この文書で書き直す。
+3. **Tooling API の REST の executeAnonymous は、デバッグログを返さない。**
 4. **`-d`（デバッグレベル）は新しい sf CLI にしかない。** 2.149.9 にはなく、渡すと起動前のエラーになる。省いたときの既定はどの版も `DEBUGONLY` である。
 5. **通信の失敗は、送る前か送ったあとかを見分けられない汎用のエラーになる**（`unexpectedExecuteCommandError`）。
 6. **失敗したときの JSON の `message` には、実行時の例外の文やコンパイルエラーの文がそのまま入る。** 例外の文には、レコードの値が入りうる。
@@ -43,7 +43,7 @@ sf CLI 2.153.5 で、組織のデータを変えない Apex（`System.debug` と
 
 `sf apex run` だけを使う。
 
-サーバーの中は `runApex(username, code) → ApexRunResult` という関数で切り、経路を差し替えられるようにしておく。
+サーバーの中は `runApex(username, code, tmpDir, timeoutMs, apiVersion?) → ApexRun` という関数で切り、経路を差し替えられるようにしておく。
 
 - コードは `~/.sfbench/tmp/apex-<乱数>.apex` に権限 600 で書き、`sf apex run -f apex-<乱数>.apex --json` を実行する。引数は固定の文字列と英数字のファイル名だけで、終わったら消す。サーバーが落ちて残ったものは、起動時の `tmp/` の掃除で消える。組織は環境変数 `SF_TARGET_ORG` で渡す（前提の7）。
 - 待つ時間は、設定の「Salesforce の応答を待つ時間」に、sf CLI の起動の分の余裕（15秒）を足したものにする。`runSf` の既定（60秒）には頼らない。時間切れで sf を止めても、Salesforce の側の実行は続く。時間切れ（`SfTimeoutError`）は、REST の sf CLI の経路と同じく `SALESFORCE_TIMEOUT` に写し替える。
@@ -64,7 +64,7 @@ sf CLI 2.153.5 で、組織のデータを変えない Apex（`System.debug` と
 
 ## 応答の形
 
-`POST /api/orgs/:user/apex` は `{ code: string }` を受け取る。
+`POST /api/orgs/:user/apex` は `{ code: string, apiVersion?: string }` を受け取る。
 成功、コンパイルエラー、実行時の例外は、どれも Apex が受け付けた結果なので、200 で次を返す（REST の 4xx をレスポンスとして返すのと同じ考え方）。
 
 ```
@@ -78,14 +78,15 @@ sf CLI 2.153.5 で、組織のデータを変えない Apex（`System.debug` と
 }
 ```
 
-`line` と `column` は、sf CLI の `data.line` と `data.column`（匿名ブロックの中の位置）を使う。呼んだクラスの中で例外が起きても、匿名ブロックの中で呼んだ行を指す。
+`line` と `column` は、sf CLI の `data.line` と `data.column`（匿名ブロックの中の位置）を使う。
+呼んだクラスの中で例外が起きても、匿名ブロックの中で呼んだ行を指す。
 実行していない失敗と、実行したか分からない失敗は、ほかの API と同じエラーの形で返す（「実行の流れ」の表）。
 
 ## 画面の構成
 
 配置は、SOQL と REST API の画面にそろえる。
 
-- **上の段の左：エディタ**。CodeMirror で Apex を色分けする。実行ボタンとコピーを置く。整形は置かない（Apex の整形には、パーサーか外部の道具が要るため）。
+- **上の段の左：エディタ**。いちばん上に AI の入力欄、その下のツールバーに実行ボタンと API バージョンの選択を置き、CodeMirror で Apex を色分けする。整形は置かない（Apex の整形には、パーサーか外部の道具が要るため）。
   エディタの本文は、SOQL のエディタと同じ規則で sessionStorage（`sfbench.apexDraft`）に保存し、同じ組織のまま再読み込みしたときだけ戻す。`--apex` の初期値があれば、それを優先する（`claimEditorText` と同じ）。
 - **上の段の右：実行履歴**。SOQL の最近のクエリ、REST API の実行履歴と同じ位置と幅にし、たためるようにする。各行に、コードの最初の空でない行、時刻、結果の印（成功、コンパイルエラー、例外、応答待ち、不明）を出す。押すとエディタに読み込む（取り消せる1回の変更として入れる。実行はしない）。
 - **境目のボタンで、上の段をたたむ。** たたんでいる間は、実行ボタンとコードの1行目の1行を出す。開閉は `sfbench.apexPanels` に覚える。
@@ -190,7 +191,7 @@ sfbench --apex "<code>" | --apex-file <ファイル>  [-o <組織>]
 - `--apex-file` は、`--body-file` と同じ理由で置く。Apex は文字列に `'` を使うのでシェルの引用符がそろえにくく、Windows ではコマンドラインの長さにも上限がある。2つは同時に指定できない。BOM は取り除く。
 - CLI の入口で、空でないこと、長さの上限、`--query`、`--run`、`--rest` と一緒に使っていないこと、組織が決まることを検査する。
 - `LaunchOptions` に `apex?: { code: string }` を足す。
-- `orgState.ts` の `select` が、`--org` の組織を選んだときだけ作業画面の初期値（`seed.apex`）にする。ほかの組織を選んだときは入れずに案内する（rest.md と同じ）。
+- `orgState.ts` の `select` が、`-o` の組織を選んだときだけ作業画面の初期値（`seed.apex`）にする。ほかの組織を選んだときは入れずに案内する（rest.md と同じ）。
 - 最初の画面を Apex にする。
 
 ## 判定の置き場所
@@ -221,13 +222,16 @@ sfbench --apex "<code>" | --apex-file <ファイル>  [-o <組織>]
 | トークンを扱えない環境（`SFBENCH_TRANSPORT=cli`） | 動く | 動かない（代わりの `api request rest` は XML を送れない） | sf に切り替わる | 動く |
 
 採った理由は、トークンを扱えない環境でも動くこと、区切り5の範囲を小さくすることである。
-正しさに大きな差はない。SOAP を直接呼ぶ案も、トークンの扱いは REST と同じ程度に守れる。
+正しさに大きな差はない。
+SOAP を直接呼ぶ案も、トークンの扱いは REST と同じ程度に守れる。
 1回に数秒かかるのは弱点なので、`runApex` で切っておき、あとから SOAP を直接呼ぶ経路を「両方」の形で足せるようにする。
 最初に考えていたのは「両方」だったが、別のサブエージェントの案で sf CLI の中身が同じ SOAP の呼び出しだと分かり、まず `sf apex run` だけにした。
 
 実行をサーバーのジョブにし、結果を期限付きでメモリに持つ案もある。
-Apex は1回に数秒以上かかり、実行中に再読み込みや組織の切り替えが起きやすい。デバッグログをディスクに残さないので、いまの設計では、再読み込みすると結果もログも戻らない。
-メモリに持てば、ディスクに書かずに取り戻せる。区切り5には入れず、実行履歴の記録の上に、あとから足せる案として残す。
+Apex は1回に数秒以上かかり、実行中に再読み込みや組織の切り替えが起きやすい。
+デバッグログをディスクに残さないので、いまの設計では、再読み込みすると結果もログも戻らない。
+メモリに持てば、ディスクに書かずに取り戻せる。
+区切り5には入れず、実行履歴の記録の上に、あとから足せる案として残す。
 
 ### Apex の色分け
 
@@ -269,7 +273,7 @@ Apex は1回に数秒以上かかり、実行中に再読み込みや組織の�
 
 | # | 選択 | 決めたこと |
 | --- | --- | --- |
-| 1 | ⌘↵ で Apex を実行するか | 実行しない（案内だけ出す）。CLAUDE.md「安全」のとおり、ボタンを押すまで実行しない。誤って実行しないため。REST API の画面の ⌘↵ も同じくやめる（API バージョンの指定の PR で変える） |
+| 1 | ⌘↵ で Apex を実行するか | 実行しない（案内だけ出す）。CLAUDE.md「安全」のとおり、ボタンを押すまで実行しない。誤って実行しないため。REST API の画面の ⌘↵ も同じくやめた |
 | 2 | デバッグレベルを選べるようにするか | 選ばせない（DEBUGONLY に固定） |
 | 3 | 本番でない組織でも、毎回確認するか | 本番だけ |
 | 4 | 実行履歴で同じコードをまとめるか | まとめない |
@@ -278,4 +282,4 @@ Apex は1回に数秒以上かかり、実行中に再読み込みや組織の�
 | 7 | `--apex-file` を置くか | 置く |
 | 8 | サーバーで実行中の Apex があるとき、別のコードの実行でも確認するか | 確認する |
 
-API バージョンを SOQL と Apex の画面で選べるようにすることも決めた（既定は最新）。Apex の画面を作ったあとの PR で入れる。
+API バージョンを SOQL と Apex の画面で選べるようにすることも決めた（既定は最新。web.md「API バージョン」）。
