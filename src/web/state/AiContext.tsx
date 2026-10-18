@@ -1,20 +1,18 @@
-// The SOQL screen's AI (docs/ai.md "画面の状態と遷移"): what is sent and how a
-// proposal is put in. What every screen's AI shares is useAiSession. Inside
-// the workspace, which is remade for each org, so that switching orgs stops a
+// The SOQL screen's AI (docs/ai-agent.md "SOQL をそろえる"): what is sent and
+// how a proposal is put in. The AI reads the org's metadata through tools on
+// the server; what every screen's AI shares is useAiSession. Inside the
+// workspace, which is remade for each org, so that switching orgs stops a
 // request and drops the proposal. Kept apart from the SOQL state so that the
 // AI's steps do not redraw the editor.
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import type { AiStep, Proposal } from '../ai/aiState.ts'
-import { budgetLeft, objectInfo, objectList } from '../ai/objectInfo.ts'
-import { api, type SObjectDescribe } from '../apiClient.ts'
+import { cutRunText } from '../ai/cut.ts'
+import { api, ApiRequestError } from '../apiClient.ts'
 import { t, uiLanguage } from '../i18n/i18n.ts'
 import { fromObjectOf } from '../soql/context.ts'
-import { findByName } from '../soql/namespace.ts'
-import type { NameContext } from '../soql/selection.ts'
-import { describeGlobal, describeSObject } from './describeCache.ts'
 import { usePanels } from './PanelsContext.tsx'
 import { useSoql, type QueryResult } from './SoqlContext.tsx'
-import { AiNotice, useAiSession, type AiSession } from './useAiSession.ts'
+import { browserTimeZone, useAiSession, type AiSession } from './useAiSession.ts'
 
 export type { AiFailure, AiStep, Proposal, Shown } from '../ai/aiState.ts'
 
@@ -37,85 +35,14 @@ type AiValue = AiSession<Proposal, AiStep> & {
 
 const AiContext = createContext<AiValue | undefined>(undefined)
 
-/** Below this much room for fields, the AI would write SOQL without knowing the fields. */
-const MIN_FIELD_BUDGET = 2_000
-
-type Progress = (step: AiStep) => void
-
 /**
- * Generate (docs/ai.md "Generate の流れ"): the AI first chooses the objects,
- * with the open one as a hint only, so that it does not write the query for
- * the open object when the request is about another. Reads only its
- * arguments: the values when it was pressed.
+ * The server's refusal of a text too long to send, in the screen's words:
+ * generating can only be refused for the editor text, fixing for the query
+ * (the error is cut before it is sent). Past the limit of the whole body,
+ * the server refuses before it reads which.
  */
-async function generateSoql(
-  input: {
-    username: string
-    request: string
-    openObject: string | undefined
-    editorText: string
-    tooling: boolean
-    apiVersion: string | undefined
-    names: NameContext
-  },
-  signal: AbortSignal,
-  progress: Progress,
-): Promise<Proposal> {
-  const { username, request, openObject, editorText, tooling, apiVersion, names } = input
-  progress('chooseObjects')
-  const fieldBudget = budgetLeft(request, editorText)
-  if (fieldBudget < MIN_FIELD_BUDGET) throw new AiNotice(t.aiTooLong)
-  const globals = (await describeGlobal(username, tooling, apiVersion)).sobjects
-  // Only an object in this API's list is a hint (not one open before switching to the Tooling API).
-  const open = openObject ? findByName(globals, openObject, names.ns)?.name : undefined
-  const { output: chosen } = await api.aiGenerate(
-    {
-      task: 'chooseObjects',
-      input: { request, objects: objectList(globals, names, budgetLeft(request)), ...(open ? { openObject: open } : {}), tooling, language: uiLanguage },
-    },
-    signal,
-  )
-  // Back to the names as the list holds them (the server matched them with the list,
-  // ignoring case and namespace, and dropped repeats).
-  const objects = chosen.objects.map((o) => findByName(globals, o, names.ns)?.name).filter((o): o is string => Boolean(o))
-  if (objects.length === 0) throw new AiNotice(t.aiNoObjects)
-  progress('loadFields')
-  const describes: SObjectDescribe[] = await Promise.all(objects.map((o) => describeSObject(username, o, tooling, apiVersion)))
-  progress('generate')
-  const { output } = await api.aiGenerate(
-    { task: 'generateSoql', input: { request, objectInfo: objectInfo(describes, names, fieldBudget), editorText, tooling, language: uiLanguage } },
-    signal,
-  )
-  return { ...output, tooling, apiVersion, prompt: request }
-}
-
-/** Fix with AI: the query as it was run, not what the editor holds now. */
-async function fixSoql(
-  input: { username: string; error: string; rejected: Rejected; names: NameContext },
-  signal: AbortSignal,
-  progress: Progress,
-): Promise<Proposal> {
-  const { username, error, names } = input
-  // The version it ran on, not the one chosen now.
-  const { soql, tooling, apiVersion, prompt } = input.rejected
-  progress('loadFields')
-  const fieldBudget = budgetLeft(soql, error)
-  if (fieldBudget < MIN_FIELD_BUDGET) throw new AiNotice(t.aiTooLong)
-  const globals = (await describeGlobal(username, tooling, apiVersion)).sobjects
-  const from = fromObjectOf(soql)
-  // An object the org does not have may be the error itself: then no fields are sent.
-  const object = from ? findByName(globals, from, names.ns) : undefined
-  const describes = object ? [await describeSObject(username, object.name, tooling, apiVersion)] : []
-  progress('fix')
-  const { output } = await api.aiGenerate(
-    {
-      task: 'fixSoql',
-      input: { soql, error, objectInfo: describes.length ? objectInfo(describes, names, fieldBudget) : '', tooling, language: uiLanguage },
-    },
-    signal,
-  )
-  // The fixed query keeps the request of the query it fixes, if that one had one.
-  return { ...output, tooling, apiVersion, prompt }
+const tooLong = (message: string) => (e: unknown) => {
+  throw e instanceof ApiRequestError && (e.code === 'AI_INPUT_TOO_LONG' || e.code === 'PAYLOAD_TOO_LARGE') ? new Error(message) : e
 }
 
 export function AiProvider({ username, children }: { username: string; children: ReactNode }) {
@@ -132,16 +59,26 @@ export function AiProvider({ username, children }: { username: string; children:
   const generate = useCallback(() => {
     const text = request.trim()
     if (!text || availability !== 'ready') return
+    // The values when it was pressed: the body reads only these.
+    const { tooling, apiVersion, panelObject } = soql
+    const editor = editorChip ? soql.getText() : ''
     const input = {
-      username,
       request: text,
-      openObject: soql.panelObject,
-      editorText: editorChip ? soql.getText() : '',
-      tooling: soql.tooling,
-      apiVersion: soql.apiVersion,
-      names: soql.names,
+      tooling,
+      language: uiLanguage,
+      timeZone: browserTimeZone(),
+      ...(editor.trim() ? { editor } : {}),
+      // The open object is a hint only: the AI still chooses (docs/ai-agent.md "タスク").
+      ...(panelObject ? { openObject: panelObject } : {}),
     }
-    start((signal, progress) => generateSoql(input, signal, progress), getText)
+    start(async (signal, progress) => {
+      progress('think')
+      const { output } = await api
+        .aiAgent(username, { task: 'generateSoql', input, ...(apiVersion ? { apiVersion } : {}) }, signal)
+        // Without the editor text, only the request can make the body too large.
+        .catch(tooLong(editor.trim() ? t.aiEditorTooLong : t.aiRequestTooLong))
+      return { ...output, tooling, apiVersion, prompt: text }
+    }, getText)
   }, [request, availability, username, editorChip, soql, start, getText])
 
   const fix = useCallback(
@@ -149,10 +86,19 @@ export function AiProvider({ username, children }: { username: string; children:
       if (availability !== 'ready') return
       // The proposal shows above the editor.
       setOpen('editor', true)
-      const input = { username, error, rejected, names: soql.names }
-      start((signal, progress) => fixSoql(input, signal, progress), getText)
+      // The query as it was run, on its API and version, not what the editor holds now.
+      const { soql: query, tooling, apiVersion, prompt } = rejected
+      const object = fromObjectOf(query)
+      // Salesforce's error, as the REST API and Apex screens send theirs (src/web/ai/cut.ts).
+      const input = { soql: query, error: cutRunText(error), tooling, language: uiLanguage, timeZone: browserTimeZone(), ...(object ? { object } : {}) }
+      start(async (signal, progress) => {
+        progress('think')
+        const { output } = await api.aiAgent(username, { task: 'fixSoql', input, ...(apiVersion ? { apiVersion } : {}) }, signal).catch(tooLong(t.aiQueryTooLong))
+        // The fixed query keeps the request of the query it fixes, if that one had one.
+        return { ...output, tooling, apiVersion, prompt }
+      }, getText)
     },
-    [availability, setOpen, username, soql.names, start, getText],
+    [availability, setOpen, username, start, getText],
   )
 
   const { applyProposal } = soql

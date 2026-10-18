@@ -6,6 +6,14 @@ import { checkOrgConnections, listOrgs, reloginCommand } from './sf/commands.ts'
 
 export type Described = { body: unknown; fetchedAt: string }
 
+/** Which describe: the Tooling API's or the data API's, and a version the user chose (the latest when left out). */
+export type DescribeAt = { tooling: boolean; version: string | undefined }
+
+/** A version the screen chose is cached apart from the latest (docs/web.md "API バージョン"). */
+function keyPrefix(at: DescribeAt): string {
+  return at.version ? `v${at.version}:` : ''
+}
+
 export class OrgRegistry {
   private readonly tmpDir: string
   private readonly forceCli: boolean
@@ -103,8 +111,28 @@ export class OrgRegistry {
     return pending
   }
 
-  /** A cached describe result with the time it was fetched. `key` is "global" or an sObject name. */
-  cachedDescribe(client: OrgClient, key: string, refresh: boolean, load: () => Promise<unknown>): Promise<Described> {
+  /**
+   * The org's object list (describeGlobal), cached. The screen's list and the
+   * AI's tools read the same entry (docs/ai-agent.md "SOQL のときのツール").
+   */
+  describeGlobal(client: OrgClient, at: DescribeAt, refresh = false): Promise<Described> {
+    return this.cachedDescribe(client, `${keyPrefix(at)}${at.tooling ? 'tooling:global' : 'global'}`, refresh, async () => {
+      const version = await client.version(at.version)
+      return (await client.request({ method: 'GET', path: `/services/data/v${version}/${at.tooling ? 'tooling/' : ''}sobjects/` })).body
+    })
+  }
+
+  /** One object's describe, cached. Throws SalesforceError (404) when the org has no such object. */
+  describeObject(client: OrgClient, name: string, at: DescribeAt, refresh = false): Promise<Described> {
+    // "object:": an object named like the list's key ("global") is never taken for the list.
+    return this.cachedDescribe(client, `${keyPrefix(at)}${at.tooling ? 'tooling:' : ''}object:${name}`, refresh, async () => {
+      const version = await client.version(at.version)
+      return (await client.request({ method: 'GET', path: `/services/data/v${version}/${at.tooling ? 'tooling/' : ''}sobjects/${name}/describe/` })).body
+    })
+  }
+
+  /** A cached describe result with the time it was fetched. */
+  private cachedDescribe(client: OrgClient, key: string, refresh: boolean, load: () => Promise<unknown>): Promise<Described> {
     const cacheKey = `${client.username}\n${key}`
     let pending = this.sobjects.get(cacheKey)
     if (refresh || !pending) {

@@ -1,20 +1,25 @@
-// The AI writing a REST API request or Apex while reading the org's metadata
-// through tools (docs/ai-agent.md "サーバー"): the exchange, its limits, and
-// the final answer through the submit tool.
+// The AI writing SOQL, a REST API request or Apex while reading the org's
+// metadata through tools (docs/ai-agent.md "サーバー"): the exchange, its
+// limits, and the final answer through the submit tool.
 import type { AgentOutput, AgentTask, AgentTaskRequest } from '../../shared/api.ts'
 import type { StoredAiSettings } from '../store.ts'
-import { agentPrompt, checkAgentOutput } from './agentTasks.ts'
+import { agentPrompt, checkAgentOutput, type Given } from './agentTasks.ts'
 import { anthropicConversation } from './anthropic.ts'
 import type { Conversation, ConversationRequest, ToolSpec } from './conversation.ts'
 import { AiError } from './errors.ts'
-import { AI_TIMEOUT_MS } from './generate.ts'
 import { openAiConversation } from './openai.ts'
-import { METADATA_TOOLS, runTool, type MetadataSource } from './tools.ts'
+import { findObject, MAX_READ_BYTES, METADATA_TOOLS, newReadState, readObject, runTool, shown, type MetadataSource, type ReadState } from './tools.ts'
+
+/** Local models are out, but large models can still take minutes (docs/ai.md "API"). */
+export const AI_TIMEOUT_MS = 300_000
 
 /** The most metadata tool calls in one request (docs/ai-agent.md). */
-export const MAX_TOOL_CALLS = 6
-/** The most text the tools return in one request: the same budget as the SOQL AI. */
+export const MAX_TOOL_CALLS = 8
+/** The most text the tools return in one request, about 30,000 tokens. */
 export const MAX_TOOL_BYTES = 100_000
+
+/** Which limit stops the tools: the text they return, or else the number of calls. */
+const limitName = (toolBytes: number) => (toolBytes >= MAX_TOOL_BYTES ? `the limit of what the tools return (${MAX_TOOL_BYTES / 1000} KB)` : `the limit of ${MAX_TOOL_CALLS} tool calls`)
 
 const CONVERSATIONS: Record<'anthropic' | 'openai', (req: ConversationRequest) => Conversation> = {
   anthropic: anthropicConversation,
@@ -29,9 +34,9 @@ export function todayIn(timeZone: string, now = new Date()): string {
 }
 
 /**
- * The tiny request of "Test connection" for tools (docs/ai-agent.md "接続を試す"):
- * proves the model calls tools, submit included, before the REST API or Apex
- * screen finds out. The org is not read: the tools find nothing.
+ * The tiny request of "Test connection" (docs/ai-agent.md "接続を確かめる"):
+ * proves the model calls tools, submit included, before a screen finds out.
+ * The org is not read: the tools find nothing.
  */
 export const TEST_AGENT_REQUEST: AgentTaskRequest & { task: 'generateApex' } = {
   task: 'generateApex',
@@ -40,23 +45,21 @@ export const TEST_AGENT_REQUEST: AgentTaskRequest & { task: 'generateApex' } = {
 export const NO_METADATA: MetadataSource = { objects: async () => [], describe: async () => undefined }
 
 /**
- * A tool's result within what is left of the budget: whole lines from the
- * start, and a note that it was cut, so that one large describe cannot go far
- * past the budget and be sent again with every turn.
+ * What the screen named, matched against the org's objects: the open object
+ * as a hint, and the fields of the object a failed query read from
+ * (docs/ai-agent.md "タスク"). A name the org does not have is left out.
  */
-export function cutToBudget(text: string, budget: number): string {
-  if (encoder.encode(text).length <= budget) return text
-  const note = '\n(Cut here: the limit of what the tools return is reached. Answer with what you have.)'
-  const room = Math.max(0, budget - encoder.encode(note).length)
-  const kept: string[] = []
-  let used = 0
-  for (const line of text.split('\n')) {
-    const size = encoder.encode(line).length + 1
-    if (used + size > room) break
-    kept.push(line)
-    used += size
+async function givenMetadata(req: AgentTaskRequest, source: MetadataSource, state: ReadState): Promise<Given> {
+  if (req.task === 'generateSoql' && req.input.openObject) {
+    const open = await findObject(source, req.input.openObject)
+    return open ? { openObject: shown(source, open.name) } : {}
   }
-  return kept.join('\n') + note
+  if (req.task === 'fixSoql' && req.input.object) {
+    // Within one result, so that the AI can still find fields with what is left.
+    const fields = await readObject(source, req.input.object, MAX_READ_BYTES, state)
+    return fields ? { fields } : {}
+  }
+  return {}
 }
 
 export type AgentRun<T extends AgentTask> = {
@@ -86,16 +89,6 @@ export async function runAgent<T extends AgentTask>(
   const timeout = new AbortController()
   const timer = setTimeout(() => timeout.abort(), timeoutMs)
   const both = AbortSignal.any([signal, timeout.signal])
-  const prompt = agentPrompt(req, apiVersion, todayIn(req.input.timeZone))
-  const submit: ToolSpec = { name: 'submit', description: 'Gives the final answer. Call it once, when done.', schema: prompt.submitSchema }
-  const conversation = CONVERSATIONS[ai.provider]({
-    apiKey: ai.apiKey,
-    model: ai.model,
-    system: prompt.system,
-    user: prompt.user,
-    tools: [...METADATA_TOOLS, submit],
-    signal: both,
-  })
   let aiCalls = 0
   let toolCalls = 0
   let toolBytes = 0
@@ -103,6 +96,21 @@ export async function runAgent<T extends AgentTask>(
   let nudgedToSubmit = false
   let nudgedAtLimit = false
   try {
+    // What the AI has read in this request: objects read in full are not sent again.
+    const state = newReadState()
+    const given = await givenMetadata(req, source, state)
+    // Fields given from the start count against the budget as the tools' results do.
+    if (given.fields) toolBytes += encoder.encode(given.fields).length
+    const prompt = agentPrompt(req, apiVersion, todayIn(req.input.timeZone), given)
+    const submit: ToolSpec = { name: 'submit', description: 'Gives the final answer. Call it once, when done.', schema: prompt.submitSchema }
+    const conversation = CONVERSATIONS[ai.provider]({
+      apiKey: ai.apiKey,
+      model: ai.model,
+      system: prompt.system,
+      user: prompt.user,
+      tools: [...METADATA_TOOLS, submit],
+      signal: both,
+    })
     // Each turn either calls tools (counted, so it ends) or uses up a nudge.
     for (;;) {
       const turn = await conversation.next()
@@ -116,10 +124,10 @@ export async function runAgent<T extends AgentTask>(
         continue
       }
       if (toolCalls >= MAX_TOOL_CALLS || toolBytes >= MAX_TOOL_BYTES) {
-        if (nudgedAtLimit) throw new AiError('AI_BAD_OUTPUT', `The AI kept reading the org's metadata past the limit (${MAX_TOOL_CALLS} calls).`)
+        if (nudgedAtLimit) throw new AiError('AI_BAD_OUTPUT', `The AI kept reading the org's metadata past the limit (${limitName(toolBytes)}).`)
         nudgedAtLimit = true
         // Every call of the turn needs its answer before anything else can be said.
-        conversation.answer(turn.calls.map((c) => ({ id: c.id, content: 'Not run: the limit of tool calls is reached. Call submit now with your best answer.' })))
+        conversation.answer(turn.calls.map((c) => ({ id: c.id, content: `Not run: ${limitName(toolBytes)} is reached. Call submit now with your best answer.` })))
         continue
       }
       const results = []
@@ -128,7 +136,7 @@ export async function runAgent<T extends AgentTask>(
         if (both.aborted) throw both.reason
         toolCalls++
         const over = toolCalls > MAX_TOOL_CALLS || toolBytes >= MAX_TOOL_BYTES
-        const content = over ? 'Not run: the limit of tool calls is reached. Call submit now.' : cutToBudget(await runTool(source, call.name, call.input), MAX_TOOL_BYTES - toolBytes)
+        const content = over ? `Not run: ${limitName(toolBytes)} is reached. Call submit now.` : await runTool(source, call.name, call.input, MAX_TOOL_BYTES - toolBytes, state)
         toolBytes += encoder.encode(content).length
         results.push({ id: call.id, content })
       }

@@ -11,7 +11,7 @@ import {
   type Query,
   type Subquery,
 } from 'soql-parser-js'
-import { nameKey, soqlName } from './namespace.ts'
+import { nameKey, soqlName } from '../../shared/namespace.ts'
 
 export type NameContext = {
   /** The org's namespace prefix. */

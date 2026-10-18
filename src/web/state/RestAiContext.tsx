@@ -4,20 +4,18 @@
 // proposal is put in. Inside the workspace, which is remade for each org.
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import type { AgentRestRequest, RestProposalOutput } from '../../shared/api.ts'
+import type { AiStep } from '../ai/aiState.ts'
 import { cutRunText } from '../ai/cut.ts'
 import { api } from '../apiClient.ts'
 import { uiLanguage } from '../i18n/i18n.ts'
 import type { RestSnapshot } from '../rest/request.ts'
 import { useRest } from './RestContext.tsx'
-import { useAiSession, type AiSession } from './useAiSession.ts'
-
-/** One step only: how often the AI reads the metadata is not known ahead (docs/ai-agent.md "画面"). */
-export type AgentStep = 'think'
+import { browserTimeZone, useAiSession, type AiSession } from './useAiSession.ts'
 
 /** A proposal, and whether it fixes a request that failed (the card says so). */
 export type RestProposal = RestProposalOutput & { fixing: boolean }
 
-type RestAiValue = AiSession<RestProposal, AgentStep> & {
+type RestAiValue = AiSession<RestProposal, AiStep> & {
   /** Whether the request fields hold something to send. */
   hasCurrent: boolean
   /** Whether the request now is sent: unticking holds for this workspace. */
@@ -41,15 +39,13 @@ type RestAiValue = AiSession<RestProposal, AgentStep> & {
 
 const RestAiContext = createContext<RestAiValue | undefined>(undefined)
 
-const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-
 function agentRequest(r: { method: AgentRestRequest['method']; path: string; body?: string }): AgentRestRequest {
   return { method: r.method, path: r.path, body: r.body ?? '' }
 }
 
 export function RestAiProvider({ username, children }: { username: string; children: ReactNode }) {
   const rest = useRest()
-  const session = useAiSession<RestProposal, AgentStep>(username)
+  const session = useAiSession<RestProposal, AiStep>(username)
   // Unsent once the user says so, until the workspace goes (as the SOQL editor's pill).
   const [sendCurrent, setSendCurrent] = useState(true)
   const [sendPrevious, setSendPrevious] = useState(false)
@@ -77,7 +73,7 @@ export function RestAiProvider({ username, children }: { username: string; child
     const previous = sendPrevious && last ? { status: last.status, body: cutRunText(last.body) } : undefined
     // Sent once: the record values in it do not go along with the requests after this one.
     if (previous && !session.running) setSendPrevious(false)
-    const input = { request: text, language: uiLanguage, timeZone: timeZone(), ...(current ? { current } : {}), ...(previous ? { previous } : {}) }
+    const input = { request: text, language: uiLanguage, timeZone: browserTimeZone(), ...(current ? { current } : {}), ...(previous ? { previous } : {}) }
     start(async (signal, progress) => {
       progress('think')
       const { output } = await api.aiAgent(username, { task: 'generateRest', input }, signal)
@@ -88,7 +84,7 @@ export function RestAiProvider({ username, children }: { username: string; child
   const fix = useCallback(
     (sent: RestSnapshot, status: number, responseBody: string) => {
       if (availability !== 'ready') return
-      const input = { sent: agentRequest(sent), status, responseBody: cutRunText(responseBody), language: uiLanguage, timeZone: timeZone() }
+      const input = { sent: agentRequest(sent), status, responseBody: cutRunText(responseBody), language: uiLanguage, timeZone: browserTimeZone() }
       start(async (signal, progress) => {
         progress('think')
         const { output } = await api.aiAgent(username, { task: 'fixRest', input }, signal)

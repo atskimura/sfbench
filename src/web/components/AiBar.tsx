@@ -129,14 +129,13 @@ export function AiBar() {
   return (
     <AiInput
       session={ai}
-      stepText={ai.step && t.aiStep[ai.step]}
+      stepText={ai.step && t.aiThinking}
       onGenerate={ai.generate}
       placeholder={t.aiPlaceholder}
       sends={
         <>
-          {/* Always sent: shown as fixed pills, apart from the one that can be switched. */}
-          <SendFixed text={t.aiSendObjectList} title={ai.panelObject ? t.aiOpenObjectHint(ai.panelObject) : undefined} />
-          <SendFixed text={t.aiSendChosenFields} />
+          {/* Always sent: a fixed pill, apart from the one that can be switched. */}
+          <SendFixed text={t.aiSendMetadata} title={ai.panelObject ? t.aiOpenObjectHint(ai.panelObject) : undefined} />
           {ai.hasEditorText && <Send text={t.aiEditorChip} checked={ai.sendEditor} onChange={ai.setSendEditor} />}
         </>
       }

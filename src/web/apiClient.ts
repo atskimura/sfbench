@@ -1,8 +1,5 @@
 // Calls the local sfbench server. See docs/design.md ("API") and docs/web.md ("エラーの扱い").
 import type {
-  AiOutput,
-  AiTask,
-  AiTaskRequest,
   AiTestRequest,
   AiTestResponse,
   AgentOutput,
@@ -175,9 +172,6 @@ export const api = {
   openOrg: (username: string, signal?: AbortSignal) => request<{ ok: true }>('POST', `${org(username)}/open`, undefined, signal),
   settings: (signal?: AbortSignal) => request<Settings>('GET', '/api/settings', undefined, signal),
   saveSettings: (settings: SettingsUpdate, signal?: AbortSignal) => request<Settings>('PUT', '/api/settings', settings, signal),
-  aiGenerate: <T extends AiTask>(req: AiTaskRequest & { task: T }, signal?: AbortSignal) =>
-    request<{ output: AiOutput<T> }>('POST', '/api/ai/generate', req, signal),
-  /** The AI writing a REST API request or Apex, reading the org's metadata through tools (docs/ai-agent.md). */
   aiAgent: <T extends AgentTask>(username: string, body: AgentRequest & { task: T }, signal?: AbortSignal) =>
     request<{ output: AgentOutput<T> }>('POST', `${org(username)}/ai/agent`, body, signal),
   aiTest: (body: AiTestRequest, signal?: AbortSignal) => request<AiTestResponse>('POST', '/api/ai/test', body, signal),
