@@ -1,13 +1,15 @@
-// The Node.js versions sfbench runs on, as package.json "engines" says:
-// 22.21.0 or later in the 22 line, or 24.5.0 or later. Older ones lack
-// --use-env-proxy, which the server is started with, and the server dies at
-// once (docs/design.md "プロキシ").
+// Whether this Node.js can run the sfbench server, which is started with
+// --use-env-proxy (docs/design.md "プロキシ"). Node.js has it from 22.21.0 and
+// 24.5.0 (package.json "engines"); an older one refuses the option and the
+// server dies at once. The option itself is checked, not the version.
 
 /** Why this Node.js cannot run sfbench, with what to do; undefined when it can. */
-export function unsupportedNode(version: string = process.versions.node, execPath: string = process.execPath): string | undefined {
-  const [major, minor] = version.split('.').map(Number)
-  const supported = (major === 22 && minor >= 21) || (major === 24 && minor >= 5) || major > 24
-  if (supported) return undefined
+export function unsupportedNode(
+  hasEnvProxy: boolean = process.allowedNodeEnvironmentFlags.has('--use-env-proxy'),
+  version: string = process.versions.node,
+  execPath: string = process.execPath,
+): string | undefined {
+  if (hasEnvProxy) return undefined
   return [
     `sfbench needs Node.js 22.21.0 or later in the 22 line, or 24.5.0 or later, but this is Node.js ${version} (${execPath}).`,
     'A version manager (asdf, nvm, mise and the like) may pick an older Node.js in this folder.',

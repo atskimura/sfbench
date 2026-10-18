@@ -73,7 +73,7 @@ Claude Code のシェルのサンドボックスを有効にしていると（`/
 `~/.claude/settings.json` に次を足して、sfbench だけをサンドボックスの外で動かしてください。
 
 ```json
-"sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench"] }
+"sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench", "npx -y -p node@24 -p sfbench -- sfbench *"] }
 ```
 
 ## AI が使えない

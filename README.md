@@ -111,7 +111,7 @@ If you turned on Claude Code's command sandbox (`/sandbox`), sfbench cannot star
 Let sfbench alone run outside the sandbox by adding this to `~/.claude/settings.json`:
 
 ```json
-"sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench"] }
+"sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench", "npx -y -p node@24 -p sfbench -- sfbench *"] }
 ```
 
 With the skill, ask Claude Code to "list the won opportunities in sfbench", and it writes the SOQL and starts sfbench like this:

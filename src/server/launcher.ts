@@ -87,21 +87,38 @@ type Started = {
   ended: () => boolean
   /** What the server wrote to stderr: why it ended, when it could not write its log. */
   stderr: () => string
+  /** Where that is, in full; undefined when it could not be kept. */
+  stderrFile: string | undefined
+}
+
+/**
+ * Opens a file for the server's stderr, one per start, so that a server still
+ * running from before keeps its own. The server removes it once it listens
+ * (serve.ts): it is kept only to tell why a start failed. Undefined when it
+ * cannot be opened; the server then starts with its stderr ignored.
+ */
+function openStderrFile(paths: Paths): { file: string; fd: number } | undefined {
+  const file = join(paths.tmpDir, `server-stderr-${Date.now()}-${process.pid}.log`)
+  try {
+    return { file, fd: openSync(file, 'w', 0o600) }
+  } catch {
+    return undefined
+  }
 }
 
 function startServer(paths: Paths): Started {
   // cli.js next to this file when installed; cli.ts when run from the sources.
   const cli = fileURLToPath(new URL(import.meta.url.endsWith('.ts') ? './cli.ts' : './cli.js', import.meta.url))
-  // The server's stderr goes to a file: Node.js refusing to start it (an unknown
-  // option, a missing module) says so there, before the server can log anything.
-  const stderrFile = join(paths.tmpDir, 'server-stderr.log')
-  const fd = openSync(stderrFile, 'w', 0o600)
+  // Node.js refusing to start the server (an unknown option, a missing module)
+  // says so on stderr, before the server can log anything.
+  const stderr = openStderrFile(paths)
   let ended = false
   try {
     const child = spawn(process.execPath, ['--use-env-proxy', cli, 'serve'], {
       cwd: paths.tmpDir,
       detached: true,
-      stdio: ['ignore', 'ignore', fd],
+      stdio: ['ignore', 'ignore', stderr ? stderr.fd : 'ignore'],
+      env: { ...process.env, ...(stderr ? { SFBENCH_STDERR_FILE: stderr.file } : {}) },
       windowsHide: true,
     })
     child.on('exit', () => (ended = true))
@@ -112,15 +129,17 @@ function startServer(paths: Paths): Started {
       pid: child.pid,
       ended: () => ended,
       stderr: () => {
+        if (!stderr) return ''
         try {
-          return readFileSync(stderrFile, 'utf8').trim().slice(0, 2000)
+          return readFileSync(stderr.file, 'utf8').trim().slice(0, 2000)
         } catch {
           return ''
         }
       },
+      stderrFile: stderr?.file,
     }
   } finally {
-    closeSync(fd)
+    if (stderr) closeSync(stderr.fd)
   }
 }
 
@@ -148,7 +167,8 @@ async function ensureServer(paths: Paths): Promise<ServerInfo> {
     if (info?.pid === server.pid && (await health(info)) !== undefined) return info
   }
   const said = server.stderr()
-  throw new UserError(`The sfbench server did not start${said ? `:\n${said}` : '.'}\nSee ${paths.serverLog}.`)
+  const files = [paths.serverLog, ...(server.stderrFile ? [server.stderrFile] : [])].join(' and ')
+  throw new UserError(`The sfbench server did not start${said ? `:\n${said}` : '.'}\nSee ${files}.`)
 }
 
 async function resolveOrg(options: OpenOptions): Promise<string | undefined> {

@@ -72,7 +72,7 @@ With Claude Code's command sandbox turned on (`/sandbox`), sfbench cannot start:
 Add this to `~/.claude/settings.json` so that sfbench alone runs outside the sandbox:
 
 ```json
-"sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench"] }
+"sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench", "npx -y -p node@24 -p sfbench -- sfbench *"] }
 ```
 
 ## The AI does not work

@@ -3,7 +3,7 @@
 import { randomBytes } from 'node:crypto'
 import { readdirSync, rmSync, statSync } from 'node:fs'
 import type { Server } from 'node:http'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { readJson, writeFileAtomic } from './fsutil.ts'
 import { App } from './http/server.ts'
 import { initLog, log } from './log.ts'
@@ -60,6 +60,22 @@ function cleanTmp(dir: string): void {
   }
 }
 
+/**
+ * Removes the file the CLI kept this server's stderr in, once it listens: it
+ * was only to tell why a start failed, and must not keep growing while the
+ * server runs (launcher.ts). Only a file of that name in tmp/ is removed.
+ * Windows may refuse to remove an open file; it is then cleared with tmp/.
+ */
+function removeStderrFile(paths: Paths): void {
+  const file = process.env.SFBENCH_STDERR_FILE
+  if (!file || dirname(file) !== paths.tmpDir || !/^server-stderr-[\w-]+\.log$/.test(basename(file))) return
+  try {
+    rmSync(file, { force: true })
+  } catch {
+    // Kept until tmp/ is cleaned.
+  }
+}
+
 export async function serve(dev: boolean): Promise<void> {
   const paths = resolvePaths(dev)
   ensureDirs(paths)
@@ -110,6 +126,7 @@ export async function serve(dev: boolean): Promise<void> {
       // never sees a server.json for a server that is not ready.
       writeServerInfo(paths.serverJson, { port, adminToken, pid: process.pid, version })
       log.info(`sfbench ${version} listening on 127.0.0.1:${port}${dev ? ' (dev)' : ''}`)
+      removeStderrFile(paths)
       break
     }
   }

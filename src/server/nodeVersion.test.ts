@@ -2,12 +2,17 @@ import { describe, expect, it } from 'vitest'
 import { unsupportedNode } from './nodeVersion.ts'
 
 describe('unsupportedNode', () => {
-  it('takes the versions of package.json "engines"', () => {
-    for (const v of ['22.21.0', '22.22.1', '24.5.0', '24.11.0', '25.0.0']) expect(unsupportedNode(v, '/n')).toBeUndefined()
+  it('takes a Node.js that has --use-env-proxy', () => {
+    expect(unsupportedNode(true, '24.11.0', '/n')).toBeUndefined()
   })
 
-  it('says why an older one cannot run sfbench, and how to run it anyway', () => {
-    for (const v of ['22.12.0', '22.20.9', '23.11.0', '24.4.1', '20.18.0']) expect(unsupportedNode(v, '/n')).toContain(`this is Node.js ${v} (/n)`)
-    expect(unsupportedNode('22.12.0', '/n')).toContain('npx -y -p node@24 -p sfbench -- sfbench')
+  it('says why one without it cannot run sfbench, and how to run it anyway', () => {
+    const message = unsupportedNode(false, '22.12.0', '/n')
+    expect(message).toContain('this is Node.js 22.12.0 (/n)')
+    expect(message).toContain('npx -y -p node@24 -p sfbench -- sfbench')
+  })
+
+  it('is right about the Node.js running the tests, which is a supported one', () => {
+    expect(unsupportedNode()).toBeUndefined()
   })
 })

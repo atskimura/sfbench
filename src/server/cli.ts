@@ -43,6 +43,12 @@ Examples for AI agents:
 `
 
 async function main(): Promise<void> {
+  // First, before the arguments: an older Node.js may not parse them (--no-open).
+  // Help, the version and stop start no server, so they work on any.
+  const args = process.argv.slice(2)
+  const startsNoServer = args[0] === 'stop' || args.some((a) => ['-h', '--help', '-v', '--version'].includes(a))
+  const tooOld = startsNoServer ? undefined : unsupportedNode()
+  if (tooOld) throw new UserError(tooOld)
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     allowNegative: true,
@@ -73,9 +79,6 @@ async function main(): Promise<void> {
     process.stdout.write(`${packageVersion()}\n`)
     return
   }
-  // Before anything starts the server, which an older Node.js cannot run (stop only talks to it).
-  const tooOld = command === 'stop' ? undefined : unsupportedNode()
-  if (tooOld) throw new UserError(tooOld)
   // `serve` is internal: the background server process. --dev runs it in the foreground for development.
   if (command === 'serve' || values.dev) {
     await serve(values.dev)
