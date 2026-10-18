@@ -297,8 +297,8 @@ export type ApiErrorCode =
   | 'SALESFORCE_UNREACHABLE'
   /** The org is not in the org list (any other unknown path is NOT_FOUND). */
   | 'ORG_NOT_FOUND'
-  /** The history could not be written, so Apex was not run (docs/apex.md "実行履歴"). */
-  | 'HISTORY_UNAVAILABLE'
+  /** sfbench could not prepare the run (the history or the code's file could not be written), so Apex was not run (docs/apex.md "実行履歴"). */
+  | 'NOT_RUN'
   | 'AI_NOT_CONFIGURED'
   | 'AI_ERROR'
   | 'AI_BAD_OUTPUT'

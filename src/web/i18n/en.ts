@@ -13,6 +13,7 @@ export const en = {
   unknownLaunchOrg: (name: string) => `The sf CLI has no org named ${name}. Pick one from the list.`,
   salesforceTimeout: 'Salesforce did not respond in time. It may still have processed the request. You can wait longer in the settings.',
   salesforceUnreachable: 'The connection to Salesforce broke while sending the request. Salesforce may already have processed it, so sfbench did not send it again. Check the result in Salesforce.',
+  notRun: 'sfbench could not write its history or temporary file in ~/.sfbench, so the code was not run. Check the disk space and permissions.',
   orgAuthError: 'Session expired. Log in again from a terminal:',
   openOrg: 'Open the org in your browser, logged in',
   openingOrg: 'Opening…',

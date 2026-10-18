@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('./run.ts', async (importOriginal) => ({ ...(await importOriginal<typeof import('./run.ts')>()), runSf: vi.fn() }))
 
 const { runSf } = await import('./run.ts')
-const { parseApexOutput, runApex, ApexRunError } = await import('./apexRun.ts')
+const { parseApexOutput, runApex, ApexFileError, ApexRunError } = await import('./apexRun.ts')
 const { OrgAuthError } = await import('./errors.ts')
 const runMock = vi.mocked(runSf)
 const fixture = (name: string) => readFileSync(join(import.meta.dirname, '__fixtures__', name), 'utf8')
@@ -40,6 +40,18 @@ describe('parseApexOutput', () => {
     json.message = 'Execution failed: System.CalloutException: invalid_grant'
     json.data.exceptionMessage = 'System.CalloutException: invalid_grant'
     expect(parseApexOutput(JSON.stringify(json), '').kind).toBe('ran')
+  })
+
+  it('takes a run failure without its data for unknown, even when it mentions invalid_grant', () => {
+    expect(parseApexOutput(JSON.stringify({ status: 1, name: 'executeRuntimeFailure', message: 'System.CalloutException: invalid_grant' }), '')).toMatchObject({
+      kind: 'failed',
+      sfName: 'executeRuntimeFailure',
+    })
+  })
+
+  it('takes a run without a compile flag for a run, never for a compile error', () => {
+    expect(parseApexOutput(JSON.stringify({ status: 0, result: { success: true, logs: '' } }), '')).toMatchObject({ kind: 'ran', run: { result: 'success' } })
+    expect(parseApexOutput(JSON.stringify({ status: 0, result: { logs: '' } }), '')).toMatchObject({ kind: 'ran', run: { result: 'runtimeError' } })
   })
 
   it('takes a login error before running for a lost login, and anything else for unknown', () => {
@@ -81,5 +93,10 @@ describe('runApex', () => {
     await expect(runApex('u@example.com', 'x', dir, 1000)).rejects.toBeInstanceOf(OrgAuthError)
     runMock.mockResolvedValueOnce({ stdout: JSON.stringify({ status: 1, name: 'unexpectedExecuteCommandError', message: 'boom' }), stderr: '', exitCode: 1 })
     await expect(runApex('u@example.com', 'x', dir, 1000)).rejects.toBeInstanceOf(ApexRunError)
+  })
+
+  it('does not start sf when the code cannot be written', async () => {
+    await expect(runApex('u@example.com', 'x', join(dir, 'missing'), 1000)).rejects.toBeInstanceOf(ApexFileError)
+    expect(runMock).not.toHaveBeenCalled()
   })
 })

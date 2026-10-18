@@ -34,6 +34,14 @@ export class ApexRunError extends Error {
   }
 }
 
+/** The code could not be written to its file: sf was not started, so nothing ran. */
+export class ApexFileError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ApexFileError'
+  }
+}
+
 /** What sf's output says, in the order of docs/apex.md "実行の経路". Never reorder these checks. */
 export type ApexOutput =
   | { kind: 'ran'; run: ApexRun }
@@ -61,10 +69,11 @@ export function parseApexOutput(stdout: string, stderr: string): ApexOutput {
   if (json?.status === 0 && json.result) return { kind: 'ran', run: toRun(json.result) }
   // 2. Ran, or reached Salesforce and did not compile. Before 3: an exception's
   // text can hold "invalid_grant" (a failed OAuth callout in the Apex itself).
-  if ((json?.name === 'executeCompileFailure' || json?.name === 'executeRuntimeFailure') && json.data) {
-    return { kind: 'ran', run: toRun(json.data) }
-  }
+  // Decided by the name alone: without `data`, it may have run, so it is unknown, never a login error.
   const message = redactUrls(json?.message ?? lastErrorLine(stderr) ?? 'sf apex run failed')
+  if (json?.name === 'executeCompileFailure' || json?.name === 'executeRuntimeFailure') {
+    return json.data ? { kind: 'ran', run: toRun(json.data) } : { kind: 'failed', sfName: json.name, message }
+  }
   // 3. Only now: a login error, before anything ran.
   if (isAuthErrorMessage(message)) return { kind: 'authError', message }
   // 4. The rest is of unknown outcome.
@@ -74,12 +83,14 @@ export function parseApexOutput(stdout: string, stderr: string): ApexOutput {
 /** sf writes true or 'True', 1 or '1', and -1 for no position. */
 function toRun(r: Record<string, unknown>): ApexRun {
   const yes = (v: unknown) => v === true || v === 'True' || v === 'true'
+  const no = (v: unknown) => v === false || v === 'False' || v === 'false'
   const text = (v: unknown) => (typeof v === 'string' && v ? v : undefined)
   const position = (v: unknown) => {
     const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : Number.NaN
     return Number.isInteger(n) && n > 0 ? n : undefined
   }
-  const result: ApexResult = !yes(r.compiled) ? 'compileError' : yes(r.success) ? 'success' : 'runtimeError'
+  // Only a stated compile failure says it did not run: anything else may have run.
+  const result: ApexResult = no(r.compiled) ? 'compileError' : yes(r.success) ? 'success' : 'runtimeError'
   const run: ApexRun = { result, logs: typeof r.logs === 'string' ? r.logs : '' }
   if (result !== 'success') {
     const line = position(r.line)
@@ -98,13 +109,18 @@ function toRun(r: Record<string, unknown>): ApexRun {
 /**
  * Runs anonymous Apex in the org. The code goes in a file so that it never
  * appears on the command line. Throws OrgAuthError (did not run), SfTimeoutError
- * (sf was stopped; Salesforce may still run it) or ApexRunError (unknown).
+ * (sf was stopped; Salesforce may still run it), ApexFileError (did not run)
+ * or ApexRunError (unknown).
  */
 export async function runApex(username: string, code: string, tmpDir: string, timeoutMs: number): Promise<ApexRun> {
   const fileName = `apex-${randomBytes(8).toString('hex')}.apex`
   const filePath = join(tmpDir, fileName)
-  writeFileSync(filePath, code, { mode: 0o600 })
   try {
+    try {
+      writeFileSync(filePath, code, { mode: 0o600 })
+    } catch (e) {
+      throw new ApexFileError((e as Error).message)
+    }
     // An SfTimeoutError from runSf goes to the caller as it is.
     const { stdout, stderr } = await runSf(['apex', 'run', '-f', fileName, '--json'], { targetOrg: username, cwd: tmpDir, timeoutMs })
     const output = parseApexOutput(stdout, stderr)

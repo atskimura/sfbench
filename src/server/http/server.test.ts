@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { SalesforceError, SalesforceTimeoutError, SalesforceUnreachableError } from '../salesforce.ts'
 import { apexOutcomeOf, cacheControl, errorResponse, exceptionTypeOf, restOutcomeOf, unknownOrg } from './server.ts'
-import { ApexRunError } from '../sf/apexRun.ts'
+import { ApexFileError, ApexRunError } from '../sf/apexRun.ts'
 import { OrgAuthError, SfCliError, SfNotFoundError, SfTimeoutError } from '../sf/errors.ts'
 import { RestRequestError } from '../rest.ts'
 
@@ -47,6 +47,7 @@ describe('Apex outcomes', () => {
   it('removes the record of a run that never happened, and marks the rest unknown', () => {
     expect(apexOutcomeOf(new OrgAuthError('u@example.com', 'expired'))).toBeUndefined()
     expect(apexOutcomeOf(new SfNotFoundError())).toBeUndefined()
+    expect(apexOutcomeOf(new ApexFileError('ENOSPC'))).toBeUndefined()
     expect(apexOutcomeOf(new SfTimeoutError('sf apex run timed out'))).toEqual({ state: 'unknown', reason: 'timeout' })
     expect(apexOutcomeOf(new ApexRunError('unexpectedExecuteCommandError', 'x'))).toEqual({ state: 'unknown', reason: 'error' })
   })
@@ -59,5 +60,6 @@ describe('Apex outcomes', () => {
 
   it('answers an unknown sf failure with its message for the screen', () => {
     expect(errorResponse(new ApexRunError('unexpectedExecuteCommandError', 'socket hang up'))).toMatchObject({ status: 502, body: { error: { code: 'SF_CLI_ERROR', message: 'socket hang up' } } })
+    expect(errorResponse(new ApexFileError('ENOSPC'))).toMatchObject({ status: 500, body: { error: { code: 'NOT_RUN' } } })
   })
 })

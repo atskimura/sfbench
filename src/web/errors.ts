@@ -51,6 +51,7 @@ export function errorMessage(e: unknown): string {
     if (e.code === 'SALESFORCE_TIMEOUT') return t.salesforceTimeout
     if (e.code === 'SALESFORCE_UNREACHABLE') return t.salesforceUnreachable
     if (e.code === 'ORG_AUTH_ERROR') return t.orgAuthError
+    if (e.code === 'NOT_RUN') return t.notRun
     return e.message
   }
   return e instanceof Error ? e.message : String(e)
@@ -93,7 +94,7 @@ export function isOutcomeUnknown(e: unknown, changesData: boolean): boolean {
   const kind = errorKind(e)
   // Not sent, or refused before Salesforce ran anything.
   if (kind === 'aborted' || kind === 'orgAuth' || kind === 'orgNotFound' || kind === 'sfNotFound') return false
-  if (e instanceof ApiRequestError && (e.code === 'BAD_REQUEST' || e.code === 'HISTORY_UNAVAILABLE')) return false
+  if (e instanceof ApiRequestError && (e.code === 'BAD_REQUEST' || e.code === 'NOT_RUN')) return false
   // sfbench refused the session at its door: nothing went to Salesforce.
   if (e instanceof ApiRequestError && e.isSessionRefused) return false
   // A lost connection to sfbench, sf CLI or server errors: sent or not, unknown.

@@ -52,7 +52,7 @@ sf CLI 2.153.5 で、組織のデータを変えない Apex（`System.debug` と
 分ける順番は次のとおりで、この順番を変えない。
 
 1. `status: 0` なら成功。
-2. `name` が `executeCompileFailure` か `executeRuntimeFailure` なら、`data` を読んで結果にする（文字列の値は、ここで型をそろえる）。Apex の中で OAuth のコールアウトを試して失敗すると、例外の文に `invalid_grant` が入る。3より先に判定しないと、これを組織の認証切れと取り違え、実行履歴の記録を消し、再ログインのあとに確認なしで二重に実行させてしまう。
+2. `name` が `executeCompileFailure` か `executeRuntimeFailure` なら、`data` を読んで結果にする（文字列の値は、ここで型をそろえる）。`data` がなければ、4と同じく「不明」にする。コンパイルエラーとするのは `compiled` がはっきり偽のときだけで、値がなければ実行したものとして扱う。Apex の中で OAuth のコールアウトを試して失敗すると、例外の文に `invalid_grant` が入る。3より先に判定しないと、これを組織の認証切れと取り違え、実行履歴の記録を消し、再ログインのあとに確認なしで二重に実行させてしまう。
 3. それ以外の名前（実行の前に起きる失敗）にだけ、`isAuthErrorMessage` を当てて `OrgAuthError` にする。
 4. 残りは、実行したか分からない失敗（`ApexRunError`）とする。実行していないと分かる名前を細かく分けることはせず、すべて「不明」に倒す。
 
@@ -125,7 +125,7 @@ sf CLI 2.153.5 で、組織のデータを変えない Apex（`System.debug` と
 | 確認中、実行中 | 二度押し、連打、⌘↵ | 何もしない |
 | 待機 | ⌘↵ | 実行しない。「Apex は実行ボタンで実行します」と短く出す |
 | 実行中 | 成功、コンパイルエラー、実行時の例外 | 待機。`result` を `response` にし、実行履歴を取り直す |
-| 実行中 | `ORG_AUTH_ERROR`、`SF_CLI_NOT_FOUND`、`BAD_REQUEST` | 待機。`error` にする。実行していないので「不明」にしない |
+| 実行中 | `ORG_AUTH_ERROR`、`SF_CLI_NOT_FOUND`、`BAD_REQUEST`、`NOT_RUN` | 待機。`error` にする。実行していないので「不明」にしない |
 | 実行中 | `SALESFORCE_TIMEOUT`（sf を止めた）、`SF_CLI_ERROR`（分けられない sf の失敗）、`INTERNAL_ERROR`、sfbench に接続できない | 待機。`unknown` にし、手元の実行履歴の先頭に「不明」の記録を入れる（rest.md と同じ） |
 | 実行中 | sfbench がセッションを入口で断った（401） | 帯で案内する。「不明」にはしない |
 | 実行中 | `ORG_NOT_FOUND` | `handleOrgError` に任せる |
@@ -164,7 +164,7 @@ sf CLI 2.153.5 で、組織のデータを変えない Apex（`System.debug` と
 ```
 
 - sf CLI を起動する直前に「応答待ち」で書く。書けなければ、実行しない（エラーとして返す）。Apex はいつもデータを変えうるので、記録のない実行を作らない（REST は書けなくても送るが、Apex ではしない）。
-- 実行していないと分かるもの（検査の失敗、`SF_CLI_NOT_FOUND`、`OrgAuthError`）は記録を消す。それ以外の失敗は「不明」にする。
+- 実行していないと分かるもの（検査の失敗、`SF_CLI_NOT_FOUND`、`OrgAuthError`、コードを一時ファイルに書けなかったとき）は記録を消す。実行履歴か一時ファイルを書けずに実行しなかったときは、`NOT_RUN` で返す。それ以外の失敗は「不明」にする。
 - 同じコードでもまとめない（利用者の選択による）。
 
 ### 残すもの
