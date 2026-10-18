@@ -198,6 +198,24 @@ describe('REST API screen', () => {
     expect(mocked.rest).toHaveBeenCalledTimes(1)
   })
 
+  it('does not send on Enter in the path, even a DELETE', async () => {
+    await openRest()
+    await fill('DELETE', path + '/001')
+    await userEvent.type(screen.getByLabelText(t.restPath), '{Enter}')
+    expect(mocked.rest).not.toHaveBeenCalled()
+  })
+
+  it('asks again right after an unknown outcome, before the history is loaded again', async () => {
+    mocked.rest.mockRejectedValueOnce(new ApiRequestError(502, 'SALESFORCE_UNREACHABLE', 'broke'))
+    mocked.restHistory.mockReturnValue(new Promise(() => {}))
+    await openRest()
+    await fill('POST', path)
+    await userEvent.click(screen.getByRole('button', { name: t.restSend }))
+    await within(response()).findByText(t.restUnknown)
+    await userEvent.click(screen.getByRole('button', { name: t.restSend }))
+    expect((await screen.findByRole('dialog')).textContent).toContain(t.restConfirmUnknown)
+  })
+
   it('sends only a request that changes no data with Cmd+Enter', async () => {
     mocked.rest.mockResolvedValue(answer(200))
     await openRest()

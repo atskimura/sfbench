@@ -31,6 +31,7 @@ type RestValue = State & {
   /** Replaces the body as one undoable change (Format). */
   setBody: (text: string) => void
   history: RestHistoryEntry[]
+  historyLoading: boolean
   refreshHistory: () => void
   loadEntry: (entry: RestHistoryEntry) => void
   /** A request is being sent: decided by the send task only. */
@@ -64,7 +65,9 @@ export function RestProvider({ username, seed, children }: { username: string; s
   const [history, setHistory] = useState<RestHistoryEntry[]>([])
   // The progress is whether the request being sent may change data.
   const { start: startSend, cancel: cancelSend, running: sending, progress: sendingChangesData } = useTask<boolean>()
-  const { start: startHistory } = useTask()
+  const { start: startHistory, running: historyLoading } = useTask()
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => () => clearTimeout(saveTimer.current), [])
 
   const save = useCallback((next: Omit<RestDraft, 'body'>) => saveRestDraft(username, { ...next, body: bodyText.current }), [username])
   const update = useCallback(
@@ -89,9 +92,13 @@ export function RestProvider({ username, seed, children }: { username: string; s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // The confirmation and the launch notice go once a request is really being sent.
+  useEffect(() => {
+    if (sending) dispatch({ type: 'sending' })
+  }, [sending])
+
   const sendNow = useCallback(
     async (request: RestSnapshot) => {
-      dispatch({ type: 'sending' })
       const changesData = restMayChangeData(request.method, request.path)
       const outcome = await startSend((signal, progress) => {
         progress(changesData)
@@ -125,13 +132,17 @@ export function RestProvider({ username, seed, children }: { username: string; s
     [startSend, username, refreshHistory, reportApiUsage, handleCommonError, handleOrgError, markAuthError],
   )
 
+  const { result } = state
   const send = useCallback(() => {
+    // As the Send button, which cannot be pressed meanwhile: Cmd+Enter while sending does nothing.
+    if (sending) return
     const request = snapshotOf({ ...fields, body: body.current?.getText() ?? bodyText.current })
     if (!request.path) return
-    const reasons = needsConfirm(request, { isProduction, history })
+    const lastUnknown = result.state === 'unknown' ? result.request : undefined
+    const reasons = needsConfirm(request, { isProduction, history, lastUnknown })
     if (reasons.length > 0) dispatch({ type: 'confirm', request, reasons })
     else void sendNow(request)
-  }, [fields, isProduction, history, sendNow])
+  }, [sending, fields, result, isProduction, history, sendNow])
 
   const { confirming } = state
   const confirmSend = useCallback(() => {
@@ -169,11 +180,14 @@ export function RestProvider({ username, seed, children }: { username: string; s
       },
       onBodyChange: (text) => {
         bodyText.current = text
-        save(fields)
+        // Saved once typing stops: a large body is not written on every key.
+        clearTimeout(saveTimer.current)
+        saveTimer.current = setTimeout(() => save(fields), 300)
       },
       getBody: () => body.current?.getText() ?? bodyText.current,
       setBody: (text) => body.current?.setText(text),
       history,
+      historyLoading,
       refreshHistory: () => void refreshHistory(),
       loadEntry,
       sending,
@@ -185,7 +199,7 @@ export function RestProvider({ username, seed, children }: { username: string; s
       closeNotice: () => dispatch({ type: 'noticeClosed' }),
       restLeftOutFor: seed?.restLeftOutFor,
     }),
-    [state, fields, first.body, update, save, history, refreshHistory, loadEntry, sending, sendingChangesData, send, confirmSend, cancel, seed?.restLeftOutFor],
+    [state, fields, first.body, update, save, history, historyLoading, refreshHistory, loadEntry, sending, sendingChangesData, send, confirmSend, cancel, seed?.restLeftOutFor],
   )
   return <RestContext.Provider value={value}>{children}</RestContext.Provider>
 }

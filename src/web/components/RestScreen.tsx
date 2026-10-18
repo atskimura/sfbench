@@ -1,6 +1,6 @@
 // The REST API screen: the history on the left, the request at the top right,
 // the response below (docs/screens.md "REST API の画面", docs/rest.md).
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { methodTakesBody, REST_METHODS, type RestHistoryEntry, type RestMethod } from '../../shared/api.ts'
 import { t } from '../i18n/i18n.ts'
 import { restMayChangeData } from '../rest/changes.ts'
@@ -45,7 +45,7 @@ function History() {
       <div className={panel.header}>
         <span className={panel.title}>{t.restHistory}</span>
         <span className={panel.spacer} />
-        <ReloadButton label={t.reloadRestHistory} busy={false} onClick={rest.refreshHistory} />
+        <ReloadButton label={t.reloadRestHistory} busy={rest.historyLoading} onClick={rest.refreshHistory} />
       </div>
       <div className={panel.body}>
         {rest.history.length === 0 && <p className={panel.empty}>{t.restHistoryEmpty}</p>}
@@ -131,13 +131,8 @@ function Request() {
 
   return (
     <section className={`${panel.panel} ${styles.request}`} aria-label={t.restRequest}>
-      <form
-        className={styles.line}
-        onSubmit={(e) => {
-          e.preventDefault()
-          rest.send()
-        }}
-      >
+      {/* Not a form: Enter in the path must not send (a DELETE, say). Send is the button, or Cmd+Enter for a request that changes no data. */}
+      <div className={styles.line}>
         <label className="visually-hidden" htmlFor="rest-method">
           {t.restMethod}
         </label>
@@ -171,10 +166,10 @@ function Request() {
             }
           }}
         />
-        <button type="submit" className={`${panel.button} ${panel.primary}`} disabled={rest.sending || !rest.path.trim()}>
+        <button type="button" className={`${panel.button} ${panel.primary}`} disabled={rest.sending || !rest.path.trim()} onClick={rest.send}>
           {rest.sending ? t.restSending : t.restSend}
         </button>
-      </form>
+      </div>
       {hint && (
         <p className={styles.hint} role="status">
           {hint}
@@ -346,12 +341,13 @@ function headerText(headers: Record<string, string>): string {
 }
 
 function Body({ body, omitted }: { body: string; omitted: 'binary' | 'tooLarge' | 'incomplete' | undefined }) {
+  // Worked out once per body, not on each key typed in the request fields.
+  const shown = useMemo(() => responseText(body), [body])
   if (omitted) {
     const message = omitted === 'binary' ? t.restBodyBinary : omitted === 'tooLarge' ? t.restBodyTooLarge : t.restBodyIncomplete
     return <p className={panel.empty}>{message}</p>
   }
   if (!body) return <p className={panel.empty}>{t.restBodyEmpty}</p>
-  const shown = responseText(body)
   return (
     <>
       {shown.cut && <p className={styles.hint}>{t.restBodyCut}</p>}
@@ -372,7 +368,11 @@ function CopyButton({ text }: { text: string }) {
       type="button"
       className={panel.button}
       onClick={() => {
-        void navigator.clipboard?.writeText(text).then(() => setCopied(true))
+        // As CopyCommand: a refused clipboard shows nothing and throws nothing.
+        navigator.clipboard?.writeText(text).then(
+          () => setCopied(true),
+          () => setCopied(false),
+        )
       }}
     >
       {copied ? t.restCopied : t.restCopy}
