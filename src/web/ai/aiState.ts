@@ -4,8 +4,8 @@
 // screen; what a proposal holds is the screen's (P).
 import type { SoqlOutput } from '../../shared/api.ts'
 
-/** The SOQL screen's steps; another screen has its own. */
-export type AiStep = 'chooseObjects' | 'loadFields' | 'generate' | 'fix'
+/** One step only: how often the AI reads the metadata is not known ahead (docs/ai-agent.md "画面"). */
+export type AiStep = 'think'
 
 /** The SOQL screen's proposal. */
 export type Proposal = SoqlOutput & {

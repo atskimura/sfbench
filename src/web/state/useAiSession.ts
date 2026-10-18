@@ -11,8 +11,8 @@ import { useApp } from './AppContext.tsx'
 import { useOrgs } from './OrgContext.tsx'
 import { useTask } from './useTask.ts'
 
-/** A message for the user from the screen, not an API error: shown under the input as it is. */
-export class AiNotice extends Error {}
+/** The browser's IANA time zone, for the AI's today (docs/ai-agent.md "答えの形"). */
+export const browserTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
 export type AiSession<P, Step extends string> = {
   availability: AiAvailability
@@ -60,7 +60,7 @@ export function useAiSession<P, Step extends string>(username: string): AiSessio
         const e = outcome.error
         // Org errors, a lost session and a missing sf CLI are shown app-wide; the rest under the input.
         const failure: AiFailure | undefined =
-          !(e instanceof AiNotice) && isShownElsewhere(errorKind(e)) ? undefined : { message: errorMessage(e), details: errorDetails(e) }
+          isShownElsewhere(errorKind(e)) ? undefined : { message: errorMessage(e), details: errorDetails(e) }
         if (!failure) handleOrgError(username, e)
         dispatch({ type: 'failed', failure })
       })

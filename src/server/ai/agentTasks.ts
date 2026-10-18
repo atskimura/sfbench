@@ -1,4 +1,4 @@
-// What the AI is asked to do with tools (docs/ai-agent.md "答えの形"): the
+// What the AI is asked to do with tools (docs/ai-agent.md "答えの形", "タスク"): the
 // instructions, the shape of the answer (the submit tool), and the check of
 // what comes back.
 import { isServicesPath, REST_METHODS, type AgentOutput, type AgentRestRequest, type AgentTask, type AgentTaskRequest, type UiLanguage } from '../../shared/api.ts'
@@ -15,6 +15,16 @@ const REST_SCHEMA = {
     explanation: { type: 'string', description: 'One or two sentences of plain text.' },
   },
   required: ['method', 'path', 'body', 'explanation'],
+  additionalProperties: false,
+}
+
+const SOQL_SCHEMA = {
+  type: 'object',
+  properties: {
+    soql: { type: 'string', description: 'One SOQL query that runs as it is.' },
+    explanation: { type: 'string', description: 'One or two sentences of plain text.' },
+  },
+  required: ['soql', 'explanation'],
   additionalProperties: false,
 }
 
@@ -45,10 +55,25 @@ function restText(r: AgentRestRequest): string {
 
 type Context = { language: UiLanguage; timeZone: string; apiVersion: string; today: string }
 
-function commonRules(c: Context): string[] {
+/** What the server read before the first message (agent.ts): names as the AI is shown them. */
+export type Given = {
+  /** The object open on the left, as a hint. */
+  openObject?: string
+  /** The fields of the object a failed query read from, in the describeObject format. */
+  fields?: string
+}
+
+/** How to read the metadata: SOQL names every field, so it reads every object it queries, as the two-step flow gave them all. */
+const LOOKUP = {
+  knowledge:
+    'For anything specific to this org (custom objects, custom fields, picklist values), look it up with findObjects and describeObject first; never guess such names. Standard objects and fields can be used from your knowledge, but check them with describeObject when unsure.',
+  soql: 'Find the objects with findObjects and read every object you query (including parents and children you read through) with describeObject before writing the query; never guess names.',
+}
+
+function commonRules(c: Context, lookup: keyof typeof LOOKUP = 'knowledge'): string[] {
   return [
     `Today is ${c.today} in the user's time zone (${c.timeZone}).`,
-    'For anything specific to this org (custom objects, custom fields, picklist values), look it up with findObjects and describeObject first; never guess such names. Standard objects and fields can be used from your knowledge, but check them with describeObject when unsure.',
+    LOOKUP[lookup],
     'When the user leaves a value out, put an example value and name it in the explanation.',
     `When done, call submit once. Write the explanation in ${LANGUAGE_NAMES[c.language]}, as one or two sentences of plain text (no Markdown).`,
     DATA_RULE,
@@ -63,6 +88,16 @@ function restRules(c: Context): string[] {
   ]
 }
 
+function soqlRules(tooling: boolean): string[] {
+  return [
+    tooling ? 'The query runs on the Tooling API: use only Tooling API objects.' : '',
+    'If more than one object has a label that fits, choose the one the request and the fields point to, and name the other in the explanation.',
+    'The query must run as it is: no bind variables, placeholders or comments.',
+    "Quote text and picklist values with single quotes. Prefer date literals such as THIS_MONTH where they fit.",
+    'Read parent fields through the relationship name (Account.Name) and child records with a subquery on the child relationship name.',
+  ].filter(Boolean)
+}
+
 function apexRules(c: Context): string[] {
   return [`The code runs as anonymous Apex (Execute Anonymous, API ${c.apiVersion}). Use your knowledge of Apex.`, 'Show results with System.debug.']
 }
@@ -70,10 +105,38 @@ function apexRules(c: Context): string[] {
 export type AgentPrompt = { system: string; user: string; submitSchema: object }
 
 /** The instructions and the first message for a task. */
-export function agentPrompt(req: AgentTaskRequest, apiVersion: string, today: string): AgentPrompt {
+export function agentPrompt(req: AgentTaskRequest, apiVersion: string, today: string, given: Given = {}): AgentPrompt {
   const c: Context = { language: req.input.language, timeZone: req.input.timeZone, apiVersion, today }
   const tail = `(Write the explanation in ${LANGUAGE_NAMES[c.language]}.)`
   switch (req.task) {
+    case 'generateSoql': {
+      const i = req.input
+      return {
+        submitSchema: SOQL_SCHEMA,
+        system: [
+          "You write one Salesforce SOQL query for the user's request.",
+          ...soqlRules(i.tooling),
+          given.openObject
+            ? `The user has the object ${given.openObject} open on screen. It is a hint only: if the request is about other objects, use those.`
+            : '',
+          'If the editor holds a query and the request asks to change it, change that query.',
+          ...commonRules(c, 'soql'),
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        user: [i.editor?.trim() ? data('editor', i.editor) : '', `Request: ${i.request}`, tail].filter(Boolean).join('\n\n'),
+      }
+    }
+    case 'fixSoql': {
+      const i = req.input
+      return {
+        submitSchema: SOQL_SCHEMA,
+        system: ['You fix a Salesforce SOQL query that failed with the given error. Keep what the query was meant to do.', ...soqlRules(i.tooling), ...commonRules(c, 'soql')].join(
+          '\n',
+        ),
+        user: [given.fields ? data('metadata', given.fields) : '', data('query', i.soql), data('error', i.error), tail].filter(Boolean).join('\n\n'),
+      }
+    }
     case 'generateRest': {
       const i = req.input
       return {
@@ -148,6 +211,11 @@ export function checkAgentOutput<T extends AgentTask>(task: T, input: unknown): 
   if (!input || typeof input !== 'object') throw bad('not an object')
   const o = input as Record<string, unknown>
   if (typeof o.explanation !== 'string') throw bad('no explanation')
+  if (task === 'generateSoql' || task === 'fixSoql') {
+    // The SOQL screen runs queries only, not SOSL (FIND).
+    if (typeof o.soql !== 'string' || !/^\s*select\b/i.test(o.soql)) throw bad('the query does not start with SELECT')
+    return { soql: o.soql.trim(), explanation: o.explanation } as AgentOutput<T>
+  }
   if (task === 'generateRest' || task === 'fixRest') {
     if (typeof o.method !== 'string' || !(REST_METHODS as readonly string[]).includes(o.method)) throw bad('the method is not one the screen sends')
     if (typeof o.path !== 'string' || !isServicesPath(o.path)) throw bad('the path does not start with /services/')
@@ -173,7 +241,19 @@ export function invalidAgentRequest(body: Record<string, unknown>): string | und
     const x = r as Record<string, unknown> | undefined
     return !!x && typeof x.method === 'string' && typeof x.path === 'string' && typeof x.body === 'string'
   }
+  const isName = (v: unknown) => v === undefined || (typeof v === 'string' && v.length <= 255)
   switch (body.task) {
+    case 'generateSoql':
+      if (typeof input.request !== 'string' || !input.request.trim()) return 'input.request is required'
+      if (input.editor !== undefined && typeof input.editor !== 'string') return 'input.editor must be text'
+      if (!isName(input.openObject)) return 'input.openObject must be an object name'
+      if (typeof input.tooling !== 'boolean') return 'input.tooling must be a boolean'
+      return undefined
+    case 'fixSoql':
+      if (typeof input.soql !== 'string' || typeof input.error !== 'string') return 'input.soql and input.error are required'
+      if (!isName(input.object)) return 'input.object must be an object name'
+      if (typeof input.tooling !== 'boolean') return 'input.tooling must be a boolean'
+      return undefined
     case 'generateRest': {
       if (typeof input.request !== 'string' || !input.request.trim()) return 'input.request is required'
       if (input.current !== undefined && !isRest(input.current)) return 'input.current must be a request'
@@ -196,6 +276,6 @@ export function invalidAgentRequest(body: Record<string, unknown>): string | und
       if (typeof input.code !== 'string' || typeof input.problem !== 'string') return 'input.code and input.problem are required'
       return undefined
     default:
-      return 'task must be generateRest, fixRest, generateApex or fixApex'
+      return 'task must be generateSoql, fixSoql, generateRest, fixRest, generateApex or fixApex'
   }
 }

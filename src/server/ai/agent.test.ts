@@ -4,6 +4,7 @@ import type { AgentTaskRequest } from '../../shared/api.ts'
 import { cutToBudget, MAX_TOOL_CALLS, runAgent, todayIn } from './agent.ts'
 import { agentPrompt, invalidAgentRequest } from './agentTasks.ts'
 import { describeText, findObjectsText, runTool, type MetadataSource } from './tools.ts'
+import type { AiError } from './errors.ts'
 
 const anthropic = { provider: 'anthropic' as const, model: 'claude-x', apiKey: 'sk-ant', keyProvider: 'anthropic' as const }
 const openai = { provider: 'openai' as const, model: 'gpt-x', apiKey: 'sk-oa', keyProvider: 'openai' as const }
@@ -11,6 +12,10 @@ const never = new AbortController().signal
 const request: AgentTaskRequest & { task: 'generateRest' } = {
   task: 'generateRest',
   input: { request: 'Lプロジェクトを5件', language: 'ja', timeZone: 'Asia/Tokyo' },
+}
+const soqlRequest: AgentTaskRequest & { task: 'generateSoql' } = {
+  task: 'generateSoql',
+  input: { request: 'Unpaid invoices', language: 'en', timeZone: 'Asia/Tokyo', tooling: false },
 }
 const answer = { method: 'GET', path: '/services/data/v66.0/query?q=SELECT+Name+FROM+Project__c+LIMIT+5', body: '', explanation: '5件を取得します。' }
 
@@ -122,7 +127,7 @@ describe('runAgent', () => {
       gone.abort()
       return undefined
     })
-    anthropicReplies([use('a', 'describeObject', { name: 'A' }), use('b', 'describeObject', { name: 'B' })])
+    anthropicReplies([use('a', 'describeObject', { name: 'Account' }), use('b', 'describeObject', { name: 'Project__c' })])
     await expect(runAgent(anthropic, request, { ...source, describe: reading }, '66.0', gone.signal)).rejects.toBeDefined()
     expect(reading).toHaveBeenCalledTimes(1)
   })
@@ -207,5 +212,143 @@ describe('agent requests', () => {
   it('takes today in the user time zone', () => {
     expect(todayIn('Asia/Tokyo', new Date('2026-10-18T16:00:00Z'))).toBe('2026-10-19')
     expect(todayIn('America/Los_Angeles', new Date('2026-10-18T16:00:00Z'))).toBe('2026-10-18')
+  })
+})
+
+describe('provider failures', () => {
+  const reply = (status: number, body: unknown) => vi.fn(async () => new Response(typeof body === 'string' ? body : JSON.stringify(body), { status }))
+
+  it('shows the API error message without the key, and cuts an HTML error page short', async () => {
+    vi.stubGlobal('fetch', reply(401, { error: { message: 'Incorrect API key provided: sk-proj-****abcd. You can find your API key at …' } }))
+    await expect(runAgent(openai, request, source, '66.0', never)).rejects.toMatchObject({ message: expect.not.stringContaining('abcd') })
+    vi.stubGlobal('fetch', reply(401, { type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }))
+    await expect(runAgent(anthropic, request, source, '66.0', never)).rejects.toMatchObject({ code: 'AI_ERROR', message: 'authentication_error: invalid x-api-key' })
+    vi.stubGlobal('fetch', reply(502, `<html>${'x'.repeat(5000)}</html>`))
+    const error = (await runAgent(openai, request, source, '66.0', never).catch((e: unknown) => e)) as AiError
+    expect(error.message.length).toBeLessThan(2100)
+  })
+
+  it('reads an Anthropic refusal and a cut-off output', async () => {
+    vi.stubGlobal('fetch', reply(200, { content: [{ type: 'text', text: 'No.' }], stop_reason: 'refusal' }))
+    await expect(runAgent(anthropic, request, source, '66.0', never)).rejects.toMatchObject({ code: 'AI_ERROR' })
+    vi.stubGlobal('fetch', reply(200, { content: [{ type: 'text', text: '{"so' }], stop_reason: 'max_tokens' }))
+    await expect(runAgent(anthropic, request, source, '66.0', never)).rejects.toMatchObject({ code: 'AI_BAD_OUTPUT' })
+  })
+
+  it('needs a provider, a model and a key for that provider, and sends nothing otherwise', async () => {
+    const fetch = vi.fn()
+    vi.stubGlobal('fetch', fetch)
+    await expect(runAgent(undefined, request, source, '66.0', never)).rejects.toMatchObject({ code: 'AI_NOT_CONFIGURED' })
+    await expect(runAgent({ ...anthropic, provider: 'off' }, request, source, '66.0', never)).rejects.toMatchObject({ code: 'AI_NOT_CONFIGURED' })
+    await expect(runAgent({ ...anthropic, model: ' ' }, request, source, '66.0', never)).rejects.toMatchObject({ code: 'AI_NOT_CONFIGURED' })
+    // A key entered for Anthropic never goes to OpenAI, even if the file says so.
+    await expect(runAgent({ ...anthropic, provider: 'openai' }, request, source, '66.0', never)).rejects.toMatchObject({ code: 'AI_NOT_CONFIGURED' })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('gives up after the timeout and stops when the caller goes away', async () => {
+    const hang = vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          // As fetch does: a signal aborted before the call rejects at once.
+          if (init.signal?.aborted) reject(init.signal.reason)
+          init.signal?.addEventListener('abort', () => reject(init.signal?.reason))
+        }),
+    )
+    vi.stubGlobal('fetch', hang)
+    await expect(runAgent(anthropic, request, source, '66.0', never, 20)).rejects.toMatchObject({ code: 'AI_TIMEOUT' })
+    const caller = new AbortController()
+    const pending = runAgent(anthropic, request, source, '66.0', caller.signal)
+    caller.abort()
+    await expect(pending).rejects.not.toHaveProperty('code', 'AI_TIMEOUT')
+  })
+})
+
+describe('SOQL', () => {
+  const ns = 'acme'
+  const orgObjects = [
+    { name: 'Invoice', label: 'Invoice', queryable: true },
+    { name: 'acme__Invoice__c', label: 'Invoice', custom: true, queryable: true },
+    { name: 'AccountShare', label: 'Account Share', queryable: true },
+    { name: 'Hidden__c', label: 'Hidden invoice', custom: true, queryable: false },
+  ]
+  const describeInvoice = vi.fn(async (name: string) =>
+    name === 'acme__Invoice__c'
+      ? {
+          name,
+          label: 'Invoice',
+          fields: [
+            { name: 'acme__Status__c', label: 'Status', type: 'picklist', updateable: true, picklistValues: [{ value: 'Unpaid', active: true }] },
+            { name: 'acme__Account__c', label: 'Account', type: 'reference', referenceTo: ['Account'], relationshipName: 'acme__Account__r', updateable: true },
+          ],
+          childRelationships: [{ childSObject: 'acme__Line__c', relationshipName: 'acme__Lines__r' }],
+        }
+      : undefined,
+  )
+  const soqlSource: MetadataSource = { objects: async () => orgObjects, describe: describeInvoice, soql: true, omitNamespace: ns }
+
+  it('searches queryable objects only, without the noise, marking custom ones and leaving out the namespace', () => {
+    expect(findObjectsText(orgObjects, ['invoice', 'share'], soqlSource).split('\n')).toEqual(['Invoice Invoice', 'Invoice__c Invoice (custom)'])
+    // REST API and Apex see every object, with full names.
+    expect(findObjectsText(orgObjects, ['invoice'])).toContain('acme__Invoice__c Invoice (custom)')
+  })
+
+  it('reads an object named with or without the namespace, in any case, under the spelling of the list', async () => {
+    describeInvoice.mockClear()
+    const text = await runTool(soqlSource, 'describeObject', { name: 'INVOICE__C' })
+    expect(describeInvoice).toHaveBeenCalledWith('acme__Invoice__c')
+    expect(text.split('\n')).toEqual([
+      'Object Invoice__c (Invoice)',
+      'Fields:',
+      'Status__c picklist Status [Unpaid]',
+      'Account__c reference(Account) relationship Account__r Account',
+      'Child relationships:',
+      'Lines__r -> Line__c',
+    ])
+    // Without the omitted namespace, only the full name is the object.
+    const full = { ...soqlSource, omitNamespace: undefined }
+    expect(await runTool(full, 'describeObject', { name: 'Invoice__c' })).toContain('no object named Invoice__c')
+    expect(await runTool(full, 'describeObject', { name: 'acme__Invoice__c' })).toContain('Object acme__Invoice__c')
+  })
+
+  it('writes a query with the open object as a hint, the editor as data, and the SOQL rules', async () => {
+    const fetch = anthropicReplies([use('t1', 'submit', { soql: "SELECT Id FROM Invoice__c WHERE Status__c = 'Unpaid'", explanation: 'ok' })])
+    const req = { ...soqlRequest, input: { ...soqlRequest.input, openObject: 'acme__invoice__c', editor: 'SELECT Id FROM Account', tooling: true } }
+    const run = await runAgent(anthropic, req, soqlSource, '66.0', never)
+    expect(run.output).toEqual({ soql: "SELECT Id FROM Invoice__c WHERE Status__c = 'Unpaid'", explanation: 'ok' })
+    const first = sentBody(fetch, 0)
+    expect(first.system).toContain('The user has the object Invoice__c open on screen. It is a hint only')
+    expect(first.system).toContain('Tooling API')
+    expect(first.system).toContain('read every object you query')
+    expect(first.messages[0].content).toContain('<data name="editor">\nSELECT Id FROM Account\n</data>')
+  })
+
+  it('leaves out an open object the org (or the Tooling API) does not have', async () => {
+    const fetch = anthropicReplies([use('t1', 'submit', { soql: 'SELECT Id FROM Invoice', explanation: 'ok' })])
+    await runAgent(anthropic, { ...soqlRequest, input: { ...soqlRequest.input, openObject: 'Nope__c' } }, soqlSource, '66.0', never)
+    expect(sentBody(fetch, 0).system).not.toContain('open on screen')
+  })
+
+  it('fixes a query with the fields of its FROM object given from the start', async () => {
+    const fetch = anthropicReplies([use('t1', 'submit', { soql: 'SELECT Status__c FROM Invoice__c', explanation: 'fixed' })])
+    const req: AgentTaskRequest = {
+      task: 'fixSoql',
+      input: { soql: 'SELECT Stat FROM Invoice__c', error: "No such column 'Stat'", object: 'Invoice__c', tooling: false, language: 'en', timeZone: 'UTC' },
+    }
+    await expect(runAgent(anthropic, req, soqlSource, '66.0', never)).resolves.toMatchObject({ output: { soql: 'SELECT Status__c FROM Invoice__c' }, toolCalls: 0 })
+    const user = sentBody(fetch, 0).messages[0].content as string
+    expect(user).toContain('<data name="metadata">\nObject Invoice__c (Invoice)')
+    expect(user).toContain('<data name="error">\nNo such column')
+  })
+
+  it('takes only a SELECT query as the answer', async () => {
+    anthropicReplies([use('t1', 'submit', { soql: 'FIND {Acme} RETURNING Account', explanation: 'x' })])
+    await expect(runAgent(anthropic, soqlRequest, soqlSource, '66.0', never)).rejects.toMatchObject({ code: 'AI_BAD_OUTPUT' })
+  })
+
+  it('checks SOQL requests', () => {
+    expect(invalidAgentRequest(soqlRequest as unknown as Record<string, unknown>)).toBeUndefined()
+    expect(invalidAgentRequest({ ...soqlRequest, input: { ...soqlRequest.input, tooling: 'yes' } })).toContain('tooling')
+    expect(invalidAgentRequest({ task: 'fixSoql', input: { language: 'en', timeZone: 'UTC', soql: 'x', tooling: false } })).toContain('error')
   })
 })

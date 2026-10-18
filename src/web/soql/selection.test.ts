@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nameKey, stripNamespace } from './namespace.ts'
+import { nameKey, stripNamespace } from '../../shared/namespace.ts'
 import {
   clearAllFields,
   formatSoql,

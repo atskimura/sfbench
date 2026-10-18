@@ -5,14 +5,14 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import type { AgentPreviousApex, ApexProposalOutput, ApexResponse } from '../../shared/api.ts'
 import { userDebugOnly } from '../apex/log.ts'
+import type { AiStep } from '../ai/aiState.ts'
 import { cutRunText } from '../ai/cut.ts'
 import { api } from '../apiClient.ts'
 import { uiLanguage } from '../i18n/i18n.ts'
 import { useApex } from './ApexContext.tsx'
-import type { AgentStep } from './RestAiContext.tsx'
-import { useAiSession, type AiSession } from './useAiSession.ts'
+import { browserTimeZone, useAiSession, type AiSession } from './useAiSession.ts'
 
-type ApexAiValue = AiSession<ApexProposalOutput, AgentStep> & {
+type ApexAiValue = AiSession<ApexProposalOutput, AiStep> & {
   /** Whether the editor has code to send. */
   hasCode: boolean
   /** Whether the code now is sent: unticking holds for this workspace. */
@@ -43,11 +43,9 @@ function previousOf(r: ApexResponse): AgentPreviousApex {
   return { outcome: cutRunText(outcome), debug: cutRunText(userDebugOnly(r.logs)) }
 }
 
-const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-
 export function ApexAiProvider({ username, children }: { username: string; children: ReactNode }) {
   const apex = useApex()
-  const session = useAiSession<ApexProposalOutput, AgentStep>(username)
+  const session = useAiSession<ApexProposalOutput, AiStep>(username)
   // Unsent once the user says so, until the workspace goes (as the SOQL editor's pill).
   const [sendCode, setSendCode] = useState(true)
   const [sendPrevious, setSendPrevious] = useState(false)
@@ -77,7 +75,7 @@ export function ApexAiProvider({ username, children }: { username: string; child
     const version = apex.apiVersion ? { apiVersion: apex.apiVersion } : {}
     // Sent once: the record values in it do not go along with the requests after this one.
     if (previous && !session.running) setSendPrevious(false)
-    const input = { request: text, language: uiLanguage, timeZone: timeZone(), ...(code !== undefined ? { code } : {}), ...(previous ? { previous } : {}) }
+    const input = { request: text, language: uiLanguage, timeZone: browserTimeZone(), ...(code !== undefined ? { code } : {}), ...(previous ? { previous } : {}) }
     start(async (signal, progress) => {
       progress('think')
       return (await api.aiAgent(username, { task: 'generateApex', input, ...version }, signal)).output
@@ -87,7 +85,7 @@ export function ApexAiProvider({ username, children }: { username: string; child
   const fix = useCallback(
     (failed: { code: string; problem: string; line?: number; column?: number }) => {
       if (availability !== 'ready') return
-      const input = { ...failed, language: uiLanguage, timeZone: timeZone() }
+      const input = { ...failed, language: uiLanguage, timeZone: browserTimeZone() }
       const version = apex.apiVersion ? { apiVersion: apex.apiVersion } : {}
       start(async (signal, progress) => {
         progress('think')

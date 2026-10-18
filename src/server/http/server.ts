@@ -9,7 +9,6 @@ import {
   MAX_TIMEOUT_SECONDS,
   MIN_TIMEOUT_SECONDS,
   MAX_APEX_CODE,
-  type AiTaskRequest,
   type ApexHistoryResponse,
   type ApexOutcome,
   type ApexRequest,
@@ -52,9 +51,7 @@ import { OrgAuthError, SfCliError, SfNotFoundError, SfTimeoutError } from '../sf
 import { AiError } from '../ai/errors.ts'
 import { NO_METADATA, runAgent, TEST_AGENT_REQUEST } from '../ai/agent.ts'
 import { invalidAgentRequest } from '../ai/agentTasks.ts'
-import { generate, TEST_REQUEST } from '../ai/generate.ts'
 import type { MetadataSource } from '../ai/tools.ts'
-import { invalidTaskRequest } from '../ai/tasks.ts'
 import { addApexPending, addHistory, addRestPending, finishApex, loadApexHistory, AiSettingsError, finishRest, loadHistory, loadRestHistory, mergeAiSettings, settingsView, type SettingsStore } from '../store.ts'
 import { isAdminRequestOrigin, isAllowedHost, isSameOriginRequest } from './security.ts'
 
@@ -242,28 +239,14 @@ export class App {
       }
     }
 
-    if (path === '/api/ai/generate' && method === 'POST') {
-      const body = await readJsonObject(req, { bytes: MAX_AI_INPUT_BYTES, code: 'PAYLOAD_TOO_LARGE', message: 'Too much to send to the AI.' })
-      const invalid = invalidTaskRequest(body)
-      if (invalid) throw new HttpError(400, 'BAD_REQUEST', invalid)
-      await this.runAi(res, (signal) => generate(this.options.settings.get().ai, body as AiTaskRequest, signal).then((output) => ({ output })))
-      return
-    }
-
     if (path === '/api/ai/test' && method === 'POST') {
       const body = (await readJsonObject(req)) as Partial<AiTestRequest>
       // The settings being edited, with the saved key when none is typed (same rule as saving).
       const ai = mergeAiSettings(this.options.settings.get().ai, body.ai)
       const started = Date.now()
       await this.runAi(res, async (signal) => {
-        await generate(ai, TEST_REQUEST, signal)
-        // The REST API and Apex AI call tools: a model that cannot is found here, not there.
-        try {
-          await runAgent(ai, TEST_AGENT_REQUEST, NO_METADATA, '66.0', signal)
-        } catch (e) {
-          if (e instanceof AiError) throw new AiError(e.code, `Tool calls (for REST API and Apex): ${e.message}`, e.details)
-          throw e
-        }
+        // Every screen's AI calls tools: a model that cannot is found here (docs/ai-agent.md "接続を確かめる").
+        await runAgent(ai, TEST_AGENT_REQUEST, NO_METADATA, '66.0', signal)
         return { elapsedMs: Date.now() - started }
       })
       return
@@ -327,34 +310,16 @@ export class App {
     }
 
     if (rest === 'sobjects' && method === 'GET') {
-      const tooling = url.searchParams.get('tooling') === '1'
-      // A version the screen chose is cached apart from the latest (docs/web.md "API バージョン").
-      const requested = versionOf(url.searchParams.get('version') ?? undefined)
-      const prefix = requested ? `v${requested}:` : ''
-      const described = await this.options.orgs.cachedDescribe(client, `${prefix}${tooling ? 'tooling:global' : 'global'}`, refresh, async () => {
-        const version = await client.version(requested)
-        return (await client.request({ method: 'GET', path: `/services/data/v${version}/${tooling ? 'tooling/' : ''}sobjects/` })).body
-      })
+      const at = { tooling: url.searchParams.get('tooling') === '1', version: versionOf(url.searchParams.get('version') ?? undefined) }
+      const described = await this.options.orgs.describeGlobal(client, at, refresh)
       sendJson(res, 200, withUsage({ ...(described.body as object), fetchedAt: described.fetchedAt }))
       return
     }
 
     const describe = /^sobjects\/([A-Za-z0-9_]+)$/.exec(rest)
     if (describe && method === 'GET') {
-      const name = describe[1]
-      const tooling = url.searchParams.get('tooling') === '1'
-      const requested = versionOf(url.searchParams.get('version') ?? undefined)
-      const prefix = requested ? `v${requested}:` : ''
-      // "object:": an object named like the list's key ("global") is never taken for the list.
-      const described = await this.options.orgs.cachedDescribe(client, `${prefix}${tooling ? 'tooling:' : ''}object:${name}`, refresh, async () => {
-        const version = await client.version(requested)
-        return (
-          await client.request({
-            method: 'GET',
-            path: `/services/data/v${version}/${tooling ? 'tooling/' : ''}sobjects/${name}/describe/`,
-          })
-        ).body
-      })
+      const at = { tooling: url.searchParams.get('tooling') === '1', version: versionOf(url.searchParams.get('version') ?? undefined) }
+      const described = await this.options.orgs.describeObject(client, describe[1], at, refresh)
       sendJson(res, 200, withUsage({ ...(described.body as object), fetchedAt: described.fetchedAt }))
       return
     }
@@ -493,21 +458,22 @@ export class App {
     const request = body as AgentRequest
     const requested = versionOf(request.apiVersion)
     const version = await client.version(requested)
-    const prefix = requested ? `v${requested}:` : ''
     const orgs = this.options.orgs
-    const describe = async (name: string) => (await client.request({ method: 'GET', path: `/services/data/v${version}/sobjects/${name}/describe/` })).body
+    const soql = request.task === 'generateSoql' || request.task === 'fixSoql'
+    // One API and one version for the whole request (docs/ai-agent.md "SOQL のときのツール").
+    const at = { tooling: soql && request.input.tooling, version: requested }
     const source: MetadataSource = {
-      objects: async () =>
-        ((await orgs.cachedDescribe(client, `${prefix}global`, false, async () => (await client.request({ method: 'GET', path: `/services/data/v${version}/sobjects/` })).body)).body as { sobjects: { name: string; label: string }[] }).sobjects,
+      objects: async () => ((await orgs.describeGlobal(client, at)).body as { sobjects: Awaited<ReturnType<MetadataSource['objects']>> }).sobjects,
       describe: async (name) => {
         try {
-          return (await orgs.cachedDescribe(client, `${prefix}object:${name}`, false, () => describe(name))).body as Awaited<ReturnType<MetadataSource['describe']>>
+          return (await orgs.describeObject(client, name, at)).body as Awaited<ReturnType<MetadataSource['describe']>>
         } catch (e) {
           // An object the org does not have is the AI's mistake to correct, not a failure of the request.
           if (e instanceof SalesforceError && e.status === 404) return undefined
           throw e
         }
       },
+      ...(soql ? { soql: true, omitNamespace: await this.defaultNamespace(client) } : {}),
     }
     const started = performance.now()
     await this.runAi(res, async (signal) => {
@@ -606,14 +572,23 @@ export class App {
    * Organization), the query still runs, without the header.
    */
   private async queryHeaders(client: OrgClient): Promise<Record<string, string>> {
-    if (!this.options.settings.get().omitNamespace) return {}
+    const ns = await this.defaultNamespace(client)
+    return ns ? { 'Sforce-Call-Options': `defaultNamespace=${ns}` } : {}
+  }
+
+  /**
+   * The namespace queries run with as their default, if any: the org's own,
+   * when the setting omits it. The SOQL AI's tools leave out exactly this
+   * one, so that what the AI writes runs (docs/ai-agent.md "SOQL のときのツール").
+   */
+  private async defaultNamespace(client: OrgClient): Promise<string | undefined> {
+    if (!this.options.settings.get().omitNamespace) return undefined
     try {
-      const { namespacePrefix } = await this.options.orgs.summary(client)
-      return namespacePrefix ? { 'Sforce-Call-Options': `defaultNamespace=${namespacePrefix}` } : {}
+      return (await this.options.orgs.summary(client)).namespacePrefix ?? undefined
     } catch (e) {
       if (e instanceof OrgAuthError || e instanceof SfNotFoundError) throw e
       log.warn(`${client.username}: could not read the namespace; querying without it`)
-      return {}
+      return undefined
     }
   }
 

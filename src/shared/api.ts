@@ -128,48 +128,7 @@ export type SettingsUpdate = {
 /** UI language, for the language of the AI's explanations. */
 export type UiLanguage = 'en' | 'ja'
 
-/** What the AI is asked to do (docs/ai.md "タスク"), with what it is given. */
-export type AiTaskRequest =
-  | {
-      task: 'chooseObjects'
-      input: {
-        request: string
-        /** One object per line: `ApiName (Label)`. */
-        objects: string
-        /** The object open on the left (its API name), a hint only: the AI still chooses (docs/ai.md "Generate の流れ"). */
-        openObject?: string
-        tooling: boolean
-        language: UiLanguage
-      }
-    }
-  | {
-      task: 'generateSoql'
-      input: {
-        request: string
-        /** Fields of the objects, in the line format of docs/ai.md. */
-        objectInfo: string
-        editorText: string
-        tooling: boolean
-        language: UiLanguage
-      }
-    }
-  | {
-      task: 'fixSoql'
-      input: {
-        soql: string
-        error: string
-        objectInfo: string
-        tooling: boolean
-        language: UiLanguage
-      }
-    }
-
-export type AiTask = AiTaskRequest['task']
-
-export type ChooseObjectsOutput = { objects: string[] }
 export type SoqlOutput = { soql: string; explanation: string }
-
-export type AiOutput<T extends AiTask> = T extends 'chooseObjects' ? ChooseObjectsOutput : SoqlOutput
 
 /** A REST API request as the AI writes it or is given it (docs/ai-agent.md "答えの形"). */
 export type AgentRestRequest = { method: RestMethod; path: string; body: string }
@@ -187,6 +146,19 @@ type AgentContext = { language: UiLanguage; /** IANA time zone of the browser, s
 
 /** What the AI is asked to do with tools (docs/ai-agent.md), with what it is given. */
 export type AgentTaskRequest =
+  | {
+      task: 'generateSoql'
+      input: AgentContext & {
+        request: string
+        /** The editor text, when its pill is on. */
+        editor?: string
+        /** The object open on the left, a hint only: the AI still chooses (docs/ai-agent.md "タスク"). */
+        openObject?: string
+        tooling: boolean
+      }
+    }
+  /** `object`: the FROM object as the screen read it, whose fields the AI is given from the start. */
+  | { task: 'fixSoql'; input: AgentContext & { soql: string; error: string; object?: string; tooling: boolean } }
   | { task: 'generateRest'; input: AgentContext & { request: string; current?: AgentRestRequest; previous?: AgentPreviousRest } }
   | { task: 'fixRest'; input: AgentContext & { sent: AgentRestRequest; status: number; responseBody: string } }
   | { task: 'generateApex'; input: AgentContext & { request: string; code?: string; previous?: AgentPreviousApex } }
@@ -200,7 +172,11 @@ export type AgentRequest = AgentTaskRequest & { apiVersion?: string }
 export type RestProposalOutput = AgentRestRequest & { explanation: string }
 export type ApexProposalOutput = { code: string; explanation: string }
 
-export type AgentOutput<T extends AgentTask> = T extends 'generateRest' | 'fixRest' ? RestProposalOutput : ApexProposalOutput
+export type AgentOutput<T extends AgentTask> = T extends 'generateSoql' | 'fixSoql'
+  ? SoqlOutput
+  : T extends 'generateRest' | 'fixRest'
+    ? RestProposalOutput
+    : ApexProposalOutput
 
 /** POST /api/ai/test: tries the settings being edited, without saving them. */
 export type AiTestRequest = { ai: AiSettingsInput }

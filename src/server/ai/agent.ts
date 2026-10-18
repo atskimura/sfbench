@@ -1,19 +1,21 @@
-// The AI writing a REST API request or Apex while reading the org's metadata
-// through tools (docs/ai-agent.md "サーバー"): the exchange, its limits, and
-// the final answer through the submit tool.
+// The AI writing SOQL, a REST API request or Apex while reading the org's
+// metadata through tools (docs/ai-agent.md "サーバー"): the exchange, its
+// limits, and the final answer through the submit tool.
 import type { AgentOutput, AgentTask, AgentTaskRequest } from '../../shared/api.ts'
 import type { StoredAiSettings } from '../store.ts'
-import { agentPrompt, checkAgentOutput } from './agentTasks.ts'
+import { agentPrompt, checkAgentOutput, type Given } from './agentTasks.ts'
 import { anthropicConversation } from './anthropic.ts'
 import type { Conversation, ConversationRequest, ToolSpec } from './conversation.ts'
 import { AiError } from './errors.ts'
-import { AI_TIMEOUT_MS } from './generate.ts'
 import { openAiConversation } from './openai.ts'
-import { METADATA_TOOLS, runTool, type MetadataSource } from './tools.ts'
+import { describeObjectText, findObject, METADATA_TOOLS, runTool, shown, type MetadataSource } from './tools.ts'
+
+/** Local models are out, but large models can still take minutes (docs/ai.md "API"). */
+export const AI_TIMEOUT_MS = 300_000
 
 /** The most metadata tool calls in one request (docs/ai-agent.md). */
 export const MAX_TOOL_CALLS = 6
-/** The most text the tools return in one request: the same budget as the SOQL AI. */
+/** The most text the tools return in one request, about 30,000 tokens. */
 export const MAX_TOOL_BYTES = 100_000
 
 const CONVERSATIONS: Record<'anthropic' | 'openai', (req: ConversationRequest) => Conversation> = {
@@ -59,6 +61,22 @@ export function cutToBudget(text: string, budget: number): string {
   return kept.join('\n') + note
 }
 
+/**
+ * What the screen named, matched against the org's objects: the open object
+ * as a hint, and the fields of the object a failed query read from
+ * (docs/ai-agent.md "タスク"). A name the org does not have is left out.
+ */
+async function givenMetadata(req: AgentTaskRequest, source: MetadataSource): Promise<Given> {
+  if (req.task === 'generateSoql' && req.input.openObject) {
+    const open = await findObject(source, req.input.openObject)
+    return open ? { openObject: shown(source, open.name) } : {}
+  }
+  if (req.task === 'fixSoql' && req.input.object && (await findObject(source, req.input.object))) {
+    return { fields: await describeObjectText(source, req.input.object) }
+  }
+  return {}
+}
+
 export type AgentRun<T extends AgentTask> = {
   output: AgentOutput<T>
   /** For the log: counts only. */
@@ -86,16 +104,6 @@ export async function runAgent<T extends AgentTask>(
   const timeout = new AbortController()
   const timer = setTimeout(() => timeout.abort(), timeoutMs)
   const both = AbortSignal.any([signal, timeout.signal])
-  const prompt = agentPrompt(req, apiVersion, todayIn(req.input.timeZone))
-  const submit: ToolSpec = { name: 'submit', description: 'Gives the final answer. Call it once, when done.', schema: prompt.submitSchema }
-  const conversation = CONVERSATIONS[ai.provider]({
-    apiKey: ai.apiKey,
-    model: ai.model,
-    system: prompt.system,
-    user: prompt.user,
-    tools: [...METADATA_TOOLS, submit],
-    signal: both,
-  })
   let aiCalls = 0
   let toolCalls = 0
   let toolBytes = 0
@@ -103,6 +111,22 @@ export async function runAgent<T extends AgentTask>(
   let nudgedToSubmit = false
   let nudgedAtLimit = false
   try {
+    const given = await givenMetadata(req, source)
+    // Fields given from the start count as read by the tools.
+    if (given.fields) {
+      given.fields = cutToBudget(given.fields, MAX_TOOL_BYTES)
+      toolBytes += encoder.encode(given.fields).length
+    }
+    const prompt = agentPrompt(req, apiVersion, todayIn(req.input.timeZone), given)
+    const submit: ToolSpec = { name: 'submit', description: 'Gives the final answer. Call it once, when done.', schema: prompt.submitSchema }
+    const conversation = CONVERSATIONS[ai.provider]({
+      apiKey: ai.apiKey,
+      model: ai.model,
+      system: prompt.system,
+      user: prompt.user,
+      tools: [...METADATA_TOOLS, submit],
+      signal: both,
+    })
     // Each turn either calls tools (counted, so it ends) or uses up a nudge.
     for (;;) {
       const turn = await conversation.next()

@@ -45,18 +45,6 @@ export function errorMessage(status: number, body: string): string {
   return cutErrorText(hideKeys(body.trim()) || `HTTP ${status}`)
 }
 
-/** One request to a provider: the text of the reply, which tasks.ts parses and checks. */
-export type ProviderRequest = {
-  apiKey: string
-  model: string
-  system: string
-  user: string
-  /** The JSON Schema of the output (OpenAI strict-mode rules, docs/ai.md "出力の形"). */
-  schemaName: string
-  schema: object
-  signal: AbortSignal
-}
-
 /**
  * POSTs JSON with no redirects (a key must not follow a redirect elsewhere)
  * and returns the parsed reply. Network failures, error statuses and replies

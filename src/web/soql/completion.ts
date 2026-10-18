@@ -3,7 +3,7 @@
 // object (following parent relationships), and SOQL keywords.
 import type { FieldDescribe, SObjectDescribe, SObjectSummary } from '../apiClient.ts'
 import type { CursorInfo, Scope } from './context.ts'
-import { findByName, nameKey, soqlName } from './namespace.ts'
+import { findByName, nameKey, soqlName } from '../../shared/namespace.ts'
 import type { NameContext } from './selection.ts'
 
 export type Candidate = {
