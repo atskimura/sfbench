@@ -51,7 +51,7 @@ lwc-soql-builder can no longer log in, because Salesforce has blocked the OAuth 
 
 ## Requirements
 
-- Node.js 22.21.0 or later in the 22 line, or 24.5.0 or later
+- Node.js 22.21.0 or later in the 22 line, or 24.5.0 or later (if a project pins an older Node.js, `npx -y -p node@24 -p sfbench -- sfbench` still runs it)
 - The [Salesforce CLI](https://developer.salesforce.com/tools/salesforcecli) (`sf`), logged in to the orgs you use
 
 sfbench runs on macOS, Linux and Windows.
@@ -107,7 +107,7 @@ Your instructions file (`CLAUDE.md`) stays as it is.
 You can also put the skill's file in place yourself: [plugins/sfbench/skills/sfbench/SKILL.md](plugins/sfbench/skills/sfbench/SKILL.md) in English, or [plugins/sfbench/ja/sfbench/SKILL.md](plugins/sfbench/ja/sfbench/SKILL.md) in Japanese.
 Copy the `sfbench` folder to where the agent reads skills (`~/.claude/skills/` for Claude Code, `~/.agents/skills/` for Codex; untested with Codex).
 
-If Claude Code runs commands in its sandbox (as in auto mode by default), sfbench cannot start inside it: it writes `~/.sfbench/` and keeps a local server running.
+If you turned on Claude Code's command sandbox (`/sandbox`), sfbench cannot start inside it: it writes `~/.npm/` and `~/.sfbench/` and keeps a local server running.
 Let sfbench alone run outside the sandbox by adding this to `~/.claude/settings.json`:
 
 ```json

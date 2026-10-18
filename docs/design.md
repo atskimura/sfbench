@@ -173,6 +173,12 @@ API バージョンは、組織ごとに最初の呼び出しで `/services/data
 Salesforce の呼び出しも AI の API の呼び出しも、これでプロキシを通る。
 このオプションは Node 22.21.0 と 24.5.0 で入った。
 
+それより古い Node では、サーバーが `bad option: --use-env-proxy` で起動直後に止まる。
+プロジェクトごとに Node の版を決める道具（asdf、nvm など）を使うと、利用者が気づかずに古い Node で `npx sfbench` を実行することがある。
+そのため CLI の入口は、サーバーを起動する前に Node の版を確かめ、足りなければ、原因と、npm の Node 24 で動かすコマンド（`npx -y -p node@24 -p sfbench -- sfbench`）を出して止める（`src/server/nodeVersion.ts`）。
+`--help`、`--version`、`stop` はサーバーを起動しないので、古い Node でも動く。
+サーバーの標準エラー出力は `~/.sfbench/tmp/server-stderr.log` に書き、サーバーがログを書く前に止まったときは、CLI がその内容を出す。
+
 開発時は環境変数 `SFBENCH_TRANSPORT=cli` で、常に `sf api request rest` を使える。
 トークンを扱えない環境（AI のエージェントから動かす場合など）で動作を確かめるためである。
 

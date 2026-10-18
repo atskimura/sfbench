@@ -51,7 +51,7 @@ lwc-soql-builder は、Salesforce が OAuth のユーザーエージェントフ
 
 ## 必要なもの
 
-- Node.js 22.21.0 以上の 22 系、または 24.5.0 以上
+- Node.js 22.21.0 以上の 22 系、または 24.5.0 以上（プロジェクトで古い Node.js を指定していても、`npx -y -p node@24 -p sfbench -- sfbench` で動かせます）
 - [Salesforce CLI](https://developer.salesforce.com/tools/salesforcecli)（`sf`）と、使う組織へのログイン
 
 macOS、Linux、Windows で動きます。
@@ -108,8 +108,8 @@ Claude Code の中では `/plugin install sfbench --marketplace atskimura/sfbenc
 日本語版は [plugins/sfbench/ja/sfbench/SKILL.md](plugins/sfbench/ja/sfbench/SKILL.md)、英語版は [plugins/sfbench/skills/sfbench/SKILL.md](plugins/sfbench/skills/sfbench/SKILL.md) です。
 `sfbench` フォルダごと、エージェントがスキルを読む場所（Claude Code なら `~/.claude/skills/`、Codex なら `~/.agents/skills/`）に置きます（Codex では試していません）。
 
-Claude Code でシェルのサンドボックスを使っている場合（auto mode の既定など）、sfbench はサンドボックスの中では起動できません。
-`~/.sfbench/` に書き込み、ローカルのサーバーを動かし続けるからです。
+Claude Code のシェルのサンドボックスを有効にしている場合（`/sandbox`）、sfbench はサンドボックスの中では起動できません。
+`~/.npm/` と `~/.sfbench/` に書き込み、ローカルのサーバーを動かし続けるからです。
 `~/.claude/settings.json` に次を足し、sfbench だけをサンドボックスの外で動かしてください。
 
 ```json

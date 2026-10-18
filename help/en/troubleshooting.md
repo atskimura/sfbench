@@ -56,11 +56,20 @@ When the answer did not arrive (a timeout or a broken connection), Salesforce ma
 Check in Salesforce or in the history before you send it again.
 If you send the same request or code again, sfbench asks first.
 
-## "The sfbench server did not start" when an AI agent opens sfbench
+## "sfbench needs Node.js 22.21.0 or later"
 
-The agent's shell runs in a sandbox.
-sfbench writes `~/.sfbench/` and keeps a local server running, so it cannot start inside a sandbox.
-In Claude Code, add this to `~/.claude/settings.json` so that sfbench alone runs outside the sandbox:
+The Node.js used there is too old.
+It happens when asdf, nvm or the like pins an older Node.js in a project folder.
+Node.js 24 from npm runs sfbench anyway:
+
+```
+npx -y -p node@24 -p sfbench -- sfbench
+```
+
+## sfbench does not start in Claude Code's sandbox
+
+With Claude Code's command sandbox turned on (`/sandbox`), sfbench cannot start: it writes `~/.npm/` and `~/.sfbench/` and keeps a local server running.
+Add this to `~/.claude/settings.json` so that sfbench alone runs outside the sandbox:
 
 ```json
 "sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench"] }
