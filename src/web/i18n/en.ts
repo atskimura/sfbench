@@ -40,7 +40,6 @@ export const en = {
   aiObjectChip: (object: string) => `${object} fields`,
   aiEditorChip: 'Editor text',
   aiObjectsChosenByAi: 'Objects: chosen by the AI from the list',
-  aiRemoveChip: (name: string) => `Do not send ${name}`,
   aiStep: { chooseObjects: 'Choosing the objects…', loadFields: 'Loading the fields…', generate: 'Writing the SOQL…', fix: 'Fixing the SOQL…' } as Record<
     'chooseObjects' | 'loadFields' | 'generate' | 'fix',
     string

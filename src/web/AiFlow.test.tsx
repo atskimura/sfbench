@@ -142,6 +142,18 @@ describe('AI', () => {
     expect(screen.queryByRole('region', { name: t.aiProposal })).toBeNull()
   })
 
+  it('keeps the editor text unsent once unticked, even after the query changes', async () => {
+    mocked.aiGenerate.mockResolvedValue(answer('SELECT Name FROM Account'))
+    render(<App launch={{ org: 'demo', query: 'SELECT Id FROM Account' }} />)
+    await userEvent.click(await screen.findByRole('button', { name: t.aiEditorChip }))
+    await userEvent.click(within(await screen.findByRole('region', { name: 'Account' })).getByLabelText(/Industry/))
+    await waitFor(() => expect(editorText()).toContain('Industry'))
+    expect(screen.getByRole('button', { name: t.aiEditorChip }).getAttribute('aria-pressed')).toBe('false')
+    await userEvent.type(screen.getByLabelText(t.aiRequestLabel), '名前{Enter}')
+    await card()
+    expect(mocked.aiGenerate.mock.calls[0][0].input).toMatchObject({ editorText: '' })
+  })
+
   it('lets the AI choose the objects when none is open', async () => {
     mocked.aiGenerate.mockResolvedValueOnce({ output: { objects: ['Account'] } }).mockResolvedValueOnce(answer('SELECT Name FROM Account'))
     render(<App launch={{ org: 'demo' }} />)

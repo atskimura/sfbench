@@ -29,12 +29,16 @@ type AiValue = {
   label: string
   request: string
   setRequest: (text: string) => void
-  /** The object whose fields are sent (the one open on the left), unless removed. */
-  objectChip: string | undefined
-  removeObjectChip: () => void
-  /** Whether the editor text is sent. */
-  editorChip: boolean
-  removeEditorChip: () => void
+  /** The object open on the left, whose fields can be sent. */
+  panelObject: string | undefined
+  /** Whether its fields are sent: unticking holds for that object only, so that another object opened is sent. */
+  sendObject: boolean
+  setSendObject: (on: boolean) => void
+  /** Whether the editor has text to send. */
+  hasEditorText: boolean
+  /** Whether the editor text is sent: unticking holds for this workspace. */
+  sendEditor: boolean
+  setSendEditor: (on: boolean) => void
   /** A request is running: decided by the AI task only. */
   running: boolean
   step: AiStep | undefined
@@ -132,15 +136,16 @@ export function AiProvider({ username, children }: { username: string; children:
   const { start, cancel: cancelTask, running, progress: step } = useTask<AiStep>()
   const [state, dispatch] = useReducer(reducer, initialState)
   const [request, setRequest] = useState('')
-  // A removed chip stays removed only while the same object, or the same first line, is there.
-  const [removedObject, setRemovedObject] = useState<string>()
-  const [removedFirstLine, setRemovedFirstLine] = useState<string>()
+  // What the user chose not to send (docs/ai.md "AI の入力欄").
+  const [objectOff, setObjectOff] = useState<string>()
+  const [sendEditor, setSendEditor] = useState(true)
 
   const ai = settings?.ai
   const availability = availabilityOf(settings)
   const label = ai && ai.provider !== 'off' ? `${t.aiProviderName[ai.provider]} · ${ai.model}` : ''
-  const objectChip = soql.panelObject && soql.panelObject !== removedObject ? soql.panelObject : undefined
-  const editorChip = soql.firstLine.trim() !== '' && soql.firstLine !== removedFirstLine
+  const objectChip = soql.panelObject && soql.panelObject !== objectOff ? soql.panelObject : undefined
+  const hasEditorText = soql.firstLine.trim() !== ''
+  const editorChip = sendEditor && hasEditorText
 
   /** Applies a request's outcome (docs/ai.md "失敗したとき"). */
   const finish = useCallback(
@@ -205,10 +210,12 @@ export function AiProvider({ username, children }: { username: string; children:
       label,
       request,
       setRequest,
-      objectChip,
-      removeObjectChip: () => setRemovedObject(soql.panelObject),
-      editorChip,
-      removeEditorChip: () => setRemovedFirstLine(soql.firstLine),
+      panelObject: soql.panelObject,
+      sendObject: objectChip !== undefined,
+      setSendObject: (on) => setObjectOff(on ? undefined : soql.panelObject),
+      hasEditorText,
+      sendEditor,
+      setSendEditor,
       running,
       step,
       proposal: running || availability !== 'ready' ? undefined : proposal,
@@ -219,7 +226,7 @@ export function AiProvider({ username, children }: { username: string; children:
       discard: () => dispatch({ type: 'discarded' }),
       apply,
     }),
-    [availability, label, request, objectChip, editorChip, soql.panelObject, soql.firstLine, running, step, proposal, failure, generate, fix, cancel, apply],
+    [availability, label, request, objectChip, hasEditorText, sendEditor, soql.panelObject, running, step, proposal, failure, generate, fix, cancel, apply],
   )
   return <AiContext.Provider value={value}>{children}</AiContext.Provider>
 }

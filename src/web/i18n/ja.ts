@@ -40,7 +40,6 @@ export const ja: Messages = {
   aiObjectChip: (object: string) => `${object} の項目`,
   aiEditorChip: 'エディタの内容',
   aiObjectsChosenByAi: 'オブジェクト: 一覧から AI が選びます',
-  aiRemoveChip: (name: string) => `${name}を送らない`,
   aiStep: { chooseObjects: 'オブジェクトを選んでいます…', loadFields: '項目を読み込んでいます…', generate: 'SOQL を組んでいます…', fix: 'SOQL を直しています…' },
   aiProposal: 'AI の提案',
   aiDiscard: 'Discard',

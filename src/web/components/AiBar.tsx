@@ -68,9 +68,9 @@ export function AiBar() {
       </form>
       <div className={styles.row}>
         <span className={panel.meta}>{t.aiSends}</span>
-        {ai.objectChip && <Chip text={t.aiObjectChip(ai.objectChip)} onRemove={ai.removeObjectChip} />}
-        {ai.editorChip && <Chip text={t.aiEditorChip} onRemove={ai.removeEditorChip} />}
-        {!ai.objectChip && <span className={panel.meta}>{t.aiObjectsChosenByAi}</span>}
+        {ai.panelObject && <Send text={t.aiObjectChip(ai.panelObject)} checked={ai.sendObject} onChange={ai.setSendObject} />}
+        {ai.hasEditorText && <Send text={t.aiEditorChip} checked={ai.sendEditor} onChange={ai.setSendEditor} />}
+        {!ai.sendObject && <span className={panel.meta}>{t.aiObjectsChosenByAi}</span>}
         {running && step && (
           <span role="status" className={`${panel.meta} ${styles.status}`}>
             {t.aiStep[step]}
@@ -94,14 +94,18 @@ export function AiBar() {
   )
 }
 
-function Chip({ text, onRemove }: { text: string; onRemove: () => void }) {
+/**
+ * One thing the AI may be sent: a pill pressed while it is sent. Not a
+ * checkbox, so that it does not read as one of the editor's toggles below.
+ */
+function Send({ text, checked, onChange }: { text: string; checked: boolean; onChange: (on: boolean) => void }) {
   return (
-    <span className={styles.chip}>
+    <button type="button" className={styles.send} aria-pressed={checked} onClick={() => onChange(!checked)}>
+      <span className={styles.sendMark} aria-hidden="true">
+        {checked ? '✓' : ''}
+      </span>
       {text}
-      <button type="button" className={styles.chipRemove} aria-label={t.aiRemoveChip(text)} title={t.aiRemoveChip(text)} onClick={onRemove}>
-        ×
-      </button>
-    </span>
+    </button>
   )
 }
 
