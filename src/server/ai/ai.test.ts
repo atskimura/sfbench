@@ -118,6 +118,13 @@ describe('tasks', () => {
     expect(invalidTaskRequest({ task: 'chooseObjects', input: { ...input, openObject: 1 } })).toContain('openObject')
   })
 
+  it('asks for explanations in the UI language, whatever the language of the request', () => {
+    const prompt = promptFor({ task: 'generateSoql', input: { request: 'list accounts', objectInfo: '', editorText: '', tooling: false, language: 'ja' } })
+    expect(prompt.system).toContain('Write the explanation in Japanese')
+    expect(prompt.system).not.toContain('language of the request;')
+    expect(prompt.user.trim().endsWith('(Write the explanation in Japanese.)')).toBe(true)
+  })
+
   it('marks org text as data, and writes fix explanations in the UI language', () => {
     const fix: AiTaskRequest = { task: 'fixSoql', input: { soql: 'SELECT Nme FROM Account', error: 'No such column', objectInfo: '', tooling: false, language: 'ja' } }
     const prompt = promptFor(fix)

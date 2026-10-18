@@ -35,7 +35,7 @@ export function AiBar() {
     if (e.key === 'Enter' && isImeEnter({ isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }, compositionEndedAt.current)) e.preventDefault()
   }
   return (
-    <div className={styles.bar} data-ai-bar>
+    <div className={running ? `${styles.bar} ${styles.busy}` : styles.bar} data-ai-bar aria-busy={running}>
       <form
         className={styles.row}
         onSubmit={(e) => {
@@ -49,14 +49,22 @@ export function AiBar() {
           aria-label={t.aiRequestLabel}
           placeholder={t.aiPlaceholder}
           value={ai.request}
+          // Read only while generating: the request running is the one sent when it was pressed.
+          readOnly={running}
           onChange={(e) => ai.setRequest(e.target.value)}
           onKeyDown={onKeyDown}
           onCompositionEnd={() => (compositionEndedAt.current = Date.now())}
         />
         {running ? (
-          <button type="button" className={panel.button} onClick={ai.cancel}>
-            {t.cancel}
-          </button>
+          <>
+            <span role="status" className={styles.progress}>
+              <span className={styles.spinner} aria-hidden="true" />
+              {step && t.aiStep[step]}
+            </span>
+            <button type="button" className={panel.button} onClick={ai.cancel}>
+              {t.cancel}
+            </button>
+          </>
         ) : (
           <button type="submit" className={`${panel.button} ${panel.primary}`} disabled={!ai.request.trim()}>
             {t.aiGenerate}
@@ -78,11 +86,6 @@ export function AiBar() {
           {t.aiSendChosenFields}
         </span>
         {ai.hasEditorText && <Send text={t.aiEditorChip} checked={ai.sendEditor} onChange={ai.setSendEditor} />}
-        {running && step && (
-          <span role="status" className={`${panel.meta} ${styles.status}`}>
-            {t.aiStep[step]}
-          </span>
-        )}
       </div>
       {failure && (
         <div role="alert" className={styles.error}>

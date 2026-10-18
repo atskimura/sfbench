@@ -197,6 +197,7 @@ describe('AI', () => {
     mocked.aiGenerate.mockImplementation((async (req: { task: string }) =>
       req.task === 'chooseObjects' ? pending.promise : answer('SELECT Name FROM Account')) as never)
     await ask('5件だけ')
+    expect((screen.getByLabelText(t.aiRequestLabel) as HTMLInputElement).readOnly).toBe(true)
     await userEvent.type(screen.getByLabelText(t.aiRequestLabel), '{Enter}{Enter}')
     expect(mocked.aiGenerate).toHaveBeenCalledTimes(1)
     pending.resolve({ output: { objects: ['Account'] } })
