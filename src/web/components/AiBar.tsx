@@ -68,8 +68,16 @@ export function AiBar() {
       </form>
       <div className={styles.row}>
         <span className={panel.meta}>{t.aiSends}</span>
+        {/* Always sent: shown as fixed pills, apart from the one that can be switched. */}
+        <span className={styles.sendFixed} title={ai.panelObject ? t.aiOpenObjectHint(ai.panelObject) : undefined}>
+          <SendMark />
+          {t.aiSendObjectList}
+        </span>
+        <span className={styles.sendFixed}>
+          <SendMark />
+          {t.aiSendChosenFields}
+        </span>
         {ai.hasEditorText && <Send text={t.aiEditorChip} checked={ai.sendEditor} onChange={ai.setSendEditor} />}
-        <span className={panel.meta}>{t.aiObjectsChosenByAi(ai.panelObject)}</span>
         {running && step && (
           <span role="status" className={`${panel.meta} ${styles.status}`}>
             {t.aiStep[step]}
@@ -100,11 +108,17 @@ export function AiBar() {
 function Send({ text, checked, onChange }: { text: string; checked: boolean; onChange: (on: boolean) => void }) {
   return (
     <button type="button" className={styles.send} aria-pressed={checked} onClick={() => onChange(!checked)}>
-      <span className={styles.sendMark} aria-hidden="true">
-        {checked ? '✓' : ''}
-      </span>
+      <SendMark shown={checked} />
       {text}
     </button>
+  )
+}
+
+function SendMark({ shown = true }: { shown?: boolean }) {
+  return (
+    <span className={styles.sendMark} aria-hidden="true">
+      {shown ? '✓' : ''}
+    </span>
   )
 }
 

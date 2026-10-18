@@ -56,6 +56,19 @@
   color: var(--color-accent);
 }
 
+.sendFixed {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--color-badge-neutral-bg);
+  color: var(--color-badge-neutral);
+  font-size: var(--font-size-small);
+  line-height: 20px;
+}
+
 .sendMark {
   display: inline-block;
   width: 1ch;

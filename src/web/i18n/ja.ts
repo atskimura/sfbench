@@ -38,8 +38,9 @@ export const ja: Messages = {
   aiGenerate: 'Generate',
   aiSends: '送る情報:',
   aiEditorChip: 'エディタの内容',
-  aiObjectsChosenByAi: (open: string | undefined) =>
-    open ? `オブジェクトは AI が選びます（開いている ${open} を手がかりにします）` : 'オブジェクトは AI が組織の一覧から選びます',
+  aiSendObjectList: 'オブジェクトの一覧',
+  aiSendChosenFields: '選ばれたオブジェクトの項目',
+  aiOpenObjectHint: (open: string) => `開いている ${open} を、どのオブジェクトを使うかの手がかりとして伝えます`,
   aiStep: { chooseObjects: 'オブジェクトを選んでいます…', loadFields: '項目を読み込んでいます…', generate: 'SOQL を組んでいます…', fix: 'SOQL を直しています…' },
   aiProposal: 'AI の提案',
   aiDiscard: 'Discard',

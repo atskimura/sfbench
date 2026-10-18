@@ -38,8 +38,9 @@ export const en = {
   aiGenerate: 'Generate',
   aiSends: 'Sends:',
   aiEditorChip: 'Editor text',
-  aiObjectsChosenByAi: (open: string | undefined) =>
-    open ? `The AI chooses the objects (with ${open}, the one open, as a hint)` : 'The AI chooses the objects from the org',
+  aiSendObjectList: 'Object list',
+  aiSendChosenFields: 'Fields of the chosen objects',
+  aiOpenObjectHint: (open: string) => `Tells the AI that ${open} is open, as a hint for which objects to use`,
   aiStep: { chooseObjects: 'Choosing the objects…', loadFields: 'Loading the fields…', generate: 'Writing the SOQL…', fix: 'Fixing the SOQL…' } as Record<
     'chooseObjects' | 'loadFields' | 'generate' | 'fix',
     string
