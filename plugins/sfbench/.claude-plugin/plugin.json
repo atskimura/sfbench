@@ -1,0 +1,8 @@
+{
+  "name": "sfbench",
+  "description": "Teaches the agent to open Salesforce SOQL, REST API requests and anonymous Apex in sfbench, in the user's browser.",
+  "author": { "name": "atskimura" },
+  "homepage": "https://github.com/atskimura/sfbench",
+  "repository": "https://github.com/atskimura/sfbench",
+  "license": "MIT"
+}

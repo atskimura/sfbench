@@ -96,16 +96,17 @@ npx sfbench
 
 AI のエージェントは、sfbench をまだ知りません。
 何も教えずに「sfbench で〜」と頼むと、Claude Code は `sfbench` コマンドを探して見つけられず、sf CLI で直接クエリを実行しました。
-エージェントの指示ファイル（Claude Code なら `CLAUDE.md`、Codex なら `AGENTS.md`）に、次の数行を足してください。
+Claude Code には、sfbench の使い方を教えるスキルを、このリポジトリからプラグインとして入れられます。
 
-```markdown
-## sfbench
-
-Salesforce の SOQL、REST API、匿名 Apex を利用者のブラウザで見せるときは、sfbench を `npx -y sfbench` で使う。
-使い方は `npx -y sfbench --help` で確かめる。
+```
+claude plugin install sfbench --marketplace atskimura/sfbench
 ```
 
-これで、Claude Code に「sfbench で成約済みの商談を一覧して」と頼むと、エージェントは `--help` を読み、SOQL を組み立てて次のように起動します。
+Claude Code の中では `/plugin install sfbench --marketplace atskimura/sfbench` でも入れられます。
+指示ファイル（`CLAUDE.md`）を書き換える必要はありません。
+ほかのエージェントでは、[スキルのファイル](plugins/sfbench/skills/sfbench/SKILL.md) を、そのエージェントがスキルを読む場所（Codex なら `~/.agents/skills/sfbench/`）に置いてください（Claude Code 以外では試していません）。
+
+スキルを入れた Claude Code に「sfbench で成約済みの商談を一覧して」と頼むと、エージェントは SOQL を組み立てて次のように起動します。
 
 ```
 npx -y sfbench -o my-org --query "SELECT Id, Name, Amount FROM Opportunity WHERE IsWon = true" --run

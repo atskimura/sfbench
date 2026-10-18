@@ -96,16 +96,17 @@ A REST API request or Apex, which may change data, is only filled in: you send o
 
 AI agents do not know sfbench yet.
 Asked to "use sfbench" with no hint, Claude Code looked for an `sfbench` command, did not find it, and ran the query with the sf CLI instead.
-Add these lines to your agent's instructions (`CLAUDE.md` for Claude Code, `AGENTS.md` for Codex):
+For Claude Code, install the skill that teaches it sfbench, as a plugin from this repository:
 
-```markdown
-## sfbench
-
-To show Salesforce SOQL, REST API requests or anonymous Apex in the user's browser, use sfbench with `npx -y sfbench`.
-Run `npx -y sfbench --help` to see how.
+```
+claude plugin install sfbench --marketplace atskimura/sfbench
 ```
 
-Then ask Claude Code to "list the won opportunities in sfbench", and it reads `--help`, writes the SOQL and starts sfbench like this:
+Inside Claude Code, `/plugin install sfbench --marketplace atskimura/sfbench` does the same.
+Your instructions file (`CLAUDE.md`) stays as it is.
+For other agents, put [the skill's file](plugins/sfbench/skills/sfbench/SKILL.md) where the agent reads skills (`~/.agents/skills/sfbench/` for Codex); this is untested outside Claude Code.
+
+With the skill, ask Claude Code to "list the won opportunities in sfbench", and it writes the SOQL and starts sfbench like this:
 
 ```
 npx -y sfbench -o my-org --query "SELECT Id, Name, Amount FROM Opportunity WHERE IsWon = true" --run

@@ -91,7 +91,7 @@ Settings, recent queries, and the REST API and Apex histories are saved in `~/.s
 ### Open sfbench from an AI agent
 
 AI agents such as Claude Code can open sfbench with a query, a request or Apex filled in.
-Agents do not know sfbench yet, so tell them in their instructions (`CLAUDE.md`, `AGENTS.md`); the lines to add are in the [README](../../README.md#from-an-ai-agent).
+Agents do not know sfbench yet, so install the skill that teaches them: for Claude Code, `claude plugin install sfbench --marketplace atskimura/sfbench` (see the [README](../../README.md#from-an-ai-agent)).
 
 ```
 npx -y sfbench -o my-org --query "SELECT Id, Name FROM Account" --run
