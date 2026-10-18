@@ -70,7 +70,7 @@ describe('runAgent', () => {
     const reads = Array.from({ length: MAX_TOOL_CALLS }, (_, i) => [use(`t${i}`, 'describeObject', { name: 'Project__c' })])
     const fetch = anthropicReplies(...reads, [use('x', 'describeObject', { name: 'Project__c' })], [use('s', 'submit', answer)])
     await expect(runAgent(anthropic, request, source, '66.0', never)).resolves.toMatchObject({ output: answer, toolCalls: MAX_TOOL_CALLS })
-    expect(sentBody(fetch, MAX_TOOL_CALLS + 1).messages.at(-1).content[0].content).toContain('limit of tool calls')
+    expect(sentBody(fetch, MAX_TOOL_CALLS + 1).messages.at(-1).content[0].content).toContain(`limit of ${MAX_TOOL_CALLS} tool calls`)
     // Once more past the limit, it ends.
     anthropicReplies(...reads, [use('x', 'describeObject', { name: 'A' })], [use('y', 'describeObject', { name: 'A' })])
     await expect(runAgent(anthropic, request, source, '66.0', never)).rejects.toMatchObject({ code: 'AI_BAD_OUTPUT' })
@@ -391,6 +391,26 @@ describe('SOQL', () => {
       expect(named).toContain('Field_1199__c')
     })
 
+    it('lists the names of an object too large for one result within the budget left, or sends to findFields', async () => {
+      // Names alone of about 130 KB: more than one result.
+      const fields = Array.from({ length: 3000 }, (_, i) => ({ name: `A_Very_Long_Field_Name_For_Testing_${i}__c`, label: 'L', type: 'string' }))
+      const giant: MetadataSource = { objects: async () => [{ name: 'Giant__c', label: 'Giant' }], describe: async () => ({ name: 'Giant__c', label: 'Giant', fields }) }
+      const names = await tool(giant, 'describeObject', { name: 'Giant__c' }, 200_000)
+      expect(bytes(names)).toBeGreaterThan(MAX_READ_BYTES)
+      expect(names).toContain('A_Very_Long_Field_Name_For_Testing_2999__c')
+      // Not even the names fit, with much of the budget left: findFields, and taken as returned.
+      const state = newReadState()
+      expect(await runTool(giant, 'describeObject', { name: 'Giant__c' }, 60_000, state)).toBe(
+        'Object Giant__c (Giant) has 3000 fields and 0 child relationships, too many to list: use findFields to find the ones you need.',
+      )
+      expect([...state.listed]).toEqual(['Giant__c'])
+      expect(await tool(giant, 'describeObject', { name: 'Giant__c' }, 30_000)).toContain('Not returned')
+    })
+
+    it('finds a reference by its relationship name', async () => {
+      expect(await tool(bigSource, 'findFields', { object: 'Huge__c', keywords: ['rel_7__r'] })).toContain('Field_7__c reference(Account) relationship Rel_7__r')
+    })
+
     it('finds fields and child relationships in full, exact names first, and says how many more there are', async () => {
       const text = await tool(bigSource, 'findFields', { object: 'big__c', keywords: ['field_7__c', 'children2'] })
       const lines = text.split('\n')
@@ -411,7 +431,7 @@ describe('SOQL', () => {
 
     it('keeps within the budget left, and returns nothing rather than a cut list when it is nearly used up', async () => {
       expect(await tool(bigSource, 'describeObject', { name: 'Small__c' }, 60)).toContain('Not returned: the limit of what the tools return is near')
-      expect(await tool(bigSource, 'findFields', { object: 'Big__c', keywords: ['field'] }, 300)).toContain('Not returned')
+      expect(await tool(bigSource, 'findFields', { object: 'Big__c', keywords: ['field'] }, 100)).toContain('Not returned')
       expect(bytes(await tool(bigSource, 'findFields', { object: 'Big__c', keywords: ['field'] }, 5_000))).toBeLessThanOrEqual(5_000)
     })
 
@@ -438,7 +458,8 @@ describe('SOQL', () => {
   it('refuses an editor text or a query too long to send, as the one place that judges it', () => {
     const long = 'x'.repeat(50_001)
     expect(tooLongInput({ ...soqlRequest, input: { ...soqlRequest.input, editor: long } })).toContain('editor text is too long')
-    expect(tooLongInput({ task: 'fixSoql', input: { soql: long } })).toContain('query is too long')
+    expect(tooLongInput({ task: 'fixSoql', input: { soql: long } })).toContain('query or its error is too long')
+    expect(tooLongInput({ task: 'fixSoql', input: { soql: 'SELECT Id FROM Account', error: long } })).toContain('query or its error is too long')
     expect(tooLongInput({ ...soqlRequest, input: { ...soqlRequest.input, editor: 'SELECT Id FROM Account' } })).toBeUndefined()
   })
 

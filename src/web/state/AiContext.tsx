@@ -37,10 +37,12 @@ const AiContext = createContext<AiValue | undefined>(undefined)
 
 /**
  * The server's refusal of a text too long to send, in the screen's words:
- * generating can only be refused for the editor text, fixing for the query.
+ * generating can only be refused for the editor text, fixing for the query
+ * (the error is cut before it is sent). Past the limit of the whole body,
+ * the server refuses before it reads which.
  */
 const tooLong = (message: string) => (e: unknown) => {
-  throw e instanceof ApiRequestError && e.code === 'AI_INPUT_TOO_LONG' ? new Error(message) : e
+  throw e instanceof ApiRequestError && (e.code === 'AI_INPUT_TOO_LONG' || e.code === 'PAYLOAD_TOO_LARGE') ? new Error(message) : e
 }
 
 export function AiProvider({ username, children }: { username: string; children: ReactNode }) {

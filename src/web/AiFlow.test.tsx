@@ -321,6 +321,11 @@ describe('AI', () => {
     mocked.aiAgent.mockRejectedValue(new ApiRequestError(400, 'AI_INPUT_TOO_LONG', 'The editor text is too long to send to the AI.'))
     await ask('名前')
     expect((await screen.findByRole('alert')).textContent).toBe(t.aiEditorTooLong)
+    // Past the limit of the whole body, the server refuses before it reads which: the same words.
+    mocked.aiAgent.mockRejectedValue(new ApiRequestError(413, 'PAYLOAD_TOO_LARGE', 'Too much to send to the AI.'))
+    await userEvent.click(screen.getByRole('button', { name: t.aiGenerate }))
+    await waitFor(() => expect(mocked.aiAgent).toHaveBeenCalledTimes(2))
+    expect((await screen.findByRole('alert')).textContent).toBe(t.aiEditorTooLong)
     mocked.query.mockRejectedValue(rejected("No such column 'Nmae'"))
     cleanup()
     render(<App launch={{ org: 'demo', query: 'SELECT Nmae FROM Account', run: true }} />)

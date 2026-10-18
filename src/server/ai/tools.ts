@@ -64,7 +64,7 @@ export const METADATA_TOOLS: ToolSpec[] = [
   },
   {
     name: 'findFields',
-    description: `Finds the fields and child relationships of one object whose name or label contains any of the keywords (case-insensitive), with full detail; exact names first, at most ${MAX_FOUND} lines.`,
+    description: `Finds the fields and child relationships of one object whose name, relationship name or label contains any of the keywords (case-insensitive), with labels and picklist values (at most ${MAX_PICKLIST_VALUES} values a field); exact names first, at most ${MAX_FOUND} lines.`,
     schema: {
       type: 'object',
       properties: {
@@ -197,14 +197,19 @@ export async function readObject(source: MetadataSource, name: string, budget: n
   if (!found) return undefined
   const shownName = shown(source, found.object.name)
   if (state.listed.has(found.object.name)) return `${shownName} is already above in this conversation: use it, and findFields for what was left out.`
-  const room = Math.min(budget, MAX_READ_BYTES)
-  for (const form of FORMS) {
-    const text = form(found.d, (n) => shown(source, n))
-    if (bytes(text) > room) continue
+  const show = (n: string) => shown(source, n)
+  // The detailed forms within one result; the names, the least the AI needs, within all the budget left.
+  const rooms = [Math.min(budget, MAX_READ_BYTES), Math.min(budget, MAX_READ_BYTES), budget]
+  for (const [i, form] of FORMS.entries()) {
+    const text = form(found.d, show)
+    if (bytes(text) > rooms[i]) continue
     state.listed.add(found.object.name)
     return text
   }
-  return NEAR_LIMIT
+  // Too many names for any budget, with much of it left: the AI finds what it needs instead.
+  if (budget < MAX_READ_BYTES) return NEAR_LIMIT
+  state.listed.add(found.object.name)
+  return `Object ${shownName} (${found.d.label}) has ${found.d.fields.length} fields and ${childrenOf(found.d).length} child relationships, too many to list: use findFields to find the ones you need.`
 }
 
 /**
@@ -221,7 +226,8 @@ export async function findFieldsText(source: MetadataSource, objectName: string,
   const names = (n: string) => [n.toLowerCase(), name(n).toLowerCase()]
   const exact = (n: string) => names(n).some((x) => words.includes(x))
   const contains = (n: string, label = '') => [...names(n), label.toLowerCase()].some((x) => words.some((w) => x.includes(w)))
-  const fields = found.d.fields.filter((f) => contains(f.name, f.label))
+  // A reference is also found by its relationship name (Account__r), as SOQL follows it by that name.
+  const fields = found.d.fields.filter((f) => contains(f.name, f.label) || (f.relationshipName ? contains(f.relationshipName) : false))
   const children = childrenOf(found.d).filter((r) => contains(r.relationshipName!) || contains(r.childSObject))
   const lines = [
     ...fields.filter((f) => exact(f.name)).map((f) => fieldLine(f, name, true)),
@@ -232,8 +238,10 @@ export async function findFieldsText(source: MetadataSource, objectName: string,
   if (lines.length === 0) return `No field or child relationship of ${name(found.object.name)} matches.`
   const room = Math.min(budget, MAX_READ_BYTES)
   const head = `Object ${name(found.object.name)}:`
+  const more = (rest: number) => `(${rest} more: use more specific keywords.)`
   const kept: string[] = []
-  let used = bytes(head) + 200 // the closing note
+  // Room for the longest closing note it can need.
+  let used = bytes(head) + bytes(more(lines.length)) + 1
   for (const line of lines.slice(0, MAX_FOUND)) {
     if (used + bytes(line) + 1 > room) break
     kept.push(line)
@@ -241,7 +249,7 @@ export async function findFieldsText(source: MetadataSource, objectName: string,
   }
   if (kept.length === 0) return NEAR_LIMIT
   const rest = lines.length - kept.length
-  return [head, ...kept, ...(rest ? [`(${rest} more: use more specific keywords.)`] : [])].join('\n')
+  return [head, ...kept, ...(rest ? [more(rest)] : [])].join('\n')
 }
 
 const noObject = (name: string) => `The org has no object named ${name}. Use findObjects to look for it.`

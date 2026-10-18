@@ -297,6 +297,6 @@ export function tooLongInput(body: Record<string, unknown>): string | undefined 
   const input = body.input as Record<string, unknown>
   const over = (v: unknown) => typeof v === 'string' && v.length > MAX_SOQL_TEXT
   if (body.task === 'generateSoql' && over(input.editor)) return `The editor text is too long to send to the AI (at most ${MAX_SOQL_TEXT} characters).`
-  if (body.task === 'fixSoql' && over(input.soql)) return `The query is too long to send to the AI (at most ${MAX_SOQL_TEXT} characters).`
+  if (body.task === 'fixSoql' && (over(input.soql) || over(input.error))) return `The query or its error is too long to send to the AI (at most ${MAX_SOQL_TEXT} characters).`
   return undefined
 }

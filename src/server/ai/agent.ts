@@ -18,6 +18,9 @@ export const MAX_TOOL_CALLS = 8
 /** The most text the tools return in one request, about 30,000 tokens. */
 export const MAX_TOOL_BYTES = 100_000
 
+/** Which limit stops the tools: the number of calls, or the text they return. */
+const limitName = (calls: number) => (calls >= MAX_TOOL_CALLS ? `the limit of ${MAX_TOOL_CALLS} tool calls` : `the limit of what the tools return (${MAX_TOOL_BYTES / 1000} KB)`)
+
 const CONVERSATIONS: Record<'anthropic' | 'openai', (req: ConversationRequest) => Conversation> = {
   anthropic: anthropicConversation,
   openai: openAiConversation,
@@ -121,10 +124,10 @@ export async function runAgent<T extends AgentTask>(
         continue
       }
       if (toolCalls >= MAX_TOOL_CALLS || toolBytes >= MAX_TOOL_BYTES) {
-        if (nudgedAtLimit) throw new AiError('AI_BAD_OUTPUT', `The AI kept reading the org's metadata past the limit (${MAX_TOOL_CALLS} calls).`)
+        if (nudgedAtLimit) throw new AiError('AI_BAD_OUTPUT', `The AI kept reading the org's metadata past the limit (${limitName(toolCalls)}).`)
         nudgedAtLimit = true
         // Every call of the turn needs its answer before anything else can be said.
-        conversation.answer(turn.calls.map((c) => ({ id: c.id, content: 'Not run: the limit of tool calls is reached. Call submit now with your best answer.' })))
+        conversation.answer(turn.calls.map((c) => ({ id: c.id, content: `Not run: ${limitName(toolCalls)} is reached. Call submit now with your best answer.` })))
         continue
       }
       const results = []
@@ -133,7 +136,7 @@ export async function runAgent<T extends AgentTask>(
         if (both.aborted) throw both.reason
         toolCalls++
         const over = toolCalls > MAX_TOOL_CALLS || toolBytes >= MAX_TOOL_BYTES
-        const content = over ? 'Not run: the limit of tool calls is reached. Call submit now.' : await runTool(source, call.name, call.input, MAX_TOOL_BYTES - toolBytes, state)
+        const content = over ? `Not run: ${limitName(toolCalls)} is reached. Call submit now.` : await runTool(source, call.name, call.input, MAX_TOOL_BYTES - toolBytes, state)
         toolBytes += encoder.encode(content).length
         results.push({ id: call.id, content })
       }
