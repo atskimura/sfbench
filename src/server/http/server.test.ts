@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { SalesforceError, SalesforceTimeoutError, SalesforceUnreachableError } from '../salesforce.ts'
-import { cacheControl, errorResponse, restOutcomeOf, unknownOrg } from './server.ts'
-import { OrgAuthError, SfCliError } from '../sf/errors.ts'
+import { apexOutcomeOf, cacheControl, errorResponse, exceptionTypeOf, restOutcomeOf, unknownOrg } from './server.ts'
+import { ApexFileError, ApexRunError } from '../sf/apexRun.ts'
+import { OrgAuthError, SfCliError, SfNotFoundError, SfTimeoutError } from '../sf/errors.ts'
 import { RestRequestError } from '../rest.ts'
 
 describe('cacheControl', () => {
@@ -38,5 +39,27 @@ describe('restOutcomeOf', () => {
 
   it('answers a refused REST request with 400', () => {
     expect(errorResponse(new RestRequestError('no'))).toMatchObject({ status: 400, body: { error: { code: 'BAD_REQUEST' } } })
+  })
+})
+
+// docs/apex.md "実行履歴", "実行の経路"
+describe('Apex outcomes', () => {
+  it('removes the record of a run that never happened, and marks the rest unknown', () => {
+    expect(apexOutcomeOf(new OrgAuthError('u@example.com', 'expired'))).toBeUndefined()
+    expect(apexOutcomeOf(new SfNotFoundError())).toBeUndefined()
+    expect(apexOutcomeOf(new ApexFileError('ENOSPC'))).toBeUndefined()
+    expect(apexOutcomeOf(new SfTimeoutError('sf apex run timed out'))).toEqual({ state: 'unknown', reason: 'timeout' })
+    expect(apexOutcomeOf(new ApexRunError('unexpectedExecuteCommandError', 'x'))).toEqual({ state: 'unknown', reason: 'error' })
+  })
+
+  it('keeps only the type of an exception', () => {
+    expect(exceptionTypeOf('System.DmlException: Insert failed. duplicate value found: 001xx')).toEqual({ exceptionType: 'System.DmlException' })
+    expect(exceptionTypeOf('Something broke with record 001xx and no colon')).toEqual({})
+    expect(exceptionTypeOf(undefined)).toEqual({})
+  })
+
+  it('answers an unknown sf failure with its message for the screen', () => {
+    expect(errorResponse(new ApexRunError('unexpectedExecuteCommandError', 'socket hang up'))).toMatchObject({ status: 502, body: { error: { code: 'SF_CLI_ERROR', message: 'socket hang up' } } })
+    expect(errorResponse(new ApexFileError('ENOSPC'))).toMatchObject({ status: 500, body: { error: { code: 'NOT_RUN' } } })
   })
 })

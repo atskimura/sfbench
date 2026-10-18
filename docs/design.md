@@ -58,16 +58,17 @@ CLI の内部構造が変わっても、出力の形が保たれる限り動き�
 | 既定の組織の解決 | `sf config get target-org --json` | CLI の入口 |
 | アクセストークンの取得 | `sf org auth show-access-token --no-prompt --json` | サーバー |
 | 代わりの経路での API 呼び出し | `sf api request rest --file <request.json> --include` | サーバー |
+| 匿名 Apex の実行 | `sf apex run --file <code.apex> --json` | サーバー |
 | 組織を開く | `sf org open` | サーバー |
 
 呼び出しは次の規則に従う。
 
 - 対象の組織は引数ではなく環境変数 `SF_TARGET_ORG` で渡す。値は `sf org list` に載っているユーザー名だけを受け付ける。
-- 利用者の入力（SOQL、REST API のパスやボディ）をコマンドライン引数に載せない。`sf api request rest` には、メソッド、URL、ヘッダー、ボディを書いた JSON ファイルを `--file` で渡す。ファイルは `~/.sfbench/tmp/` に作り、呼び出し後に消す。引数には英数字だけのファイル名を渡す。
+- 利用者の入力（SOQL、REST API のパスやボディ、Apex のコード）をコマンドライン引数に載せない。`sf api request rest` には、メソッド、URL、ヘッダー、ボディを書いた JSON ファイルを `--file` で渡す。`sf apex run` には、コードを書いたファイルを `--file` で渡す。ファイルは `~/.sfbench/tmp/` に作り、呼び出し後に消す。引数には英数字だけのファイル名を渡す。
 - `sf org open` にはパスを渡さず、組織のホームを開く。
 - `sf` は、起動前に PATH の各ディレクトリから絶対パスを解決し、その絶対パスで起動する（Windows では `sf.cmd` を探す）。作業ディレクトリは PATH の探索に含めない。Windows の cmd.exe はコマンドを PATH より先に作業ディレクトリから探すので、利用者が信頼できないリポジトリで `npx sfbench` を実行したときに、そこにある `sf.cmd` を起動しないようにするためである。
 - サーバーが起動する子プロセスの作業ディレクトリは `~/.sfbench/tmp/` に固定する。例外は、CLI の入口が実行する `sf config get target-org` で、利用者の作業ディレクトリのまま実行する。プロジェクトごとの設定（`.sf/config.json`）を読むためである。この場合も `sf` は絶対パスで起動するので、作業ディレクトリにある実行ファイルは起動しない。
-- 子プロセスにはタイムアウトを設ける（既定は60秒）。タイムアウトしたプロセスは止め、エラーとして扱う。
+- 子プロセスにはタイムアウトを設ける（既定は60秒。`sf apex run` は「Salesforce の応答を待つ時間」に15秒を足した値）。タイムアウトしたプロセスは止め、エラーとして扱う。
 - 環境変数 `SF_JSON_TO_STDOUT=true` と `SF_DISABLE_AUTOUPDATE=true` を付ける。エラーの JSON も標準出力から読むためと、自動更新の案内で出力が乱れないようにするためである。
 - 終了コードが 0 でない場合も、標準出力の JSON の `name` と `message` を読んでエラーとして扱う。JSON を読めない場合は、標準エラーの内容をエラー文にする。
 - `sf` が見つからない（`ENOENT` など）場合は、sf CLI のインストールを案内する。
@@ -195,7 +196,8 @@ Salesforce の呼び出しも AI の API の呼び出しも、これでプロキ
 | `POST /api/orgs/:user/query/next` | 画面用 | 続きのページ（`{ nextRecordsUrl }`） |
 | `POST /api/orgs/:user/rest` | 画面用 | REST API の実行（`{ method, path, headers, body }`）。Salesforce が返したステータスによらず、200 で `{ id, status, headers, body, size, elapsedMs }` を返す（[rest.md](rest.md)） |
 | `GET /api/orgs/:user/rest/history` | 画面用 | REST API の実行履歴 |
-| `POST /api/orgs/:user/apex` | 画面用 | 匿名 Apex の実行（`{ code }`） |
+| `POST /api/orgs/:user/apex` | 画面用 | 匿名 Apex の実行（`{ code }`）。コンパイルエラーと実行時の例外も 200 で返す（[apex.md](apex.md)「応答の形」） |
+| `GET /api/orgs/:user/apex/history` | 画面用 | 匿名 Apex の実行履歴 |
 | `POST /api/orgs/:user/open` | 画面用 | 組織のホームを、ログイン済みの状態でブラウザに開く |
 | `GET /api/orgs/:user/history` | 画面用 | 最近のクエリ |
 | `GET /api/settings`、`PUT /api/settings` | 画面用 | 設定 |
@@ -293,7 +295,7 @@ Vite の開発サーバーは `localhost:5173` に固定し、使用中なら起
 | `--query "<SOQL>"` | SOQL を入力した状態で開く |
 | `--run` | `--query` の SOQL を実行した状態で開く |
 | `--rest <path> [--method <method>] [--body <json> \| --body-file <file>]` | REST API の入力欄を埋めた状態で開く。送信はしない。メソッドの既定は GET。組織が決まらないときはエラーで終える |
-| `--apex "<code>"` | Apex の入力欄を埋めた状態で開く。実行はしない |
+| `--apex "<code>" \| --apex-file <file>` | Apex の入力欄を埋めた状態で開く。実行はしない。組織が決まらないときはエラーで終える |
 | `--json` | 開いた URL などを JSON で出力する |
 | `--no-open` | ブラウザを開かず、URL だけを出力する（WSL や SSH 先で使う） |
 | `stop` | 起動中のサーバーを止める |
@@ -312,7 +314,7 @@ CLI の入口は、`-o` の値か既定の組織（エイリアスかユーザ�
 既定の組織もない場合、`--run` を付けていればコマンドはエラーで終了する。
 付けていなければ、組織の一覧を開いた状態で画面を開く。
 
-`--rest` の詳しい規則は [rest.md](rest.md)「`--rest` の起動時の指定」にある。`--apex` の書式は、区切り5で決める。
+`--rest` の詳しい規則は [rest.md](rest.md)「`--rest` の起動時の指定」に、`--apex` の規則は [apex.md](apex.md)「`--apex` の起動時の指定」にある。
 
 ブラウザは、macOS では `open`、Linux では `xdg-open`、Windows では `%SystemRoot%\System32\rundll32.exe url.dll,FileProtocolHandler` で開く。
 いずれもシェルを通さずに、絶対パスか PATH から起動する。
@@ -383,7 +385,7 @@ AI のエージェントが続けて2回呼んでもサーバーが2つ立たな
 書き込みのたびにファイルを開いて追記し、閉じる。
 書き込む前に 1MB を超えていたら、`server.log.1` に移してから書く。
 ファイルを開いたままにしないので、Windows でも動作中に名前を変えられる。
-アクセストークン、管理用トークン、セッショントークン、API キー、`sf org open` の URL（セッションを含む）、SOQL やリクエストのボディは書かない。
+アクセストークン、管理用トークン、セッショントークン、API キー、`sf org open` の URL（セッションを含む）、SOQL、リクエストのボディ、Apex のコードと例外のメッセージは書かない。
 Windows では、子プロセスのコンソール画面を出さない（`windowsHide`）。
 
 ## データの保存
@@ -398,7 +400,8 @@ sfbench の状態はサーバー側の `~/.sfbench/` に置く。
 | `settings.json` | 設定。AI の API キーも含む。画面から編集し、利用者が手で書く必要はない |
 | `history/<ユーザー名>.json` | 組織ごとの最近のクエリ |
 | `rest-history/<ユーザー名>.json` | 組織ごとの REST API の実行履歴（[rest.md](rest.md)「実行履歴」） |
-| `tmp/` | `sf api request rest` に渡す一時ファイル。子プロセスの作業ディレクトリでもある |
+| `apex-history/<ユーザー名>.json` | 組織ごとの匿名 Apex の実行履歴（[apex.md](apex.md)「実行履歴」） |
+| `tmp/` | `sf api request rest` と `sf apex run` に渡す一時ファイル。子プロセスの作業ディレクトリでもある |
 
 `~/.sfbench/` はディレクトリを 700、ファイルを 600 の権限で作る。
 Windows ではこの権限の指定が効かないので、ユーザーのプロファイルのアクセス権に頼る。
@@ -480,8 +483,9 @@ API なら、テキストを送ってテキストを受け取るだけなので�
 REST API の画面は、メソッド、パス、ボディ、レスポンス、実行履歴だけの簡素なものにする。
 複雑なリクエストは AI に組ませる。
 
-Apex の画面は、Tooling API の `executeAnonymous` で匿名 Apex を実行し、結果とデバッグログを表示する。
-詳細は区切り5で詰める。
+Apex の画面は、`sf apex run` で匿名 Apex を実行し、結果とデバッグログを表示する。
+デバッグログを同じ呼び出しで受け取れるのが sf CLI だけだからである。
+詳細は [apex.md](apex.md) にある。
 
 ## 原則の例外
 

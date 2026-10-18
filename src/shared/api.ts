@@ -181,7 +181,45 @@ export type LaunchOptions = {
   run?: boolean
   /** A REST API request to put in the REST API screen, never sent by itself (docs/rest.md "`--rest` の起動時の指定"). */
   rest?: { method: RestMethod; path: string; body?: string }
+  /** Apex to put in the Apex screen, never run by itself (docs/apex.md "`--apex` の起動時の指定"). */
+  apex?: { code: string }
 }
+
+/** The longest anonymous Apex sfbench takes: about Salesforce's limit (docs/apex.md "前提にする事実"). */
+export const MAX_APEX_CODE = 32_000
+
+/** POST /api/orgs/:user/apex */
+export type ApexRequest = { code: string }
+
+export type ApexResult = 'success' | 'compileError' | 'runtimeError'
+
+/** What Salesforce answered: the code ran, or did not compile, or threw (docs/apex.md "応答の形"). */
+export type ApexResponse = {
+  /** The record in the Apex history, or undefined when it could not be written. */
+  id: string | undefined
+  result: ApexResult
+  compileProblem?: string
+  /** In the anonymous block, from 1. */
+  line?: number
+  column?: number
+  exceptionMessage?: string
+  exceptionStackTrace?: string
+  /** The debug log; empty when omitted. */
+  logs: string
+  logsOmitted?: 'tooLarge'
+  elapsedMs: number
+}
+
+export type ApexOutcome =
+  | { state: 'pending' }
+  | { state: 'done'; result: ApexResult; line?: number; column?: number; compileProblem?: string; exceptionType?: string; elapsedMs: number }
+  /** Salesforce may or may not have run it. */
+  | { state: 'unknown'; reason: 'timeout' | 'unreachable' | 'error' | 'stopped' }
+
+/** One run in the Apex history (docs/apex.md "実行履歴"). */
+export type ApexHistoryEntry = { id: string; code: string; sentAt: string; outcome: ApexOutcome }
+
+export type ApexHistoryResponse = { entries: ApexHistoryEntry[] }
 
 /** The methods the REST API screen sends (docs/rest.md "要求"). */
 export const REST_METHODS = ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'] as const
@@ -259,6 +297,8 @@ export type ApiErrorCode =
   | 'SALESFORCE_UNREACHABLE'
   /** The org is not in the org list (any other unknown path is NOT_FOUND). */
   | 'ORG_NOT_FOUND'
+  /** sfbench could not prepare the run (the history or the code's file could not be written), so Apex was not run (docs/apex.md "実行履歴"). */
+  | 'NOT_RUN'
   | 'AI_NOT_CONFIGURED'
   | 'AI_ERROR'
   | 'AI_BAD_OUTPUT'

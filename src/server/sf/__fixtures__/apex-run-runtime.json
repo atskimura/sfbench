@@ -1,0 +1,22 @@
+{
+  "name": "executeRuntimeFailure",
+  "message": "Execution failed at this code:\n\nSystem.MathException: Divide by 0",
+  "exitCode": 1,
+  "context": "<removed>",
+  "data": {
+    "success": false,
+    "compiled": true,
+    "compileProblem": "",
+    "exceptionMessage": "System.MathException: Divide by 0",
+    "exceptionStackTrace": "AnonymousBlock: line 1, column 1",
+    "line": "1",
+    "column": "1",
+    "logs": "68.0 APEX_CODE,DEBUG;APEX_PROFILING,INFO\nExecute Anonymous: Integer x = 1/0;\n16:52:17.19 (19244475)|USER_INFO|[EXTERNAL]|0052w0000024eK1|admin@demo.example.com|(GMT+09:00) 日本標準時 (Asia/Tokyo)|GMT+09:00\n16:52:17.19 (19296435)|EXECUTION_STARTED\n16:52:17.19 (19341016)|CODE_UNIT_STARTED|[EXTERNAL]|execute_anonymous_apex\n16:52:17.19 (19822020)|EXCEPTION_THROWN|[1]|System.MathException: Divide by 0\n16:52:17.19 (20070342)|FATAL_ERROR|System.MathException: Divide by 0\n\nAnonymousBlock: line 1, column 1\n16:52:17.20 (20104942)|CUMULATIVE_LIMIT_USAGE\n16:52:17.20 (20104942)|LIMIT_USAGE_FOR_NS|(default)|\n  Number of SOQL queries: 0 out of 100\n  Number of query rows: 0 out of 50000\n  Number of SOSL queries: 0 out of 20\n  Number of DML statements: 0 out of 150\n  Number of Publish Immediate DML: 0 out of 150\n  Number of DML rows: 0 out of 10000\n  Maximum CPU time: 0 out of 10000\n  Maximum heap size: 0 out of 10000000\n  Number of callouts: 0 out of 100\n  Number of Email Invocations: 0 out of 10\n  Number of future calls: 0 out of 50\n  Number of queueable jobs added to the queue: 0 out of 50\n  Number of Mobile Apex push calls: 0 out of 10\n\n16:52:17.20 (20104942)|CUMULATIVE_LIMIT_USAGE_END\n\n16:52:17.19 (20182873)|CODE_UNIT_FINISHED|execute_anonymous_apex\n16:52:17.19 (20255183)|EXECUTION_FINISHED\n"
+  },
+  "stack": "<removed>",
+  "cause": "undefined",
+  "warnings": [],
+  "code": "executeRuntimeFailure",
+  "status": 1,
+  "commandName": "Run"
+}

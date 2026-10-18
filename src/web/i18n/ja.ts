@@ -13,6 +13,7 @@ export const ja: Messages = {
   unknownLaunchOrg: (name: string) => `sf CLI に ${name} という組織はありません。一覧から選んでください。`,
   salesforceTimeout: 'Salesforce が時間内に応答しませんでした。Salesforce の側で処理が終わっている場合があります。待つ時間は設定で延ばせます。',
   salesforceUnreachable: 'Salesforce への送信の途中で接続が切れました。Salesforce が処理した場合があるので、送り直していません。Salesforce で結果を確かめてください。',
+  notRun: 'sfbench が ~/.sfbench に実行履歴か一時ファイルを書けなかったので、実行していません。ディスクの空きと権限を確かめてください。',
   orgAuthError: 'セッションが切れています。ターミナルでログインし直してください:',
   openOrg: 'ログイン済みの状態でブラウザに組織を開く',
   openingOrg: '開いています…',
