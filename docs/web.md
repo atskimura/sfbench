@@ -114,7 +114,7 @@ HTTP ステータスを見るのは、`UNAUTHORIZED` の 401（セッション�
 | 410 `UNAUTHORIZED`（起動用の URL が期限切れか使用済み） | 作業画面の代わりに「この URL は使えません」と表示する |
 | `ORG_AUTH_ERROR` | その組織の状態の印を認証エラーにする。再ログインのコマンド（`reloginCommand`）をコピーボタン付きで、クエリの実行中なら結果の位置に、それ以外なら通知に出す。組織の一覧にも同じコマンドを出す |
 | 503 `SF_CLI_NOT_FOUND` | 作業画面の代わりに、sf CLI のインストールを案内する |
-| `SALESFORCE_ERROR`（Salesforce がエラーを返した） | 実行のエラーなら結果の位置に、それ以外（describe、続きのページ）なら通知に出す。`details`（Salesforce が返した JSON）を開いて見られるようにする。「AI で直す」は、実行のエラーのうち、Salesforce が 4xx で断ったもの（`status` が 400 番台）にだけ出す。5xx は Salesforce の側の失敗で、クエリを直しても通らないからである |
+| `SALESFORCE_ERROR`（Salesforce がエラーを返した） | 実行のエラーなら結果の位置に、それ以外（describe、続きのページ）なら通知に出す。`details`（Salesforce が返した JSON）を開いて見られるようにする。「AI で直す」は、実行のエラーのうち、Salesforce が 400 で断ったものにだけ出す。Salesforce は書き方の誤り（`MALFORMED_QUERY`、`INVALID_FIELD` など）を 400 で返す。403（API の上限、権限）や 5xx（Salesforce の側の失敗）は、クエリを直しても通らないからである |
 | 504 `SALESFORCE_TIMEOUT`（Salesforce が時間内に答えなかった） | `SALESFORCE_ERROR` と同じ場所に、「Salesforce の側で処理が終わっている場合がある」と案内する。「AI で直す」は出さない（クエリの書き方の問題ではないため） |
 | 502 `SALESFORCE_UNREACHABLE`（データを変えうる要求の送信の途中で接続が切れた） | 同じ場所に、「Salesforce が処理した場合があるので、送り直していない」と案内する |
 | `fetch` 自体の失敗（サーバーが止まっている） | 401 と同じ帯で案内する |

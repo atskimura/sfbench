@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { HistoryEntry } from '../../shared/api.ts'
 import { api } from '../apiClient.ts'
-import { errorKind, runFailure } from '../errors.ts'
+import { runFailure } from '../errors.ts'
 import { t } from '../i18n/i18n.ts'
 import { fromObjectOf } from '../soql/context.ts'
 import {
@@ -235,8 +235,8 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
         return
       }
       // A login error is shown in the result area only, not also as a notification.
-      if (errorKind(outcome.error) === 'orgAuth') markAuthError(username, failure.reloginCommand)
-      const { rejected, ...shown } = failure
+      if (failure.orgAuth) markAuthError(username, failure.reloginCommand)
+      const { rejected, orgAuth: _, ...shown } = failure
       // Only a query Salesforce refused is offered to the AI to fix (not a timeout).
       setResult({ state: 'error', ...shown, rejected: rejected ? { soql, tooling: useTooling, prompt } : undefined })
     },

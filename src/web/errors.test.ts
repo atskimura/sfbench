@@ -23,9 +23,11 @@ describe('errors', () => {
 
   it('offers a fix only for a query Salesforce refused, not for a timeout or a broken connection', () => {
     expect(runFailure(api(502, 'SALESFORCE_ERROR', { status: 503 }))).toMatchObject({ rejected: false })
+    expect(runFailure(api(403, 'SALESFORCE_ERROR', { status: 403, details: [{ errorCode: 'REQUEST_LIMIT_EXCEEDED' }] }))).toMatchObject({ rejected: false })
     expect(runFailure(api(400, 'SALESFORCE_ERROR', { status: 400, details: [{ errorCode: 'INVALID_FIELD' }] }))).toEqual({
       message: 'server: SALESFORCE_ERROR',
       details: [{ errorCode: 'INVALID_FIELD' }],
+      orgAuth: false,
       rejected: true,
     })
     expect(runFailure(api(504, 'SALESFORCE_TIMEOUT'))).toMatchObject({ message: t.salesforceTimeout, rejected: false })
@@ -36,6 +38,7 @@ describe('errors', () => {
     expect(runFailure(api(409, 'ORG_AUTH_ERROR', { reloginCommand: 'sf org login web' }))).toEqual({
       message: t.orgAuthError,
       reloginCommand: 'sf org login web',
+      orgAuth: true,
       rejected: false,
     })
     expect(runFailure(new ApiRequestError(0, 'NETWORK_ERROR', 'down'))).toBeUndefined()

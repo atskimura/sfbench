@@ -8,7 +8,7 @@ import type { ApiUsage } from '../shared/api.ts'
 import { log } from './log.ts'
 import { apiRequest, type RawResponse } from './sf/apiRequest.ts'
 import { getAccessToken } from './sf/commands.ts'
-import { OrgAuthError, SfCliError, SfNotFoundError, isAuthErrorMessage } from './sf/errors.ts'
+import { OrgAuthError, SfCliError, SfNotFoundError, SfTimeoutError, isAuthErrorMessage } from './sf/errors.ts'
 
 /** Salesforce answered with an HTTP error. `body` is its parsed JSON when possible. */
 export class SalesforceError extends Error {
@@ -211,7 +211,10 @@ export class OrgClient {
       { method: req.method, path: req.path, headers, body: req.body },
       this.tmpDir,
       this.timeoutMs(),
-    )
+    ).catch((e: unknown) => {
+      // The same answer as fetch's timeout: Salesforce may have processed the request.
+      throw e instanceof SfTimeoutError ? new SalesforceTimeoutError() : e
+    })
   }
 
   /**

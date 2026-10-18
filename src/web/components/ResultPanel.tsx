@@ -2,13 +2,13 @@
 // child records of a subquery cell, and CSV export (docs/web.md "結果の表").
 import { useCallback, useDeferredValue, useEffect, useId, useMemo, useReducer, useState } from 'react'
 import { api } from '../apiClient.ts'
+import { isLocatorGone } from '../errors.ts'
 import { t } from '../i18n/i18n.ts'
 import { pagesReducer, type Pages } from '../results/pages.ts'
 import { addColumns, cellText, cellValue, type ChildRecords, type Column, type SObjectRecord } from '../results/columns.ts'
 import { useOrgs } from '../state/OrgContext.tsx'
 import { useResult, type QueryResult } from '../state/SoqlContext.tsx'
 import { useTask } from '../state/useTask.ts'
-import { isLocatorGone } from '../errors.ts'
 import { FixWithAi } from './AiBar.tsx'
 import { CopyCommand } from './CopyCommand.tsx'
 import { ErrorDetails } from './ErrorDetails.tsx'
@@ -82,7 +82,6 @@ function matchingRows(result: Done, records: readonly SObjectRecord[], columns: 
   return matches
 }
 type OpenChild = { row: number; column: Column; child: ChildRecords }
-
 
 /**
  * The later pages of the shown result (docs/web.md "流れごとの指定"). The

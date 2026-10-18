@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Settings, SettingsUpdate } from '../../shared/api.ts'
 import { api } from '../apiClient.ts'
-import { errorDetails, errorKind, errorMessage, reloginCommand } from '../errors.ts'
+import { errorDetails, errorKind, errorMessage } from '../errors.ts'
 import { useTask } from './useTask.ts'
 
 export type Notification = {
@@ -72,7 +72,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   )
   const reportError = useCallback(
     (e: unknown) => {
-      if (!handleCommonError(e)) notify({ message: errorMessage(e), command: reloginCommand(e), details: errorDetails(e) })
+      // An org's login error is the org context's (handleOrgError), which also marks the org.
+      if (!handleCommonError(e)) notify({ message: errorMessage(e), details: errorDetails(e) })
     },
     [handleCommonError, notify],
   )

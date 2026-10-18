@@ -4,6 +4,7 @@ import { AI_PROVIDERS, type AiKeyProvider, type AiSettingsView } from '../../sha
 import { aiDraftValid, aiInput, type AiDraft } from '../ai/draft.ts'
 import { api } from '../apiClient.ts'
 import { errorMessage } from '../errors.ts'
+import { useApp } from '../state/AppContext.tsx'
 import { t } from '../i18n/i18n.ts'
 import { useTask } from '../state/useTask.ts'
 import dialog from './Dialog.module.css'
@@ -20,6 +21,7 @@ export function AiSettings({ saved, draft, onChange }: { saved: AiSettingsView |
   const ids = { model: useId(), key: useId(), notes: useId() }
   const [result, setResult] = useState<TestResult>()
   const { start, cancel, running: testing } = useTask()
+  const { handleCommonError } = useApp()
 
   const change = (patch: Partial<AiDraft>) => {
     // A test still running checks settings that are no longer on screen.
@@ -38,7 +40,8 @@ export function AiSettings({ saved, draft, onChange }: { saved: AiSettingsView |
     const input = aiInput(draft)
     const outcome = await start((signal) => api.aiTest({ ai: input }, signal), 'replace')
     if (outcome.kind === 'done') setResult({ state: 'ok', ms: outcome.value.elapsedMs })
-    if (outcome.kind === 'error') setResult({ state: 'error', message: errorMessage(outcome.error) })
+    // A lost session shows app-wide, not as a failed test of the AI settings.
+    if (outcome.kind === 'error' && !handleCommonError(outcome.error)) setResult({ state: 'error', message: errorMessage(outcome.error) })
   }
 
   return (

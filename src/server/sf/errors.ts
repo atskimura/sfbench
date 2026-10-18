@@ -16,6 +16,14 @@ export class SfCliError extends Error {
   }
 }
 
+/** An sf command did not finish in time and was stopped. */
+export class SfTimeoutError extends SfCliError {
+  constructor(message: string) {
+    super(message)
+    this.name = 'SfTimeoutError'
+  }
+}
+
 /** The org's auth is no longer valid (for example, the refresh token expired). */
 export class OrgAuthError extends Error {
   readonly username: string

@@ -149,7 +149,7 @@ API バージョンは、組織ごとに最初の呼び出しで `/services/data
 切り替えた組織は、10分経ったあとの最初の読み取りの要求（GET と HEAD）で、もう一度 `fetch` を試す。
 データを変えうる要求で試さないのは、`fetch` がまだ失敗する場合に、その要求を送り直せないからである。
 `fetch` で接続が途中で切れたデータを変えうる要求は、「Salesforce が処理した可能性があるので送り直していない」と伝えるエラー（`SALESFORCE_UNREACHABLE`）にする。
-応答を待つ時間を過ぎたときは `SALESFORCE_TIMEOUT` にする。
+応答を待つ時間を過ぎたときは、`fetch` でも `sf api request rest` でも `SALESFORCE_TIMEOUT` にする。
 どちらも、Salesforce がエラーを返した `SALESFORCE_ERROR` とは別のコードにする。画面が、Salesforce が断ったのか、処理されたかもしれないのかを見分けられるようにするためである。
 サーバーは自動では止まらないので、一時的な失敗で遅い経路に移ったままにならないようにするためである。
 

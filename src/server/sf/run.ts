@@ -9,7 +9,7 @@
 import { execFile } from 'node:child_process'
 import { accessSync, constants } from 'node:fs'
 import { delimiter, isAbsolute, join } from 'node:path'
-import { SfCliError, SfNotFoundError } from './errors.ts'
+import { SfCliError, SfNotFoundError, SfTimeoutError } from './errors.ts'
 
 const isWindows = process.platform === 'win32'
 const MAX_CONCURRENT = 4
@@ -101,7 +101,7 @@ export async function runSf(args: readonly string[], options: SfRunOptions): Pro
           clearTimeout(timer)
           const code = (error as NodeJS.ErrnoException | null)?.code
           if (code === 'ENOENT') reject(new SfNotFoundError())
-          else if (timedOut) reject(new SfCliError(`${label} timed out`))
+          else if (timedOut) reject(new SfTimeoutError(`${label} timed out`))
           else if (code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') reject(new SfCliError(`${label} printed too much output`))
           else resolve({ stdout, stderr, exitCode: typeof error?.code === 'number' ? error.code : error ? 1 : 0 })
         },
