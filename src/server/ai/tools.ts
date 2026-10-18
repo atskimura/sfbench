@@ -92,7 +92,8 @@ export async function runTool(source: MetadataSource, name: string, input: unkno
   if (name === 'describeObject') {
     if (typeof args.name !== 'string' || !/^[A-Za-z][A-Za-z0-9_]*$/.test(args.name)) return 'name must be an object API name.'
     const described = await source.describe(args.name)
-    return described ? describeText(described) : `The org has no object named ${args.name}. Use findObjects to look for it.`
+    // Anything but a describe (a cache shared with other answers) is no object.
+    return described && Array.isArray(described.fields) ? describeText(described) : `The org has no object named ${args.name}. Use findObjects to look for it.`
   }
   return `There is no tool named ${name}.`
 }

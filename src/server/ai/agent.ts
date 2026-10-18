@@ -39,6 +39,26 @@ export const TEST_AGENT_REQUEST: AgentTaskRequest & { task: 'generateApex' } = {
 }
 export const NO_METADATA: MetadataSource = { objects: async () => [], describe: async () => undefined }
 
+/**
+ * A tool's result within what is left of the budget: whole lines from the
+ * start, and a note that it was cut, so that one large describe cannot go far
+ * past the budget and be sent again with every turn.
+ */
+export function cutToBudget(text: string, budget: number): string {
+  if (encoder.encode(text).length <= budget) return text
+  const note = '\n(Cut here: the limit of what the tools return is reached. Answer with what you have.)'
+  const room = Math.max(0, budget - encoder.encode(note).length)
+  const kept: string[] = []
+  let used = 0
+  for (const line of text.split('\n')) {
+    const size = encoder.encode(line).length + 1
+    if (used + size > room) break
+    kept.push(line)
+    used += size
+  }
+  return kept.join('\n') + note
+}
+
 export type AgentRun<T extends AgentTask> = {
   output: AgentOutput<T>
   /** For the log: counts only. */
@@ -79,32 +99,36 @@ export async function runAgent<T extends AgentTask>(
   let aiCalls = 0
   let toolCalls = 0
   let toolBytes = 0
-  let nudged = false
+  // One nudge each: to call submit at all, and to stop reading past the limit.
+  let nudgedToSubmit = false
+  let nudgedAtLimit = false
   try {
-    // Each turn either calls tools (counted, so it ends) or is the one nudge.
+    // Each turn either calls tools (counted, so it ends) or uses up a nudge.
     for (;;) {
       const turn = await conversation.next()
       aiCalls++
       const answer = turn.calls.find((c) => c.name === 'submit')
       if (answer) return { output: checkAgentOutput(req.task, answer.input), aiCalls, toolCalls }
       if (turn.calls.length === 0) {
-        if (nudged) throw new AiError('AI_BAD_OUTPUT', 'The AI answered without calling submit.', turn.text)
-        nudged = true
+        if (nudgedToSubmit) throw new AiError('AI_BAD_OUTPUT', 'The AI answered without calling submit.', turn.text)
+        nudgedToSubmit = true
         conversation.say('Give your answer by calling the submit tool.')
         continue
       }
       if (toolCalls >= MAX_TOOL_CALLS || toolBytes >= MAX_TOOL_BYTES) {
-        if (nudged) throw new AiError('AI_BAD_OUTPUT', `The AI kept reading the org's metadata past the limit (${MAX_TOOL_CALLS} calls).`)
-        nudged = true
+        if (nudgedAtLimit) throw new AiError('AI_BAD_OUTPUT', `The AI kept reading the org's metadata past the limit (${MAX_TOOL_CALLS} calls).`)
+        nudgedAtLimit = true
         // Every call of the turn needs its answer before anything else can be said.
         conversation.answer(turn.calls.map((c) => ({ id: c.id, content: 'Not run: the limit of tool calls is reached. Call submit now with your best answer.' })))
         continue
       }
       const results = []
       for (const call of turn.calls) {
+        // The screen went away (Cancel, a closed tab): no more reads of the org.
+        if (both.aborted) throw both.reason
         toolCalls++
         const over = toolCalls > MAX_TOOL_CALLS || toolBytes >= MAX_TOOL_BYTES
-        const content = over ? 'Not run: the limit of tool calls is reached. Call submit now.' : await runTool(source, call.name, call.input)
+        const content = over ? 'Not run: the limit of tool calls is reached. Call submit now.' : cutToBudget(await runTool(source, call.name, call.input), MAX_TOOL_BYTES - toolBytes)
         toolBytes += encoder.encode(content).length
         results.push({ id: call.id, content })
       }
