@@ -2,6 +2,7 @@
 // built on the AI parts every screen shares.
 import { t } from '../i18n/i18n.ts'
 import type { RestSnapshot } from '../rest/request.ts'
+import { usePanels } from '../state/PanelsContext.tsx'
 import { useRest } from '../state/RestContext.tsx'
 import { useRestAi } from '../state/RestAiContext.tsx'
 import { AiInput, DiffText, ProposalFrame, Send, SendFixed } from './AiBar.tsx'
@@ -15,7 +16,8 @@ export function RestAiBar() {
       session={ai}
       stepText={ai.step && t.aiThinking}
       onGenerate={ai.generate}
-      placeholder={t.aiRestPlaceholder}
+      placeholder={ai.sendPrevious ? t.aiPreviousPlaceholder : t.aiRestPlaceholder}
+      attention={ai.attention}
       sends={
         <>
           <SendFixed text={t.aiSendMetadata} />
@@ -50,6 +52,27 @@ export function RestProposalCard() {
       {/* Against the body when the proposal arrived; the card says when the body has changed since. */}
       {p.body.trim() !== '' && <DiffText before={p.before} after={p.body} stale={rest.getBody() !== p.before} />}
     </ProposalFrame>
+  )
+}
+
+/** "Use this result with AI" on a response: opens the request area, and the AI input takes the eyes. */
+export function UseRestResultWithAi() {
+  const ai = useRestAi()
+  const { setOpen } = usePanels()
+  if (ai.availability !== 'ready' || !ai.hasPrevious) return null
+  return (
+    <button
+      type="button"
+      className={panel.button}
+      aria-pressed={ai.sendPrevious}
+      title={t.aiSendPreviousHint}
+      onClick={() => {
+        if (!ai.sendPrevious) setOpen('restRequest', true)
+        ai.takeResult(!ai.sendPrevious)
+      }}
+    >
+      {ai.sendPrevious ? t.aiUsingResult : t.aiUseResult}
+    </button>
   )
 }
 

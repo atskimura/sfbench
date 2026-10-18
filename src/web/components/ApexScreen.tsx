@@ -13,7 +13,7 @@ import { useApex } from '../state/ApexContext.tsx'
 import { useApp } from '../state/AppContext.tsx'
 import { useOrgs } from '../state/OrgContext.tsx'
 import { PanelsProvider, usePanels } from '../state/PanelsContext.tsx'
-import { ApexAiBar, ApexProposalCard, FixApexWithAi } from './ApexAi.tsx'
+import { ApexAiBar, ApexProposalCard, FixApexWithAi, UseApexResultWithAi } from './ApexAi.tsx'
 import { ApexEditor, LogView } from './ApexCode.tsx'
 import { ApiVersionSelect } from './ApiVersionSelect.tsx'
 import { CollapseButton } from './CollapseButton.tsx'
@@ -219,6 +219,8 @@ function Shown({ result }: { result: ApexResult }) {
           {t.elapsed((response.elapsedMs / 1000).toFixed(2))} · {ranAtFormat.format(new Date(result.run.ranAt))}
         </span>
         {apex.codeChanged && <span className={panel.meta}>{t.apexCodeChanged}</span>}
+        <span className={panel.spacer} />
+        <UseApexResultWithAi />
       </div>
       {response.result !== 'success' && (
         <div className={styles.problem} role="alert">

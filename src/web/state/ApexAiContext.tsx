@@ -23,6 +23,10 @@ type ApexAiValue = AiSession<ApexProposalOutput, AgentStep> & {
   /** Whether the last result is sent: off unless chosen, as it can hold record values (docs/ai-agent.md "前の結果"). */
   sendPrevious: boolean
   setSendPrevious: (on: boolean) => void
+  /** From the result's button: sends the last result, and draws the eyes up to the AI input (or stops sending it). */
+  takeResult: (on: boolean) => void
+  /** Counts takeResult(true), for the AI input to take the focus and flash. */
+  attention: number
   generate: () => void
   /** Asks the AI to fix code that did not compile or threw, as it was run. */
   fix: (failed: { code: string; problem: string; line?: number; column?: number }) => void
@@ -47,6 +51,11 @@ export function ApexAiProvider({ username, children }: { username: string; child
   // Unsent once the user says so, until the workspace goes (as the SOQL editor's pill).
   const [sendCode, setSendCode] = useState(true)
   const [sendPrevious, setSendPrevious] = useState(false)
+  const [attention, setAttention] = useState(0)
+  const takeResult = useCallback((on: boolean) => {
+    setSendPrevious(on)
+    if (on) setAttention((n) => n + 1)
+  }, [])
   const last = apex.result.state === 'response' ? apex.result.response : undefined
   const hasCode = !apex.empty
   const { availability, request, start, proposal, applied } = session
@@ -84,8 +93,8 @@ export function ApexAiProvider({ username, children }: { username: string; child
   }, [proposal, setCode, applied])
 
   const value = useMemo<ApexAiValue>(
-    () => ({ ...session, hasCode, sendCode, setSendCode, hasPrevious: last !== undefined, sendPrevious, setSendPrevious, generate, fix, apply }),
-    [session, hasCode, sendCode, last, sendPrevious, generate, fix, apply],
+    () => ({ ...session, hasCode, sendCode, setSendCode, hasPrevious: last !== undefined, sendPrevious, setSendPrevious, takeResult, attention, generate, fix, apply }),
+    [session, hasCode, sendCode, last, sendPrevious, takeResult, attention, generate, fix, apply],
   )
   return <ApexAiContext.Provider value={value}>{children}</ApexAiContext.Provider>
 }

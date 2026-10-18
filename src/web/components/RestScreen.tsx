@@ -18,7 +18,7 @@ import { CopyCommand } from './CopyCommand.tsx'
 import { ErrorDetails } from './ErrorDetails.tsx'
 import { JsonEditor, JsonView } from './JsonCode.tsx'
 import { Notice } from './Notice.tsx'
-import { FixRestWithAi, RestAiBar, RestProposalCard } from './RestAi.tsx'
+import { FixRestWithAi, RestAiBar, RestProposalCard, UseRestResultWithAi } from './RestAi.tsx'
 import panel from './Panel.module.css'
 import { ReloadButton } from './ReloadButton.tsx'
 import { Divider, Strip } from './Split.tsx'
@@ -351,6 +351,7 @@ function Result({ result }: { result: RestResult }) {
         </span>
         {sent}
         <FixRestWithAi sent={result.request} status={response.status} body={response.body} />
+        <UseRestResultWithAi />
         <span className={panel.spacer} />
         <div className={styles.tabs} role="tablist">
           <button type="button" role="tab" aria-selected={tab === 'body'} className={styles.tab} onClick={() => setTab('body')}>

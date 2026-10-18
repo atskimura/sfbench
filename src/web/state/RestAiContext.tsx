@@ -28,6 +28,10 @@ type RestAiValue = AiSession<RestProposal, AgentStep> & {
   /** Whether the last response is sent: off unless chosen, as it can hold record values (docs/ai-agent.md "前の結果"). */
   sendPrevious: boolean
   setSendPrevious: (on: boolean) => void
+  /** From the result's button: sends the last result, and draws the eyes up to the AI input (or stops sending it). */
+  takeResult: (on: boolean) => void
+  /** Counts takeResult(true), for the AI input to take the focus and flash. */
+  attention: number
   generate: () => void
   /** Asks the AI to fix a request that Salesforce answered with an error, as it was sent. */
   fix: (sent: RestSnapshot, status: number, responseBody: string) => void
@@ -49,6 +53,11 @@ export function RestAiProvider({ username, children }: { username: string; child
   // Unsent once the user says so, until the workspace goes (as the SOQL editor's pill).
   const [sendCurrent, setSendCurrent] = useState(true)
   const [sendPrevious, setSendPrevious] = useState(false)
+  const [attention, setAttention] = useState(0)
+  const takeResult = useCallback((on: boolean) => {
+    setSendPrevious(on)
+    if (on) setAttention((n) => n + 1)
+  }, [])
   const last = rest.result.state === 'response' ? rest.result.response : undefined
   const hasCurrent = rest.path.trim() !== ''
   const { availability, request, start, proposal, applied } = session
@@ -90,8 +99,8 @@ export function RestAiProvider({ username, children }: { username: string; child
   }, [proposal, setMethod, setPath, setBody, applied])
 
   const value = useMemo<RestAiValue>(
-    () => ({ ...session, hasCurrent, sendCurrent, setSendCurrent, hasPrevious: last !== undefined, sendPrevious, setSendPrevious, generate, fix, apply }),
-    [session, hasCurrent, sendCurrent, last, sendPrevious, generate, fix, apply],
+    () => ({ ...session, hasCurrent, sendCurrent, setSendCurrent, hasPrevious: last !== undefined, sendPrevious, setSendPrevious, takeResult, attention, generate, fix, apply }),
+    [session, hasCurrent, sendCurrent, last, sendPrevious, takeResult, attention, generate, fix, apply],
   )
   return <RestAiContext.Provider value={value}>{children}</RestAiContext.Provider>
 }

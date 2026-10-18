@@ -1,7 +1,7 @@
 // The AI input above the editor, and the proposal card below it
 // (docs/screens.md "AI の入力欄", "AI の提案カード"; docs/ai.md "画面"). AiInput,
 // ProposalFrame and DiffText are every screen's; the rest is the SOQL screen's.
-import { useMemo, useRef, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, type KeyboardEvent, type ReactNode } from 'react'
 import { diffWords } from '../ai/diff.ts'
 import { isImeEnter } from '../ime.ts'
 import { t } from '../i18n/i18n.ts'
@@ -22,15 +22,32 @@ type InputProps = {
   placeholder: string
   /** The row of what is sent, under the input. */
   sends: ReactNode
+  /**
+   * Counts the times the user was sent here from elsewhere (the result's
+   * "use this result"): each time, the input takes the focus, comes into view
+   * and flashes, as the user's eyes are on the result below.
+   */
+  attention?: number
 }
 
 /**
  * The AI input of any screen (docs/ai.md "AI の入力欄"): the request, Generate
  * and Cancel, the step, what is sent, and the failure.
  */
-export function AiInput({ session, stepText, onGenerate, placeholder, sends }: InputProps) {
+export function AiInput({ session, stepText, onGenerate, placeholder, sends, attention = 0 }: InputProps) {
   const { setSettingsOpen } = useApp()
   const compositionEndedAt = useRef(0)
+  const input = useRef<HTMLInputElement>(null)
+  const bar = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (attention === 0) return
+    input.current?.focus()
+    input.current?.scrollIntoView({ block: 'nearest' })
+    // A flash of the accent; a steady outline for those who ask for less motion.
+    const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    const lit = { boxShadow: 'inset 0 0 0 2px var(--color-accent)', backgroundColor: 'var(--color-accent-soft)' }
+    bar.current?.animate?.(still ? [lit, lit] : [lit, { ...lit, offset: 0.4 }, { boxShadow: 'inset 0 0 0 2px transparent' }], { duration: 1200, easing: 'ease-out' })
+  }, [attention])
   if (session.availability === 'hidden') return null
   if (session.availability === 'setup') {
     return (
@@ -52,7 +69,7 @@ export function AiInput({ session, stepText, onGenerate, placeholder, sends }: I
     if (e.key === 'Enter' && isImeEnter({ isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }, compositionEndedAt.current)) e.preventDefault()
   }
   return (
-    <div className={running ? `${styles.bar} ${styles.busy}` : styles.bar} data-ai-bar aria-busy={running}>
+    <div ref={bar} className={running ? `${styles.bar} ${styles.busy}` : styles.bar} data-ai-bar aria-busy={running}>
       <form
         className={styles.row}
         onSubmit={(e) => {
@@ -62,6 +79,7 @@ export function AiInput({ session, stepText, onGenerate, placeholder, sends }: I
         }}
       >
         <input
+          ref={input}
           className={`${panel.input} ${styles.request}`}
           aria-label={t.aiRequestLabel}
           placeholder={placeholder}
