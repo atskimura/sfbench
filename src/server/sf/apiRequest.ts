@@ -17,6 +17,8 @@ export type RawResponse = {
   size?: number
   /** The body was longer than asked for, and is empty. */
   truncated?: boolean
+  /** The status and headers came, but the body stopped arriving; the body is empty. */
+  incomplete?: boolean
 }
 
 export type ApiRequest = {
@@ -30,6 +32,8 @@ export type ApiRequest = {
 /** Salesforce says the session (the access token) is invalid: a 401 with INVALID_SESSION_ID. */
 export function isInvalidSession(res: Pick<RawResponse, 'status' | 'body'>): boolean {
   if (res.status !== 401) return false
+  // XML when the request asked for it (Accept: application/xml).
+  if (/<errorCode>\s*INVALID_SESSION_ID\s*<\/errorCode>/.test(res.body)) return true
   try {
     const body = JSON.parse(res.body) as unknown
     return Array.isArray(body) && body.some((e) => (e as { errorCode?: unknown })?.errorCode === 'INVALID_SESSION_ID')
@@ -38,12 +42,43 @@ export function isInvalidSession(res: Pick<RawResponse, 'status' | 'body'>): boo
   }
 }
 
-/** A body that `sf api request rest` cannot send as it is: sf sends the JSON it reads from its request file. */
+/**
+ * A body that `sf api request rest` cannot send as it is: sf reads the request
+ * file as JSON and sends JSON.stringify of it, so only JSON goes through, and a
+ * number with more digits than a double holds would arrive rounded.
+ */
 export class NotJsonBodyError extends Error {
-  constructor() {
-    super('Only a JSON body can be sent while sfbench uses sf api request rest. Try again once Salesforce can be reached directly.')
+  constructor(reason: 'notJson' | 'longNumber') {
+    super(
+      reason === 'notJson'
+        ? 'Only a JSON body can be sent while sfbench uses sf api request rest. Try again once Salesforce can be reached directly.'
+        : 'A number with more than 15 digits would be rounded while sfbench uses sf api request rest, so the request was not sent. Write it as text, or try again once Salesforce can be reached directly.',
+    )
     this.name = 'NotJsonBodyError'
   }
+}
+
+/** More than 15 significant digits: a double may not hold the number as written. */
+function hasLongNumber(source: string): boolean {
+  const mantissa = source.replace(/^-/, '').replace(/[eE].*$/, '').replace('.', '')
+  return mantissa.replace(/^0+/, '').replace(/0+$/, '').length > 15
+}
+
+/** The body as sf will send it, or an error when sf would change it. */
+function bodyForSf(body: string): unknown {
+  let long = false
+  let parsed: unknown
+  try {
+    // The reviver's third argument (the source text) tells the number as written.
+    parsed = JSON.parse(body, function (this: unknown, _key: string, value: unknown, context?: { source?: string }) {
+      if (typeof value === 'number' && context?.source && hasLongNumber(context.source)) long = true
+      return value
+    } as (this: unknown, key: string, value: unknown) => unknown)
+  } catch {
+    throw new NotJsonBodyError('notJson')
+  }
+  if (long) throw new NotJsonBodyError('longNumber')
+  return parsed
 }
 
 const HEADER_LINE = /^([!#$%&'*+.^_`|~0-9A-Za-z-]+):[ \t]?(.*)$/
@@ -84,14 +119,7 @@ export async function apiRequest(
   const filePath = join(tmpDir, fileName)
   // sf sends JSON.stringify(raw), so the body goes in parsed: a string here
   // would arrive quoted. Without a body, raw is left out and nothing is sent.
-  let raw: unknown
-  if (request.body !== undefined) {
-    try {
-      raw = JSON.parse(request.body)
-    } catch {
-      throw new NotJsonBodyError()
-    }
-  }
+  const raw = request.body !== undefined ? bodyForSf(request.body) : undefined
   const fileBody = {
     url: request.path,
     method: request.method,

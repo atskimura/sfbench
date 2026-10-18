@@ -114,6 +114,18 @@ describe('OrgClient', () => {
     expect(String(fetchMock.mock.calls[0][0])).toBe('https://acme.my.salesforce.com/services/data/v66.0/limits?x=1')
   })
 
+  it('keeps the status of an answer whose body stops arriving', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('[{"id":'))
+        controller.error(new Error('timed out'))
+      },
+    })
+    fetchMock.mockResolvedValue(new Response(body, { status: 201 }))
+    const res = await newClient().requestRaw(post, { maxBodyBytes: 1000 })
+    expect(res).toMatchObject({ status: 201, body: '', incomplete: true })
+  })
+
   it('stops reading a body longer than asked for', async () => {
     fetchMock.mockResolvedValue(new Response('x'.repeat(100), { status: 200 }))
     const res = await newClient().requestRaw(get, { maxBodyBytes: 10 })

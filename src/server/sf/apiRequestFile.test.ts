@@ -31,6 +31,15 @@ describe('apiRequest', () => {
     expect(sent?.body).toEqual({ mode: 'raw', raw: { Name: 'A' } })
   })
 
+  it('refuses a number sf would round, and sends ordinary numbers', async () => {
+    await expect(
+      apiRequest('u@example.com', { method: 'POST', path: '/services/data/v66.0/sobjects/Account', headers: {}, body: '{"Amount__c":123456789012345678}' }, dir, 1000),
+    ).rejects.toThrow(/15 digits/)
+    expect(runMock).not.toHaveBeenCalled()
+    await apiRequest('u@example.com', { method: 'POST', path: '/services/data/v66.0/sobjects/Account', headers: {}, body: '{"A":1.50,"B":-0.001,"C":123456789012345,"D":1e21}' }, dir, 1000)
+    expect(sent?.body.raw).toEqual({ A: 1.5, B: -0.001, C: 123456789012345, D: 1e21 })
+  })
+
   it('leaves the body out when there is none', async () => {
     await apiRequest('u@example.com', { method: 'DELETE', path: '/services/data/v66.0/sobjects/Account/001', headers: {} }, dir, 1000)
     expect(sent?.body.raw).toBeUndefined()
@@ -45,6 +54,8 @@ describe('apiRequest', () => {
 
   it('takes only an invalid session for a lost login, and returns any other 401', async () => {
     runMock.mockResolvedValueOnce({ stdout: 'HTTP/2 401\n[{"errorCode":"INVALID_SESSION_ID"}]', stderr: '', exitCode: 1 })
+    await expect(apiRequest('u@example.com', { method: 'GET', path: '/services/data/', headers: {} }, dir, 1000)).rejects.toBeInstanceOf(OrgAuthError)
+    runMock.mockResolvedValueOnce({ stdout: 'HTTP/2 401\n<Errors><Error><errorCode>INVALID_SESSION_ID</errorCode></Error></Errors>', stderr: '', exitCode: 1 })
     await expect(apiRequest('u@example.com', { method: 'GET', path: '/services/data/', headers: {} }, dir, 1000)).rejects.toBeInstanceOf(OrgAuthError)
     runMock.mockResolvedValueOnce({ stdout: 'HTTP/2 401\n[{"errorCode":"CUSTOM"}]', stderr: '', exitCode: 1 })
     expect((await apiRequest('u@example.com', { method: 'GET', path: '/services/apexrest/x', headers: {} }, dir, 1000)).status).toBe(401)

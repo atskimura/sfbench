@@ -209,7 +209,8 @@ export type RestResponse = {
   headers: Record<string, string>
   /** The body as Salesforce sent it; empty when omitted. */
   body: string
-  bodyOmitted?: 'binary' | 'tooLarge'
+  /** binary: not text. tooLarge: over 20 MB. incomplete: the answer came, but its body stopped arriving (time ran out). */
+  bodyOmitted?: 'binary' | 'tooLarge' | 'incomplete'
   /** The size of the body in bytes, as received. */
   size: number
   elapsedMs: number

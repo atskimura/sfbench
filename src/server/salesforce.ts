@@ -295,8 +295,12 @@ function requestHeaders(req: SalesforceRequest): Record<string, string> {
   return headers
 }
 
-/** Reads the body, stopping once it is longer than `maxBodyBytes`. */
-async function readBody(res: Response, maxBodyBytes: number | undefined): Promise<Pick<RawResponse, 'body' | 'size' | 'truncated'>> {
+/**
+ * Reads the body, stopping once it is longer than `maxBodyBytes`. With a
+ * limit (the REST API screen), a body that stops arriving still returns the
+ * status, so that a processed request is not taken for one of unknown outcome.
+ */
+async function readBody(res: Response, maxBodyBytes: number | undefined): Promise<Pick<RawResponse, 'body' | 'size' | 'truncated' | 'incomplete'>> {
   if (maxBodyBytes === undefined || !res.body) {
     const body = await res.text()
     return { body, size: Buffer.byteLength(body) }
@@ -305,7 +309,15 @@ async function readBody(res: Response, maxBodyBytes: number | undefined): Promis
   let size = 0
   const reader = res.body.getReader()
   for (;;) {
-    const { done, value } = await reader.read()
+    let next: Awaited<ReturnType<typeof reader.read>>
+    try {
+      next = await reader.read()
+    } catch {
+      // Salesforce answered (the status is known) but the body stopped
+      // arriving, such as when time ran out: the request was processed.
+      return { body: '', size, incomplete: true }
+    }
+    const { done, value } = next
     if (done) break
     size += value.byteLength
     if (size > maxBodyBytes) {

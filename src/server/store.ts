@@ -216,7 +216,8 @@ export function addRestPending(
     bootId,
   }
   const entries = [entry, ...loadRestEntries(dir, username)].slice(0, MAX_HISTORY)
-  writeFileAtomic(historyFile(dir, username), JSON.stringify(entries, null, 2))
+  // Not indented: the file is rewritten twice for each request, bodies and all.
+  writeFileAtomic(historyFile(dir, username), JSON.stringify(entries))
   return id
 }
 
@@ -225,5 +226,5 @@ export function finishRest(dir: string, username: string, id: string, outcome: R
   const entries = loadRestEntries(dir, username)
   if (!entries.some((e) => e.id === id)) return
   const next = outcome ? entries.map((e) => (e.id === id ? { ...e, outcome } : e)) : entries.filter((e) => e.id !== id)
-  writeFileAtomic(historyFile(dir, username), JSON.stringify(next, null, 2))
+  writeFileAtomic(historyFile(dir, username), JSON.stringify(next))
 }

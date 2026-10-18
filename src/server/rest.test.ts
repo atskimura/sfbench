@@ -30,6 +30,15 @@ describe('checkRestRequest', () => {
     expect(() => checkRestRequest({ method: 'GET', path, headers: { 'X-A': 'x\r\nAuthorization: y' } })).toThrow(RestRequestError)
   })
 
+  it('takes an empty body for no body', () => {
+    expect(checkRestRequest({ method: 'POST', path, body: '' }).body).toBeUndefined()
+    expect(checkRestRequest({ method: 'GET', path, body: '' }).body).toBeUndefined()
+  })
+
+  it('refuses the same header twice in different case', () => {
+    expect(() => checkRestRequest({ method: 'POST', path, headers: { 'Content-Type': 'text/csv', 'content-type': 'application/json' } })).toThrow(/twice/)
+  })
+
   it('refuses other methods', () => {
     expect(() => checkRestRequest({ method: 'HEAD', path })).toThrow(RestRequestError)
   })

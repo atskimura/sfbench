@@ -156,9 +156,9 @@ REST API の道具では、4xx の本文（`errorCode` と `message`）そのも
 ```
 
 - **メソッド**：HEAD は受け付けない。画面の仕様に要らず、`sf api request rest` で HEAD が動くかも確かめていないからである。
-- **ボディ**：POST、PATCH、PUT のときだけ受け付け、GET と DELETE では 400 にする（前提の4）。どのメソッドがボディを取るかは、`shared/api.ts` の `methodTakesBody` で定義する。サーバーがこれで検査し、画面は同じ関数でボディの欄を押せなくする。ボディは文字列のまま送り、JSON として解析し直さない。上限は、ほかの要求と同じ 5 MB である。
+- **ボディ**：POST、PATCH、PUT のときだけ受け付け、GET と DELETE では 400 にする（前提の4）。空の文字列は、ボディなしとして扱う。どのメソッドがボディを取るかは、`shared/api.ts` の `methodTakesBody` で定義する。サーバーがこれで検査し、画面は同じ関数でボディの欄を押せなくする。ボディは文字列のまま送り、JSON として解析し直さない。上限は、ほかの要求と同じ 5 MB である。
 - **パス**：16 KB まで。`assertSalesforcePath` で検査し、検査に使った `URL` の `pathname + search` を、`fetch` と `sf api request rest` のどちらの経路でも送る。検査したものと送るものを同じにするためである。同じオリジンの絶対 URL が貼り付けられたときも、パスとクエリ文字列だけが送られる。
-- **ヘッダー**：名前と値は、Node 標準の `http.validateHeaderName` と `http.validateHeaderValue` で検査する（名前は HTTP の token の文字だけ、値に CR、LF、NUL を含まない）。数は50まで、合計 16 KB まで。名前は小文字にそろえてから扱う。`authorization`、`cookie`、`host`、`content-length`、`connection`、`transfer-encoding`、`te`、`trailer`、`upgrade`、`keep-alive`、`expect`、`proxy-` で始まる名前は 400 で拒む。既定の `accept: application/json` と、ボディがあるときの `content-type: application/json` に、利用者のヘッダーを小文字の名前で重ねるので、利用者の値が既定を上書きする（前提の6）。`authorization` は、利用者のヘッダーを重ねたあとで最後に付ける。検査が漏れても上書きされないようにするためである。
+- **ヘッダー**：名前と値は、Node 標準の `http.validateHeaderName` と `http.validateHeaderValue` で検査する（名前は HTTP の token の文字だけ、値に CR、LF、NUL を含まない）。数は50まで、合計 16 KB まで。名前は小文字にそろえてから扱い、大文字と小文字だけが違う同じ名前が2つあれば 400 で拒む。`authorization`、`cookie`、`host`、`content-length`、`connection`、`transfer-encoding`、`te`、`trailer`、`upgrade`、`keep-alive`、`expect`、`proxy-` で始まる名前は 400 で拒む。既定の `accept: application/json` と、ボディがあるときの `content-type: application/json` に、利用者のヘッダーを小文字の名前で重ねるので、利用者の値が既定を上書きする（前提の6）。`authorization` は、利用者のヘッダーを重ねたあとで最後に付ける。検査が漏れても上書きされないようにするためである。
 
 ### 応答
 
@@ -169,6 +169,7 @@ REST API の道具では、4xx の本文（`errorCode` と `message`）そのも
 ```
 
 - `body` は Salesforce が返した生の文字列で、整形は画面が行う。
+- ステータスとヘッダーを受け取ったあとで、本文の読み込みが時間切れなどで止まったときは、本文を返さず `bodyOmitted: 'incomplete'` にする。Salesforce は要求を処理しているので、「結果が分からない」にはしない。
 - `content-type` が JSON、テキスト、XML のどれでもないときは、本文を返さず `bodyOmitted: 'binary'` にする（ファイルの本文など）。20 MB を超えるときは `bodyOmitted: 'tooLarge'` にする。上限は、読み終えてから比べるのではなく、読みながら数えて打ち切る。
 - 応答のヘッダーは、`set-cookie` だけを除いて返す。Salesforce の標準の応答はトークンを含まない。利用者の Apex REST がセッション ID を返す場合は、利用者のコードの問題として受け入れる（画面はもともと、トークンと同じ権限で API を呼べる）。
 - `id` は、実行履歴の記録の id である。
@@ -192,6 +193,8 @@ sf CLI 2.153.5 の `@salesforce/plugin-api` は、`got` に `followRedirect: fal
 `sf api request rest` は、要求のファイルの `body.raw` を `JSON.stringify` して送る。
 そのため、ボディは JSON として解析したものを `raw` に入れる（文字列を入れると、引用符で囲まれた文字列として届く）。
 JSON でないボディ（Bulk API 2.0 の CSV など）はこの経路では送れないので、送る前に 400 で断る。
+sf CLI は自分のプロセスでファイルを JSON として読むので、有効桁が15桁を超える数値（`Number(18,0)` の項目の値など）は丸められて届く。
+サーバーの側の渡し方では防げないので、そうした数値を含むボディも、この経路では送る前に 400 で断る（数値は、`JSON.parse` の reviver の第3引数で、書かれたとおりの文字列を見て数える）。
 ボディのない要求では `raw` を入れない。
 
 画面の接続が切れても、Salesforce への要求は止めない。
@@ -326,6 +329,9 @@ sfbench --rest <パス> [--method <メソッド>] [--body '<json>' | --body-file
 - **REST API の画面の GET は、ネットワークが切れても `sf api request rest` で送り直さない。** 利用者が Send を押し直す。
 - **`sf api request rest --include` の出力の解析は、JSON の本文を前提にしている。** テキスト、HTML、XML の本文を読み違えないか、記録した出力でテストする。
 - **`sf api request rest` の経路では、JSON でないボディを送れない**（sf CLI が要求のファイルの本文を JSON として扱うため）。`fetch` の経路が使えるときは送れる。
+- **`sf api request rest` の経路では、20 MB の上限を、出力を読み終えてから比べる**（sf CLI の出力は最大 512 MB まで読む）。この経路で大きなファイルの本文を取ると、サーバーのメモリを大きく使う。
+- **実行履歴のファイルは、1回の送信につき2回、全体を同期で読み書きする。** ボディの大きい記録がたまると数 MB になり、その間ほかの要求の応答が止まる。
+- **`--rest` には、`/services/` で始まるパスしか渡せない。** 組織のインスタンスの URL を知らない CLI の入口では、絶対 URL のオリジンを確かめられないからである（画面の欄には、同じオリジンの絶対 URL を貼り付けられる）。
 - **リダイレクトを追わないことは、確かめた sf CLI の版（2.153.5）でしか保証できない。** 将来の版が追うようになっても、sfbench の側では気づけない。
 - **大きな応答は、20 MB までサーバーと画面のメモリに丸ごと載る。**
 - **同じ名前のヘッダーを2つ送れない**（名前から値への対応で持つため）。

@@ -35,7 +35,7 @@ import {
   salesforcePath,
 } from '../salesforce.ts'
 import { checkRestRequest, MAX_REST_RESPONSE_BYTES, restLaunch, restResponseBody, RestRequestError } from '../rest.ts'
-import { NotJsonBodyError } from '../sf/apiRequest.ts'
+import { NotJsonBodyError, type RawResponse } from '../sf/apiRequest.ts'
 import { openOrg, reloginCommand } from '../sf/commands.ts'
 import { OrgAuthError, SfCliError, SfNotFoundError } from '../sf/errors.ts'
 import { AiError } from '../ai/errors.ts'
@@ -396,19 +396,21 @@ export class App {
     let id: string | undefined
     record(() => (id = addRestPending(dir, client.username, request, this.bootId)))
     const started = performance.now()
+    let raw: RawResponse
     try {
       // Never sent twice, whatever the method (docs/rest.md "送り方").
-      const raw = await client.requestRaw({ ...request, changesData: true }, { maxBodyBytes: MAX_REST_RESPONSE_BYTES })
-      const elapsedMs = Math.round(performance.now() - started)
-      if (id) record(() => finishRest(dir, client.username, id!, { state: 'done', status: raw.status, elapsedMs }))
-      // No query string, body or header values in the log: they may hold record data.
-      log.info(`rest ${request.method} ${pathname} ${raw.status} ${elapsedMs}ms`)
-      sendJson(res, 200, { ...({ id, status: raw.status, ...restResponseBody(raw), elapsedMs } satisfies RestResponse), apiUsage: client.apiUsage })
+      raw = await client.requestRaw({ ...request, changesData: true }, { maxBodyBytes: MAX_REST_RESPONSE_BYTES })
     } catch (e) {
       if (id) record(() => finishRest(dir, client.username, id!, restOutcomeOf(e)))
       log.info(`rest ${request.method} ${pathname} ${(e as Error).name} ${Math.round(performance.now() - started)}ms`)
       throw e
     }
+    // From here Salesforce has answered: whatever fails below, the record says so.
+    const elapsedMs = Math.round(performance.now() - started)
+    if (id) record(() => finishRest(dir, client.username, id!, { state: 'done', status: raw.status, elapsedMs }))
+    // No query string, body or header values in the log: they may hold record data.
+    log.info(`rest ${request.method} ${pathname} ${raw.status} ${elapsedMs}ms`)
+    sendJson(res, 200, { ...({ id, status: raw.status, ...restResponseBody(raw), elapsedMs } satisfies RestResponse), apiUsage: client.apiUsage })
   }
 
   /**

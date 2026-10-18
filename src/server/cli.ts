@@ -99,7 +99,8 @@ function restOption(values: { rest?: string; method?: string; body?: string; 'bo
   if (values['body-file'] !== undefined) {
     try {
       // Read here, in the user's working directory; the server gets the text.
-      body = readFileSync(values['body-file'], 'utf8')
+      // Without a byte order mark, which Windows editors may put first.
+      body = readFileSync(values['body-file'], 'utf8').replace(/^\uFEFF/, '')
     } catch (e) {
       throw new UserError(`Could not read ${values['body-file']}: ${(e as Error).message}`)
     }
