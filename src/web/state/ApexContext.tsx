@@ -27,6 +27,10 @@ type ApexValue = State & {
   initialCode: string
   registerEditor: (handle: ApexEditorHandle | null) => void
   onCodeChange: (text: string) => void
+  /** The code now. */
+  getCode: () => string
+  /** Replaces the code as one undoable change (the AI's proposal). */
+  setCode: (text: string) => void
   /** The first line that is not blank, for the closed code area and nothing else. */
   firstLine: string
   empty: boolean
@@ -184,6 +188,8 @@ export function ApexProvider({
         editor.current = handle
       },
       onCodeChange,
+      getCode: () => code.current,
+      setCode: (text) => editor.current?.setText(text),
       firstLine,
       empty: !firstLine,
       codeChanged,

@@ -7,6 +7,7 @@ import { t } from '../i18n/i18n.ts'
 import { AiProvider } from '../state/AiContext.tsx'
 import { useApp } from '../state/AppContext.tsx'
 import { ApexProvider } from '../state/ApexContext.tsx'
+import { ApexAiProvider } from '../state/ApexAiContext.tsx'
 import { APEX_DRAFT_KEY, claimEditorText } from '../state/editorStorage.ts'
 import { claimApiVersion } from '../state/versionStorage.ts'
 import { RestProvider } from '../state/RestContext.tsx'
@@ -85,7 +86,10 @@ function OrgWorkspace({ username, seed }: { username: string; seed: Seed | undef
       {apexOpened && (
         <div className={styles.screen} hidden={mode !== 'apex'}>
           <ApexProvider username={username} seed={seed} initialCode={apexCode} initialApiVersion={versions.apex}>
-            <ApexScreen />
+            {/* Inside: Replace writes the code. */}
+            <ApexAiProvider username={username}>
+              <ApexScreen />
+            </ApexAiProvider>
           </ApexProvider>
         </div>
       )}

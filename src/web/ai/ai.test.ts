@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { SObjectDescribe } from '../apiClient.ts'
 import { diffWords } from './diff.ts'
+import { initialAiDraft, switchProvider } from './draft.ts'
 import { budgetLeft, objectInfo, objectList } from './objectInfo.ts'
 
 const opportunity: SObjectDescribe = {
@@ -105,5 +106,30 @@ describe('diffWords', () => {
   it('gives up on texts too long to compare', () => {
     const long = Array.from({ length: 1100 }, (_, i) => `F${i}`).join(' ')
     expect(diffWords(long, long)).toBeUndefined()
+  })
+})
+
+// docs/ai.md "設定画面の AI の欄": a model ID and a key belong to one provider.
+describe('switchProvider', () => {
+  const saved = { provider: 'anthropic' as const, model: 'claude-x', hasApiKey: true, keyProvider: 'anthropic' as const }
+
+  it("empties the model and key for another provider, and brings back the saved provider's model", () => {
+    const draft = { ...initialAiDraft(saved), apiKey: 'sk-ant-typed' }
+    const openai = switchProvider(draft, 'openai', saved)
+    expect(openai).toMatchObject({ provider: 'openai', model: '', apiKey: '' })
+    expect(switchProvider(openai, 'anthropic', saved)).toMatchObject({ provider: 'anthropic', model: 'claude-x', apiKey: 'sk-ant-typed' })
+  })
+
+  it('keeps what was typed for each provider while the dialog is open, through Off too', () => {
+    let draft = switchProvider(initialAiDraft(saved), 'openai', saved)
+    draft = { ...draft, model: 'gpt-x', apiKey: 'sk-oa' }
+    draft = switchProvider(switchProvider(draft, 'off', saved), 'openai', saved)
+    expect(draft).toMatchObject({ provider: 'openai', model: 'gpt-x', apiKey: 'sk-oa' })
+  })
+
+  it('takes the model of a saved Off for the provider its key is for', () => {
+    const off = { provider: 'off' as const, model: 'gpt-x', hasApiKey: true, keyProvider: 'openai' as const }
+    expect(switchProvider(initialAiDraft(off), 'openai', off).model).toBe('gpt-x')
+    expect(switchProvider(initialAiDraft(off), 'anthropic', off).model).toBe('')
   })
 })

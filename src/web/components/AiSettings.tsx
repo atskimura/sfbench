@@ -1,7 +1,7 @@
 // The AI section of the settings (docs/screens.md "設定", docs/ai.md "設定画面の AI の欄").
 import { useId, useState } from 'react'
 import { AI_PROVIDERS, type AiKeyProvider, type AiSettingsView } from '../../shared/api.ts'
-import { aiDraftValid, aiInput, type AiDraft } from '../ai/draft.ts'
+import { aiDraftValid, aiInput, switchProvider, type AiDraft } from '../ai/draft.ts'
 import { api } from '../apiClient.ts'
 import { errorMessage } from '../errors.ts'
 import { useApp } from '../state/AppContext.tsx'
@@ -50,7 +50,7 @@ export function AiSettings({ saved, draft, onChange }: { saved: AiSettingsView |
       <div className={styles.choices} role="radiogroup" aria-label={t.settingsAi}>
         {AI_PROVIDERS.map((provider) => (
           <label key={provider} className={styles.check}>
-            <input type="radio" name="ai-provider" checked={draft.provider === provider} onChange={() => change({ provider })} />
+            <input type="radio" name="ai-provider" checked={draft.provider === provider} onChange={() => change(switchProvider(draft, provider, saved))} />
             {t.aiProviderName[provider]}
           </label>
         ))}
