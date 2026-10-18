@@ -85,6 +85,12 @@ describe('OrgClient', () => {
     expect(cliMock).not.toHaveBeenCalled()
   })
 
+  it('does not send a GET marked as changing data again after a network error', async () => {
+    fetchMock.mockImplementation(networkError)
+    await expect(newClient().request({ ...get, changesData: true })).rejects.toBeInstanceOf(SalesforceUnreachableError)
+    expect(cliMock).not.toHaveBeenCalled()
+  })
+
   it('sends a data-changing request through sf when the token could not be obtained', async () => {
     tokenMock.mockRejectedValue(new SfCliError('sf did not return a usable access token'))
     cliMock.mockResolvedValue(cliOk)

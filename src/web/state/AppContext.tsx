@@ -1,7 +1,8 @@
 // App-wide state: whether the server is reachable, a fatal problem, and notifications.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Settings, SettingsUpdate } from '../../shared/api.ts'
-import { ApiRequestError, api } from '../apiClient.ts'
+import { api } from '../apiClient.ts'
+import { errorDetails, errorKind, errorMessage } from '../errors.ts'
 import { useTask } from './useTask.ts'
 
 export type Notification = {
@@ -28,10 +29,13 @@ type AppState = {
   notify: (n: Omit<Notification, 'id'>) => void
   dismiss: (id: number) => void
   /**
-   * Classifies an API error (docs/web.md "エラーの扱い"). Returns true when the
-   * error was handled app-wide, so callers only handle the rest.
+   * Handles the errors shown app-wide: a stopped request, a lost session and a
+   * missing sf CLI (docs/web.md "エラーの扱い"). Returns true for those, so
+   * callers only handle the rest.
    */
   handleCommonError: (e: unknown) => boolean
+  /** Handles an error app-wide, or else notifies it (for a failure with no place of its own). */
+  reportError: (e: unknown) => void
   /** The settings dialog, opened from the header or from the AI input's notice. */
   settingsOpen: boolean
   setSettingsOpen: (open: boolean) => void
@@ -59,22 +63,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const handleCommonError = useCallback(
     (e: unknown) => {
-      if (!(e instanceof ApiRequestError)) {
-        notify({ message: (e as Error).message ?? String(e) })
-        return true
-      }
-      if (e.code === 'ABORTED') return true
-      if (e.isSessionLost) {
-        setSessionLost(true)
-        return true
-      }
-      if (e.code === 'SF_CLI_NOT_FOUND') {
-        setSfNotFound(true)
-        return true
-      }
-      return false
+      const kind = errorKind(e)
+      if (kind === 'sessionLost') setSessionLost(true)
+      if (kind === 'sfNotFound') setSfNotFound(true)
+      return kind === 'aborted' || kind === 'sessionLost' || kind === 'sfNotFound'
     },
-    [notify],
+    [],
+  )
+  const reportError = useCallback(
+    (e: unknown) => {
+      if (!handleCommonError(e)) notify({ message: errorMessage(e), details: errorDetails(e) })
+    },
+    [handleCommonError, notify],
   )
 
   // Loading at startup and saving both write the settings, so they share one
@@ -89,7 +89,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void start((signal) => api.settings(signal), 'ignore').then((outcome) => {
       if (outcome.kind === 'done') setSettings(outcome.value)
-      if (outcome.kind === 'error' && outcome.error instanceof ApiRequestError) handleCommonError(outcome.error)
+      if (outcome.kind === 'error') handleCommonError(outcome.error)
     })
   }, [start, handleCommonError])
 
@@ -101,15 +101,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return api.saveSettings(update, signal)
       }, 'replace')
       if (outcome.kind === 'done') setSettings(outcome.value)
-      if (outcome.kind === 'error' && !handleCommonError(outcome.error)) notify({ message: (outcome.error as Error).message })
+      if (outcome.kind === 'error') reportError(outcome.error)
       return outcome.kind === 'done'
     },
-    [start, handleCommonError, notify],
+    [start, reportError],
   )
 
   const value = useMemo(
-    () => ({ settings, saveSettings, savingSettings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError, settingsOpen, setSettingsOpen }),
-    [settings, saveSettings, savingSettings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError, settingsOpen],
+    () => ({ settings, saveSettings, savingSettings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError, reportError, settingsOpen, setSettingsOpen }),
+    [settings, saveSettings, savingSettings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError, reportError, settingsOpen],
   )
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

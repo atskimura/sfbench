@@ -101,17 +101,6 @@
   overflow-wrap: anywhere;
 }
 
-.details {
-  max-height: 200px;
-  overflow: auto;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  background: var(--color-panel);
-  color: var(--color-ink);
-  padding: var(--space-2);
-  border-radius: var(--radius);
-  margin: var(--space-1) 0 0;
-}
 
 .running {
   display: flex;

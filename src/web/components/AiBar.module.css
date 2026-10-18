@@ -146,13 +146,6 @@
   overflow-wrap: anywhere;
 }
 
-.details {
-  max-height: calc(8 * 1.4em);
-  overflow: auto;
-  margin: 0;
-  white-space: pre-wrap;
-  font-family: var(--font-mono);
-}
 
 .card {
   display: flex;

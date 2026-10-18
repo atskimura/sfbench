@@ -17,7 +17,7 @@ import styles from './SettingsDialog.module.css'
 
 
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
-  const { handleCommonError, notify, saveSettings, savingSettings } = useApp()
+  const { reportError, saveSettings, savingSettings } = useApp()
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [settings, setSettings] = useState<Settings>()
   const [timeoutText, setTimeoutText] = useState('')
@@ -29,9 +29,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const timeoutNoteId = useId()
 
   // The latest callbacks, so that loading runs once per opening of the dialog.
-  const callbacks = useRef({ handleCommonError, notify, onClose })
+  const callbacks = useRef({ reportError, onClose })
   useEffect(() => {
-    callbacks.current = { handleCommonError, notify, onClose }
+    callbacks.current = { reportError, onClose }
   })
 
   useEffect(() => {
@@ -43,8 +43,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         setAiDraft(initialAiDraft(outcome.value.ai))
       }
       if (outcome.kind === 'error') {
-        const { handleCommonError, notify, onClose } = callbacks.current
-        if (!handleCommonError(outcome.error)) notify({ message: (outcome.error as Error).message })
+        const { reportError, onClose } = callbacks.current
+        reportError(outcome.error)
         onClose()
       }
     })

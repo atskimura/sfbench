@@ -10,6 +10,7 @@ import { useResult, type QueryResult } from '../state/SoqlContext.tsx'
 import { useTask } from '../state/useTask.ts'
 import { FixWithAi } from './AiBar.tsx'
 import { CopyCommand } from './CopyCommand.tsx'
+import { ErrorDetails } from './ErrorDetails.tsx'
 import { CsvExport } from './CsvExport.tsx'
 import panel from './Panel.module.css'
 import styles from './ResultPanel.module.css'
@@ -50,12 +51,7 @@ function Shown({ result }: { result: QueryResult }) {
               <FixWithAi error={result.message} rejected={result.rejected} />
             </div>
           )}
-          {result.details !== undefined && (
-            <details>
-              <summary>{t.errorDetails}</summary>
-              <pre className={styles.details}>{JSON.stringify(result.details, null, 2)}</pre>
-            </details>
-          )}
+          <ErrorDetails details={result.details} />
         </div>
       )}
       {/* A new run starts a new table, with new column widths, and stops what the old one was loading. */}

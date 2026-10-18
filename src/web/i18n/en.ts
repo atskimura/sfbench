@@ -11,6 +11,8 @@ export const en = {
   noDefaultOrg:
     'No default org is set in the sf CLI. Pick one to start. Next time, start with `npx sfbench -o <alias>` or set a default with `sf config set target-org <alias>`.',
   unknownLaunchOrg: (name: string) => `The sf CLI has no org named ${name}. Pick one from the list.`,
+  salesforceTimeout: 'Salesforce did not respond in time. It may still have processed the request. You can wait longer in the settings.',
+  salesforceUnreachable: 'The connection to Salesforce broke while sending the request. Salesforce may already have processed it, so sfbench did not send it again. Check the result in Salesforce.',
   orgAuthError: 'Session expired. Log in again from a terminal:',
   openOrg: 'Open the org in your browser, logged in',
   openingOrg: 'Opening…',

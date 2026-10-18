@@ -51,13 +51,12 @@ export function Header() {
  * arriving after a switch is stale.
  */
 function OpenOrgButton() {
-  const { selected, handleOrgError } = useOrgs()
-  const { notify } = useApp()
+  const { selected, reportOrgError } = useOrgs()
   const { start, running: opening } = useTask()
   if (!selected) return null
   const open = async () => {
     const outcome = await start((signal) => api.openOrg(selected, signal), 'ignore')
-    if (outcome.kind === 'error' && !handleOrgError(selected, outcome.error)) notify({ message: (outcome.error as Error).message })
+    if (outcome.kind === 'error') reportOrgError(selected, outcome.error)
   }
   return (
     <button

@@ -7,6 +7,7 @@ import { availabilityOf, type AiAvailability } from '../ai/availability.ts'
 import { initialState, reducer, type AiFailure, type AiStep, type Proposal, type Shown } from '../ai/aiState.ts'
 import { budgetLeft, objectInfo, objectList } from '../ai/objectInfo.ts'
 import { ApiRequestError, api, type SObjectDescribe } from '../apiClient.ts'
+import { errorKind, errorMessage, isShownElsewhere } from '../errors.ts'
 import { t, uiLanguage } from '../i18n/i18n.ts'
 import { fromObjectOf } from '../soql/context.ts'
 import { findByName } from '../soql/namespace.ts'
@@ -85,7 +86,8 @@ async function generateSoql(
     },
     signal,
   )
-  // The server has already matched the names with the list and dropped repeats.
+  // Back to the names as the list holds them (the server matched them with the list,
+  // ignoring case and namespace, and dropped repeats).
   const objects = chosen.objects.map((o) => findByName(globals, o, names.ns)?.name).filter((o): o is string => Boolean(o))
   if (objects.length === 0) throw new Notice(t.aiNoObjects)
   progress('loadFields')
@@ -153,11 +155,12 @@ export function AiProvider({ username, children }: { username: string; children:
       if (outcome.kind === 'done') dispatch({ type: 'done', proposal: { ...outcome.value, before: getText() } })
       if (outcome.kind !== 'error') return
       const e = outcome.error
-      let failure: AiFailure | undefined
-      if (e instanceof Notice) failure = { message: e.message }
-      // Org errors, a lost session and a missing sf CLI are shown app-wide.
-      else if (e instanceof ApiRequestError) failure = handleOrgError(username, e) ? undefined : { message: e.message, details: e.body?.details }
-      else failure = { message: (e as Error).message ?? String(e) }
+      // Org errors, a lost session and a missing sf CLI are shown app-wide; the rest under the input.
+      const failure: AiFailure | undefined =
+        !(e instanceof Notice) && isShownElsewhere(errorKind(e))
+          ? undefined
+          : { message: errorMessage(e), details: e instanceof ApiRequestError ? e.body?.details : undefined }
+      if (!failure) handleOrgError(username, e)
       dispatch({ type: 'failed', failure })
     },
     [handleOrgError, username, getText],

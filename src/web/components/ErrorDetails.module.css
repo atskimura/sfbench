@@ -1,0 +1,13 @@
+.details {
+  max-height: 200px;
+  overflow: auto;
+  margin: var(--space-1) 0 0;
+  padding: var(--space-2);
+  border-radius: var(--radius);
+  background: var(--color-code-bg);
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-code-small);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -275,7 +275,7 @@ export class App {
     method: string,
   ): Promise<void> {
     const client = await this.options.orgs.client(username)
-    if (!client) throw new HttpError(404, 'NOT_FOUND', `Unknown org: ${username}`)
+    if (!client) throw new HttpError(404, 'ORG_NOT_FOUND', `Unknown org: ${username}`)
     const refresh = url.searchParams.get('refresh') === '1'
     const withUsage = <T extends object>(body: T) => ({ ...body, apiUsage: client.apiUsage })
 
@@ -437,9 +437,9 @@ export class App {
       const status = e.status >= 400 && e.status < 500 ? e.status : 502
       sendJson(res, status, { error: { code: 'SALESFORCE_ERROR', message: e.message, status: e.status, details: e.body } })
     } else if (e instanceof SalesforceUnreachableError) {
-      sendJson(res, 502, errorBody('SALESFORCE_ERROR', e.message))
+      sendJson(res, 502, errorBody('SALESFORCE_UNREACHABLE', e.message))
     } else if (e instanceof SalesforceTimeoutError) {
-      sendJson(res, 504, errorBody('SALESFORCE_ERROR', e.message))
+      sendJson(res, 504, errorBody('SALESFORCE_TIMEOUT', e.message))
     } else if (e instanceof InvalidPathError) {
       sendJson(res, 400, errorBody('BAD_REQUEST', e.message))
     } else if (e instanceof SfNotFoundError) {

@@ -2,7 +2,8 @@
 // Two contexts, so that typing in the editor does not re-render the results.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { HistoryEntry } from '../../shared/api.ts'
-import { ApiRequestError, api } from '../apiClient.ts'
+import { api } from '../apiClient.ts'
+import { errorKind, runFailure } from '../errors.ts'
 import { t } from '../i18n/i18n.ts'
 import { fromObjectOf } from '../soql/context.ts'
 import {
@@ -227,18 +228,17 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
         void refreshHistory()
         return
       }
-      const e = outcome.error
-      if (e instanceof ApiRequestError && e.code === 'ORG_AUTH_ERROR') {
-        // Shown in the result area only, not also as a notification.
-        markAuthError(username, e.body?.reloginCommand)
-        setResult({ state: 'error', message: t.orgAuthError, reloginCommand: e.body?.reloginCommand })
-      } else if (e instanceof ApiRequestError && e.code === 'SALESFORCE_ERROR') {
-        setResult({ state: 'error', message: e.message, details: e.body?.details, rejected: { soql, tooling: useTooling, prompt } })
-      } else if (handleOrgError(username, e)) {
+      const failure = runFailure(outcome.error)
+      if (!failure) {
+        handleOrgError(username, outcome.error)
         setResult({ state: 'idle' })
-      } else {
-        setResult({ state: 'error', message: (e as Error).message })
+        return
       }
+      // A login error is shown in the result area only, not also as a notification.
+      if (errorKind(outcome.error) === 'orgAuth') markAuthError(username, failure.reloginCommand)
+      const { rejected, ...shown } = failure
+      // Only a query Salesforce refused is offered to the AI to fix (not a timeout).
+      setResult({ state: 'error', ...shown, rejected: rejected ? { soql, tooling: useTooling, prompt } : undefined })
     },
     [startRun, username, tooling, queryAll, reportApiUsage, handleOrgError, markAuthError, refreshHistory],
   )

@@ -7,7 +7,7 @@ import { CommandText } from './CommandText.tsx'
 
 export function Banners() {
   const { sessionLost } = useApp()
-  const { isProduction, selectedOrg } = useOrgs()
+  const { isProduction, selectedOrg, selected } = useOrgs()
   return (
     <>
       {sessionLost && (
@@ -15,10 +15,10 @@ export function Banners() {
           <CommandText text={t.sessionLost} />
         </div>
       )}
-      {isProduction && selectedOrg && (
+      {isProduction && selected && (
         <div className={`${styles.band} ${styles.production}`} role="status">
           <strong>{t.production}</strong>
-          <span>{selectedOrg.alias ?? selectedOrg.username}</span>
+          <span>{selectedOrg?.alias ?? selected}</span>
         </div>
       )}
     </>
