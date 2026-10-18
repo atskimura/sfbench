@@ -41,3 +41,5 @@ npx -y sfbench -o <alias> --apex-file <file.apex>
 - `--json` を付けると、開いた URL を JSON で出す。`--no-open` を付けると、ブラウザを開かずに URL だけを出す。
 - `npx -y sfbench stop` で、裏で動いているサーバーを止める。
 - sf CLI が入っていないときや、組織にログインし直す必要があるときは、sfbench がそう出すので、利用者に伝える。
+- sfbench が Node.js が古いと言ったら（プロジェクトが asdf や nvm で古い Node.js を指定していることがある）、メッセージのとおり、npm の Node.js 24 で同じ引数を付けて実行し直す: `npx -y -p node@24 -p sfbench -- sfbench -o <alias> ...`
+- それ以外のエラーで止まったら、原因を推測せず、sfbench のメッセージをそのまま利用者に伝える。

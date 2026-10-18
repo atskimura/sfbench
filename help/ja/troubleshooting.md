@@ -56,6 +56,26 @@ sfbench のサーバーが止まったか、起動し直されました。
 送り直す前に、Salesforce の画面か実行履歴で確かめてください。
 同じ要求やコードを送り直そうとすると、sfbench は確認のダイアログを出します。
 
+## 「sfbench needs Node.js ... but this is Node.js ...」と出る
+
+その場所で使われる Node.js が古いためです。
+asdf や nvm などで、プロジェクトのフォルダごとに古い Node.js を指定していると起きます。
+npm の Node.js 24 を使えば、そのまま動かせます。
+
+```
+npx -y -p node@24 -p sfbench -- sfbench
+```
+
+## Claude Code のサンドボックスで sfbench が起動しない
+
+Claude Code のシェルのサンドボックスを有効にしていると（`/sandbox`）、sfbench は起動できません。
+`~/.npm/` と `~/.sfbench/` に書き込み、ローカルのサーバーを動かし続けるからです。
+`~/.claude/settings.json` に次を足して、sfbench だけをサンドボックスの外で動かしてください。
+
+```json
+"sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench", "npx -y -p node@24 -p sfbench -- sfbench *", "npx -y -p node@24 -p sfbench -- sfbench"] }
+```
+
 ## AI が使えない
 
 - 「接続を確かめる」で、提供元のエラー文を確かめてください。API キーの誤り、モデル ID の誤り、残高の不足がよくある原因です。

@@ -51,7 +51,7 @@ lwc-soql-builder は、Salesforce が OAuth のユーザーエージェントフ
 
 ## 必要なもの
 
-- Node.js 22.21.0 以上の 22 系、または 24.5.0 以上
+- Node.js 22.21.0 以上の 22 系、または 24.5.0 以上（プロジェクトで古い Node.js を指定していても、`npx -y -p node@24 -p sfbench -- sfbench` で動かせます）
 - [Salesforce CLI](https://developer.salesforce.com/tools/salesforcecli)（`sf`）と、使う組織へのログイン
 
 macOS、Linux、Windows で動きます。
@@ -107,6 +107,14 @@ Claude Code の中では `/plugin install sfbench --marketplace atskimura/sfbenc
 スキルのファイルを自分で置くこともできます。
 日本語版は [plugins/sfbench/ja/sfbench/SKILL.md](plugins/sfbench/ja/sfbench/SKILL.md)、英語版は [plugins/sfbench/skills/sfbench/SKILL.md](plugins/sfbench/skills/sfbench/SKILL.md) です。
 `sfbench` フォルダごと、エージェントがスキルを読む場所（Claude Code なら `~/.claude/skills/`、Codex なら `~/.agents/skills/`）に置きます（Codex では試していません）。
+
+Claude Code のシェルのサンドボックスを有効にしている場合（`/sandbox`）、sfbench はサンドボックスの中では起動できません。
+`~/.npm/` と `~/.sfbench/` に書き込み、ローカルのサーバーを動かし続けるからです。
+`~/.claude/settings.json` に次を足し、sfbench だけをサンドボックスの外で動かしてください。
+
+```json
+"sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench", "npx -y -p node@24 -p sfbench -- sfbench *", "npx -y -p node@24 -p sfbench -- sfbench"] }
+```
 
 スキルを入れた Claude Code に「sfbench で成約済みの商談を一覧して」と頼むと、エージェントは SOQL を組み立てて次のように起動します。
 

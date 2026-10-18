@@ -1,6 +1,8 @@
 // The CLI entry point's work: find or start the background server, then open
 // a new browser tab. See docs/design.md ("起動").
 import { spawn } from 'node:child_process'
+import { closeSync, existsSync, openSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { openBrowser } from './browser.ts'
 import { ensureDirs, resolvePaths, type Paths } from './paths.ts'
@@ -79,18 +81,66 @@ async function stopServer(info: ServerInfo): Promise<boolean> {
   return false
 }
 
-function startServer(paths: Paths): number {
+type Started = {
+  pid: number
+  /** Set when the server process ended. */
+  ended: () => boolean
+  /** What the server wrote to stderr: why it ended, when it could not write its log. */
+  stderr: () => string
+  /** Where that is, in full; undefined when it could not be kept. */
+  stderrFile: string | undefined
+}
+
+/**
+ * Opens a file for the server's stderr, one per start, so that a server still
+ * running from before keeps its own. The server removes it once it listens
+ * (serve.ts): it is kept only to tell why a start failed. Undefined when it
+ * cannot be opened; the server then starts with its stderr ignored.
+ */
+function openStderrFile(paths: Paths): { file: string; fd: number } | undefined {
+  const file = join(paths.tmpDir, `server-stderr-${Date.now()}-${process.pid}.log`)
+  try {
+    return { file, fd: openSync(file, 'w', 0o600) }
+  } catch {
+    return undefined
+  }
+}
+
+function startServer(paths: Paths): Started {
   // cli.js next to this file when installed; cli.ts when run from the sources.
   const cli = fileURLToPath(new URL(import.meta.url.endsWith('.ts') ? './cli.ts' : './cli.js', import.meta.url))
-  const child = spawn(process.execPath, ['--use-env-proxy', cli, 'serve'], {
-    cwd: paths.tmpDir,
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: true,
-  })
-  child.unref()
-  if (child.pid === undefined) throw new UserError('Could not start the sfbench server.')
-  return child.pid
+  // Node.js refusing to start the server (an unknown option, a missing module)
+  // says so on stderr, before the server can log anything.
+  const stderr = openStderrFile(paths)
+  let ended = false
+  try {
+    const child = spawn(process.execPath, ['--use-env-proxy', cli, 'serve'], {
+      cwd: paths.tmpDir,
+      detached: true,
+      stdio: ['ignore', 'ignore', stderr ? stderr.fd : 'ignore'],
+      env: { ...process.env, ...(stderr ? { SFBENCH_STDERR_FILE: stderr.file } : {}) },
+      windowsHide: true,
+    })
+    child.on('exit', () => (ended = true))
+    child.on('error', () => (ended = true))
+    child.unref()
+    if (child.pid === undefined) throw new UserError('Could not start the sfbench server.')
+    return {
+      pid: child.pid,
+      ended: () => ended,
+      stderr: () => {
+        if (!stderr) return ''
+        try {
+          return readFileSync(stderr.file, 'utf8').trim().slice(0, 2000)
+        } catch {
+          return ''
+        }
+      },
+      stderrFile: stderr?.file,
+    }
+  } finally {
+    if (stderr) closeSync(stderr.fd)
+  }
 }
 
 /** Returns a running server of this version or newer, starting one if needed. Call with server.lock held. */
@@ -109,14 +159,17 @@ async function ensureServer(paths: Paths): Promise<ServerInfo> {
     }
   }
 
-  const pid = startServer(paths)
+  const server = startServer(paths)
   const deadline = Date.now() + START_TIMEOUT_MS
-  while (Date.now() < deadline) {
+  while (Date.now() < deadline && !server.ended()) {
     await sleep(200)
     const info = readServerInfo(paths.serverJson)
-    if (info?.pid === pid && (await health(info)) !== undefined) return info
+    if (info?.pid === server.pid && (await health(info)) !== undefined) return info
   }
-  throw new UserError(`The sfbench server did not start. See ${paths.serverLog}.`)
+  const said = server.stderr()
+  // The server removes its stderr file once it listens: named only while it is there.
+  const files = [paths.serverLog, ...(server.stderrFile && existsSync(server.stderrFile) ? [server.stderrFile] : [])].join(' and ')
+  throw new UserError(`The sfbench server did not start${said ? `:\n${said}` : '.'}\nSee ${files}.`)
 }
 
 async function resolveOrg(options: OpenOptions): Promise<string | undefined> {

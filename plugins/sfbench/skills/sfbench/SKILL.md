@@ -41,3 +41,5 @@ Tell the user what you prepared and that nothing changes until they press Send o
 - Add `--json` to get the opened URL as JSON, and `--no-open` to print the URL without opening a browser.
 - `npx -y sfbench stop` stops the background server.
 - If the sf CLI is not installed or the org needs a new login, sfbench says so; pass that on to the user.
+- If sfbench says this Node.js is too old (a project may pin an older Node.js with asdf or nvm), run the same options with Node.js 24 from npm, as its message shows: `npx -y -p node@24 -p sfbench -- sfbench -o <alias> ...`.
+- If sfbench stops with another error, show the user its message as it is; do not guess at the cause.

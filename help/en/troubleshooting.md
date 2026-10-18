@@ -56,6 +56,25 @@ When the answer did not arrive (a timeout or a broken connection), Salesforce ma
 Check in Salesforce or in the history before you send it again.
 If you send the same request or code again, sfbench asks first.
 
+## "sfbench needs Node.js ... but this is Node.js ..."
+
+The Node.js used there is too old.
+It happens when asdf, nvm or the like pins an older Node.js in a project folder.
+Node.js 24 from npm runs sfbench anyway:
+
+```
+npx -y -p node@24 -p sfbench -- sfbench
+```
+
+## sfbench does not start in Claude Code's sandbox
+
+With Claude Code's command sandbox turned on (`/sandbox`), sfbench cannot start: it writes `~/.npm/` and `~/.sfbench/` and keeps a local server running.
+Add this to `~/.claude/settings.json` so that sfbench alone runs outside the sandbox:
+
+```json
+"sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench", "npx -y -p node@24 -p sfbench -- sfbench *", "npx -y -p node@24 -p sfbench -- sfbench"] }
+```
+
 ## The AI does not work
 
 - Click Test connection to see the provider's error message. A wrong API key, a wrong model ID or no credit left are common causes.

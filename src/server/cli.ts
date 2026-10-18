@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 import { openSfbench, stopSfbench, UserError, type OpenOptions } from './launcher.ts'
 import { restLaunch } from './rest.ts'
 import { MAX_APEX_CODE } from '../shared/api.ts'
+import { unsupportedNode } from './nodeVersion.ts'
 import { serve } from './serve.ts'
 import { packageVersion } from './version.ts'
 
@@ -42,6 +43,12 @@ Examples for AI agents:
 `
 
 async function main(): Promise<void> {
+  // First, before the arguments: an older Node.js may not parse them (--no-open).
+  // Help, the version and stop start no server, so they work on any.
+  const args = process.argv.slice(2)
+  const startsNoServer = args[0] === 'stop' || args.some((a) => ['-h', '--help', '-v', '--version'].includes(a))
+  const tooOld = startsNoServer ? undefined : unsupportedNode()
+  if (tooOld) throw new UserError(tooOld)
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     allowNegative: true,
