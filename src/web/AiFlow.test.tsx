@@ -30,6 +30,7 @@ vi.mock('./apiClient.ts', async (importOriginal) => {
 const { api, ApiRequestError } = await import('./apiClient.ts')
 const { App } = await import('./App.tsx')
 const { t } = await import('./i18n/i18n.ts')
+const { clearDescribeCache } = await import('./state/describeCache.ts')
 const mocked = vi.mocked(api)
 
 const org: Org = {
@@ -273,6 +274,29 @@ describe('AI', () => {
       task: 'fixSoql',
       input: { soql: 'SELECT Nmae FROM Account', error: "No such column 'Nmae'", tooling: false },
     })
+  })
+
+  it('fixes and runs again on the API version the query failed on, not the one chosen since', async () => {
+    const entry: HistoryEntry = { soql: 'SELECT Nmae FROM Account', tooling: false, queryAll: false, executedAt: now, apiVersion: '64.0' }
+    mocked.history.mockResolvedValue({ entries: [entry] })
+    mocked.query.mockRejectedValueOnce(rejected("No such column 'Nmae'"))
+    replies('SELECT Name FROM Account')
+    render(<App launch={{ org: 'demo' }} />)
+    await userEvent.click(await screen.findByRole('button', { name: /SELECT Nmae FROM Account/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^(Run|実行)/ }))
+    await screen.findByRole('button', { name: t.aiFix })
+    // The latest is chosen after the failure, and the describes cached so far are forgotten.
+    await userEvent.selectOptions(screen.getByLabelText(t.apiVersionLabel), '')
+    await waitFor(() => expect(mocked.describe.mock.calls.some((call) => call[3] === undefined)).toBe(true))
+    clearDescribeCache()
+    const before = mocked.describe.mock.calls.length
+    await userEvent.click(screen.getByRole('button', { name: t.aiFix }))
+    await card()
+    expect(mocked.describe.mock.calls.slice(before).map((call) => call[3])).toContain('64.0')
+    await userEvent.click(within(await card()).getByRole('button', { name: t.aiReplaceRun }))
+    await waitFor(() => expect(mocked.query).toHaveBeenCalledTimes(2))
+    expect(lastQuery()).toMatchObject({ soql: 'SELECT Name FROM Account', apiVersion: '64.0' })
+    expect((screen.getByLabelText(t.apiVersionLabel) as HTMLSelectElement).value).toBe('64.0')
   })
 
   it('keeps the request of a recent query through a failed run and Fix', async () => {

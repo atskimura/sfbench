@@ -105,17 +105,18 @@ async function generateSoql(
     { task: 'generateSoql', input: { request, objectInfo: objectInfo(describes, names, fieldBudget), editorText, tooling, language: uiLanguage } },
     signal,
   )
-  return { ...output, tooling, prompt: request }
+  return { ...output, tooling, apiVersion, prompt: request }
 }
 
 /** Fix with AI: the query as it was run, not what the editor holds now. */
 async function fixSoql(
-  input: { username: string; error: string; rejected: Rejected; apiVersion: string | undefined; names: NameContext },
+  input: { username: string; error: string; rejected: Rejected; names: NameContext },
   signal: AbortSignal,
   progress: Progress,
 ): Promise<Proposal> {
-  const { username, error, apiVersion, names } = input
-  const { soql, tooling, prompt } = input.rejected
+  const { username, error, names } = input
+  // The version it ran on, not the one chosen now.
+  const { soql, tooling, apiVersion, prompt } = input.rejected
   progress('loadFields')
   const fieldBudget = budgetLeft(soql, error)
   if (fieldBudget < MIN_FIELD_BUDGET) throw new Notice(t.aiTooLong)
@@ -133,7 +134,7 @@ async function fixSoql(
     signal,
   )
   // The fixed query keeps the request of the query it fixes, if that one had one.
-  return { ...output, tooling, prompt }
+  return { ...output, tooling, apiVersion, prompt }
 }
 
 export function AiProvider({ username, children }: { username: string; children: ReactNode }) {
@@ -194,10 +195,10 @@ export function AiProvider({ username, children }: { username: string; children:
       if (availability !== 'ready') return
       // The proposal shows above the editor.
       setOpen('editor', true)
-      const input = { username, error, rejected, apiVersion: soql.apiVersion, names: soql.names }
+      const input = { username, error, rejected, names: soql.names }
       void start((signal, progress) => fixSoql(input, signal, progress), 'ignore').then(finish)
     },
-    [availability, setOpen, username, soql.names, soql.apiVersion, start, finish],
+    [availability, setOpen, username, soql.names, start, finish],
   )
 
   const cancel = useCallback(() => {

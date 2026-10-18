@@ -58,7 +58,7 @@ type SoqlState = {
    * and marks it with its request (docs/ai.md "画面の状態と遷移"). With `run`,
    * runs it at once, replacing a query that is running.
    */
-  applyProposal: (proposal: { soql: string; tooling: boolean; prompt: string | undefined }, run: boolean) => void
+  applyProposal: (proposal: { soql: string; tooling: boolean; apiVersion: string | undefined; prompt: string | undefined }, run: boolean) => void
   /** Called by the editor when its text settles (300 ms after typing stops). */
   onTextSettled: (text: string) => void
   setTooling: (on: boolean) => void
@@ -104,7 +104,7 @@ export type QueryResult =
       details?: unknown
       reloginCommand?: string
       /** Salesforce rejected the query, as it was run: Fix with AI fixes this (docs/ai.md "画面の状態と遷移"). */
-      rejected?: { soql: string; tooling: boolean; prompt: string | undefined }
+      rejected?: { soql: string; tooling: boolean; apiVersion: string | undefined; prompt: string | undefined }
     }
 
 type ResultState = {
@@ -213,16 +213,21 @@ export function SoqlProvider({
    * proposal's Replace & Run, which replaces it.
    */
   const runSoql = useCallback(
-    async (soql: string, options: { tooling?: boolean; prompt?: string; whileRunning?: 'ignore' | 'replace' } = {}) => {
+    async (
+      soql: string,
+      options: { tooling?: boolean; apiVersion?: string | undefined; prompt?: string; whileRunning?: 'ignore' | 'replace' } = {},
+    ) => {
       if (!soql.trim()) return
       const started = performance.now()
       const useTooling = options.tooling ?? tooling
+      // Given (even as undefined, the latest) by an AI proposal; else the one chosen.
+      const useVersion = 'apiVersion' in options ? options.apiVersion : apiVersion
       const prompt = options.prompt
       const outcome = await startRun(
         (signal) =>
           api.query(
             username,
-            { soql, tooling: useTooling, queryAll: !useTooling && queryAll, ...(prompt ? { prompt } : {}), ...(apiVersion ? { apiVersion } : {}) },
+            { soql, tooling: useTooling, queryAll: !useTooling && queryAll, ...(prompt ? { prompt } : {}), ...(useVersion ? { apiVersion: useVersion } : {}) },
             signal,
           ),
         options.whileRunning ?? 'ignore',
@@ -259,7 +264,7 @@ export function SoqlProvider({
       if (failure.orgAuth) markAuthError(username, failure.reloginCommand)
       const { rejected, orgAuth: _, ...shown } = failure
       // Only a query Salesforce refused is offered to the AI to fix (not a timeout).
-      setResult({ state: 'error', ...shown, rejected: rejected ? { soql, tooling: useTooling, prompt } : undefined })
+      setResult({ state: 'error', ...shown, rejected: rejected ? { soql, tooling: useTooling, apiVersion: useVersion, prompt } : undefined })
     },
     [startRun, username, tooling, queryAll, apiVersion, reportApiUsage, handleOrgError, markAuthError, refreshHistory],
   )
@@ -282,14 +287,16 @@ export function SoqlProvider({
   }, [])
 
   const applyProposal = useCallback(
-    (proposal: { soql: string; tooling: boolean; prompt: string | undefined }, andRun: boolean) => {
+    (proposal: { soql: string; tooling: boolean; apiVersion: string | undefined; prompt: string | undefined }, andRun: boolean) => {
       setText(proposal.soql)
       setTooling(proposal.tooling)
+      // The version whose fields the AI was given, even if another was chosen meanwhile.
+      setApiVersion(proposal.apiVersion)
       setMark(markFor(proposal.soql, proposal.tooling, proposal.prompt))
-      // The values go to the run directly: the mark and the toggle reach it only after a render.
-      if (andRun) void runSoql(proposal.soql, { tooling: proposal.tooling, prompt: proposal.prompt, whileRunning: 'replace' })
+      // The values go to the run directly: the mark and the toggles reach it only after a render.
+      if (andRun) void runSoql(proposal.soql, { tooling: proposal.tooling, apiVersion: proposal.apiVersion, prompt: proposal.prompt, whileRunning: 'replace' })
     },
-    [setText, setTooling, runSoql],
+    [setText, setTooling, setApiVersion, runSoql],
   )
 
   // The workspace is remade for each org (docs/web.md "非同期の流れ"): on

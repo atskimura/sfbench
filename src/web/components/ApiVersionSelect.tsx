@@ -15,8 +15,9 @@ export function ApiVersionSelect({ username, value, onChange }: { username: stri
       <label htmlFor={id}>{t.apiVersion}</label>
       <select id={id} aria-label={t.apiVersionLabel} className={styles.select} value={value ?? ''} onChange={(e) => onChange(e.target.value || undefined)}>
         <option value="">{latest ? t.apiVersionLatest(latest) : t.apiVersionLatestUnknown}</option>
-        {/* Newest first; the chosen one stays listed while the list loads. */}
-        {(list.length > 0 ? list.slice(0, -1).reverse() : value ? [value] : []).map((v) => (
+        {/* Newest first. The chosen one stays listed even when the list lacks it (while it
+            loads, or a recent query's version since retired): the select shows what is sent. */}
+        {[...(value && !list.slice(0, -1).includes(value) && value !== latest ? [value] : []), ...list.slice(0, -1).reverse()].map((v) => (
           <option key={v} value={v}>
             {v}
           </option>

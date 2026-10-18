@@ -704,10 +704,6 @@ const SF_START_MS = 15_000
 const MAX_APEX_LOG_BYTES = 20 * 1024 * 1024
 
 /**
- * How a failed Apex run ends in the history: undefined when it did not run
- * (the record is removed), else unknown (docs/apex.md "実行履歴").
- */
-/**
  * The API version the screen chose, or undefined for the latest. Only the
  * shape is checked here; whether the org supports it, by OrgClient.version.
  */
@@ -717,6 +713,10 @@ export function versionOf(value: unknown): string | undefined {
   return value
 }
 
+/**
+ * How a failed Apex run ends in the history: undefined when it did not run
+ * (the record is removed), else unknown (docs/apex.md "実行履歴").
+ */
 export function apexOutcomeOf(e: unknown): ApexOutcome | undefined {
   if (e instanceof OrgAuthError || e instanceof SfNotFoundError || e instanceof ApexFileError) return undefined
   if (e instanceof SfTimeoutError) return { state: 'unknown', reason: 'timeout' }

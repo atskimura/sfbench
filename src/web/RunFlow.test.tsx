@@ -236,6 +236,16 @@ describe('API version', () => {
     expect(mocked.query.mock.calls[0][1]).not.toHaveProperty('apiVersion')
   })
 
+  it("shows a recent query's version even when the org no longer lists it", async () => {
+    mocked.history.mockResolvedValue({ entries: [{ soql: 'SELECT Id FROM Account', tooling: false, queryAll: false, executedAt: now, apiVersion: '20.0' }] })
+    render(<App launch={{ org: 'demo' }} />)
+    const select = await versionSelect()
+    await within(select).findByRole('option', { name: t.apiVersionLatest('66.0') })
+    await userEvent.click(await within(screen.getByRole('region', { name: t.recent })).findByRole('button', { name: /SELECT Id FROM Account/ }))
+    expect(select.value).toBe('20.0')
+    expect(select.selectedOptions[0].textContent).toBe('20.0')
+  })
+
   it('goes back to the version a recent query ran on, and to the latest for one without', async () => {
     mocked.history.mockResolvedValue({
       entries: [
