@@ -15,10 +15,13 @@ export type Proposal = SoqlOutput & {
 /** Shown under the AI input. */
 export type AiFailure = { message: string; details?: unknown }
 
-export type State = { proposal: Proposal | undefined; failure: AiFailure | undefined }
+/** A proposal as shown: with the editor text when it arrived, which its differences are against. */
+export type Shown = Proposal & { before: string }
+
+export type State = { proposal: Shown | undefined; failure: AiFailure | undefined }
 
 export type Action =
-  | { type: 'done'; proposal: Proposal }
+  | { type: 'done'; proposal: Shown }
   /** Without a failure, another place showed it (such as a lost session). */
   | { type: 'failed'; failure: AiFailure | undefined }
   /** Cancel that stopped a request. */

@@ -129,21 +129,25 @@ export function ProposalCard() {
   const ai = useAi()
   const { settledText } = useSoql()
   const p = ai.proposal
-  // Against the editor as it is now, which Replace replaces (docs/ai.md "画面の状態と遷移").
-  // The card redraws as the request is typed; the diff is worked out again only when these change.
-  const parts = useMemo(() => (p && settledText.trim() ? diffWords(settledText, p.soql) : undefined), [p, settledText])
+  // Against the editor when the proposal arrived. Once the editor changes, the card does not
+  // follow it: the proposal shows alone, so that the diff never misstates what Replace removes.
+  const edited = p !== undefined && settledText !== p.before
+  // The card redraws as the request is typed; the diff is worked out once per proposal.
+  const parts = useMemo(() => (p && p.before.trim() ? diffWords(p.before, p.soql) : undefined), [p])
+  const shownParts = edited ? undefined : parts
   if (!p) return null
   return (
     <section className={styles.card} aria-label={t.aiProposal}>
       <pre className={styles.proposal}>
-        {parts
-          ? parts.map((part, i) => (
+        {shownParts
+          ? shownParts.map((part, i) => (
               <span key={i} className={part.kind === 'same' ? undefined : styles[part.kind]}>
                 {part.text}
               </span>
             ))
           : p.soql}
       </pre>
+      {edited && p.before.trim() && <p className={panel.meta}>{t.aiDiffStale}</p>}
       {/* Plain text only: never rendered as Markdown or HTML (docs/ai.md "プロンプトインジェクション"). */}
       {p.explanation && <p className={styles.explanation}>{p.explanation}</p>}
       <div className={styles.actions}>

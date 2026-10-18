@@ -1,8 +1,8 @@
 // The proposal and failure rows of docs/ai.md "画面の状態と遷移".
 import { describe, expect, it } from 'vitest'
-import { initialState, reducer, type Proposal } from './aiState.ts'
+import { initialState, reducer, type Shown } from './aiState.ts'
 
-const proposal = (soql: string): Proposal => ({ soql, explanation: '', tooling: false, prompt: 'p' })
+const proposal = (soql: string): Shown => ({ soql, explanation: '', tooling: false, prompt: 'p', before: '' })
 const shown = reducer(initialState, { type: 'done', proposal: proposal('SELECT Id FROM Account') })
 
 describe('AI proposal and failure', () => {

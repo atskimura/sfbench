@@ -45,6 +45,7 @@ export const en = {
     'chooseObjects' | 'loadFields' | 'generate' | 'fix',
     string
   >,
+  aiDiffStale: 'The editor has changed, so no differences are shown.',
   aiProposal: 'Proposal from the AI',
   aiDiscard: 'Discard',
   aiReplace: 'Replace',

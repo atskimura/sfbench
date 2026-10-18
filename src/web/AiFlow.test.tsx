@@ -159,6 +159,17 @@ describe('AI', () => {
     expect(mocked.aiGenerate.mock.calls[1][0].input).toMatchObject({ editorText: '' })
   })
 
+  it('keeps the proposal as it came when the editor changes, without a diff against the old text', async () => {
+    replies('SELECT Id, Name FROM Account')
+    await ask('名前も')
+    const shown = await card()
+    expect(shown.querySelector('pre')?.querySelectorAll('span').length).toBeGreaterThan(0)
+    await userEvent.click(within(screen.getByRole('region', { name: 'Account' })).getByLabelText(/Industry/))
+    expect(await within(shown).findByText(t.aiDiffStale)).toBeTruthy()
+    expect(shown.querySelector('pre')?.textContent).toBe('SELECT Id, Name FROM Account')
+    expect(shown.querySelector('pre')?.querySelectorAll('span').length).toBe(0)
+  })
+
   it('lets the AI choose the objects when none is open', async () => {
     mocked.aiGenerate.mockResolvedValueOnce({ output: { objects: ['Account'] } }).mockResolvedValueOnce(answer('SELECT Name FROM Account'))
     render(<App launch={{ org: 'demo' }} />)

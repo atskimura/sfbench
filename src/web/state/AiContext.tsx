@@ -4,7 +4,7 @@
 // that the AI's steps do not redraw the editor.
 import { createContext, useCallback, useContext, useMemo, useReducer, useState, type ReactNode } from 'react'
 import { availabilityOf, type AiAvailability } from '../ai/availability.ts'
-import { initialState, reducer, type AiFailure, type AiStep, type Proposal } from '../ai/aiState.ts'
+import { initialState, reducer, type AiFailure, type AiStep, type Proposal, type Shown } from '../ai/aiState.ts'
 import { budgetLeft, objectInfo, objectList } from '../ai/objectInfo.ts'
 import { ApiRequestError, api, type SObjectDescribe } from '../apiClient.ts'
 import { t, uiLanguage } from '../i18n/i18n.ts'
@@ -18,7 +18,7 @@ import { usePanels } from './PanelsContext.tsx'
 import { useSoql, type QueryResult } from './SoqlContext.tsx'
 import { useTask, type TaskOutcome } from './useTask.ts'
 
-export type { AiFailure, AiStep, Proposal } from '../ai/aiState.ts'
+export type { AiFailure, AiStep, Proposal, Shown } from '../ai/aiState.ts'
 
 /** The query that Salesforce rejected, as it was run. */
 export type Rejected = NonNullable<Extract<QueryResult, { state: 'error' }>['rejected']>
@@ -40,7 +40,7 @@ type AiValue = {
   running: boolean
   step: AiStep | undefined
   /** Not shown while a request runs, or while the AI is Off or not set up. */
-  proposal: Proposal | undefined
+  proposal: Shown | undefined
   failure: AiFailure | undefined
   generate: () => void
   /** Asks the AI to fix a query that Salesforce rejected, as it was run. */
@@ -130,6 +130,7 @@ export function AiProvider({ username, children }: { username: string; children:
   const { settings } = useApp()
   const { handleOrgError } = useOrgs()
   const soql = useSoql()
+  const { getText } = soql
   const { setOpen } = usePanels()
   // Generate and Fix both write the proposal, so they share one task. Ignore,
   // so that Enter pressed again does not send the request twice.
@@ -148,7 +149,8 @@ export function AiProvider({ username, children }: { username: string; children:
   /** Applies a request's outcome (docs/ai.md "失敗したとき"). */
   const finish = useCallback(
     (outcome: TaskOutcome<Proposal>) => {
-      if (outcome.kind === 'done') dispatch({ type: 'done', proposal: outcome.value })
+      // The differences are against the editor as it is when the proposal arrives (docs/ai.md "提案カード").
+      if (outcome.kind === 'done') dispatch({ type: 'done', proposal: { ...outcome.value, before: getText() } })
       if (outcome.kind !== 'error') return
       const e = outcome.error
       let failure: AiFailure | undefined
@@ -158,7 +160,7 @@ export function AiProvider({ username, children }: { username: string; children:
       else failure = { message: (e as Error).message ?? String(e) }
       dispatch({ type: 'failed', failure })
     },
-    [handleOrgError, username],
+    [handleOrgError, username, getText],
   )
 
   const generate = useCallback(() => {
