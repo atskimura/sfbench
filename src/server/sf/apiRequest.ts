@@ -13,6 +13,10 @@ export type RawResponse = {
   /** Header names in lower case. */
   headers: Record<string, string>
   body: string
+  /** The size of the body in bytes, when it was measured. */
+  size?: number
+  /** The body was longer than asked for, and is empty. */
+  truncated?: boolean
 }
 
 export type ApiRequest = {
@@ -21,6 +25,25 @@ export type ApiRequest = {
   path: string
   headers: Record<string, string>
   body?: string
+}
+
+/** Salesforce says the session (the access token) is invalid: a 401 with INVALID_SESSION_ID. */
+export function isInvalidSession(res: Pick<RawResponse, 'status' | 'body'>): boolean {
+  if (res.status !== 401) return false
+  try {
+    const body = JSON.parse(res.body) as unknown
+    return Array.isArray(body) && body.some((e) => (e as { errorCode?: unknown })?.errorCode === 'INVALID_SESSION_ID')
+  } catch {
+    return false
+  }
+}
+
+/** A body that `sf api request rest` cannot send as it is: sf sends the JSON it reads from its request file. */
+export class NotJsonBodyError extends Error {
+  constructor() {
+    super('Only a JSON body can be sent while sfbench uses sf api request rest. Try again once Salesforce can be reached directly.')
+    this.name = 'NotJsonBodyError'
+  }
 }
 
 const HEADER_LINE = /^([!#$%&'*+.^_`|~0-9A-Za-z-]+):[ \t]?(.*)$/
@@ -59,11 +82,21 @@ export async function apiRequest(
   // The request goes in a file so that user input never appears on the command line.
   const fileName = `req-${randomBytes(8).toString('hex')}.json`
   const filePath = join(tmpDir, fileName)
+  // sf sends JSON.stringify(raw), so the body goes in parsed: a string here
+  // would arrive quoted. Without a body, raw is left out and nothing is sent.
+  let raw: unknown
+  if (request.body !== undefined) {
+    try {
+      raw = JSON.parse(request.body)
+    } catch {
+      throw new NotJsonBodyError()
+    }
+  }
   const fileBody = {
     url: request.path,
     method: request.method,
     header: Object.entries(request.headers).map(([key, value]) => ({ key, value })),
-    body: { mode: 'raw', raw: request.body ?? '' },
+    body: { mode: 'raw', raw },
   }
   writeFileSync(filePath, JSON.stringify(fileBody), { mode: 0o600 })
   try {
@@ -74,7 +107,8 @@ export async function apiRequest(
     })
     const response = parseIncludedResponse(stdout)
     if (response) {
-      if (response.status === 401) throw new OrgAuthError(username, 'Salesforce rejected the session (401).')
+      // sf refreshes the token itself, so an invalid session here needs a new login.
+      if (isInvalidSession(response)) throw new OrgAuthError(username, 'Salesforce rejected the session (401).')
       return response
     }
     const message = lastErrorLine(stderr) ?? 'sf api request rest returned no response'
