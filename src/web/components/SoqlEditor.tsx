@@ -86,10 +86,10 @@ export function SoqlEditor({ org, initialText }: { org: string; initialText: str
       const { soql: s } = latest.current
       // Without describes: keywords, except after a dot where only fields fit.
       let candidates = info.dotted ? [] : keywordCandidates(info.word)
-      const prefix = `${org}\n${s.tooling}\n`
+      const prefix = `${org}\n${s.tooling}\n${s.apiVersion}\n`
       const describer: Describer = {
-        objects: async () => (await guarded(prefix, () => describeGlobal(org, s.tooling))).sobjects,
-        describe: (name) => guarded(prefix + name.toLowerCase(), () => describeSObject(org, name, s.tooling)),
+        objects: async () => (await guarded(prefix, () => describeGlobal(org, s.tooling, s.apiVersion))).sobjects,
+        describe: (name) => guarded(prefix + name.toLowerCase(), () => describeSObject(org, name, s.tooling, s.apiVersion)),
       }
       try {
         candidates = await contextCandidates(info, describer, s.names)

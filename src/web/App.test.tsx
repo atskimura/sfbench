@@ -15,6 +15,7 @@ vi.mock('./apiClient.ts', async (importOriginal) => {
       settings: vi.fn(),
       saveSettings: vi.fn(),
       sobjects: vi.fn(),
+      versions: vi.fn(),
       describe: vi.fn(),
       history: vi.fn(),
       query: vi.fn(),
@@ -59,6 +60,7 @@ beforeEach(() => {
   mocked.orgs.mockResolvedValue({ orgs: [prod, dev], connectionCheck: 'done' })
   mocked.settings.mockResolvedValue({ omitNamespace: true, requestTimeoutSeconds: 120 })
   mocked.sobjects.mockResolvedValue({ sobjects: [], fetchedAt: new Date().toISOString() })
+  mocked.versions.mockResolvedValue({ versions: ['64.0', '65.0', '66.0'] })
   mocked.history.mockResolvedValue({ entries: [] })
   mocked.summary.mockImplementation(async (username) =>
     summary(username === prod.username ? 'Enterprise Edition' : 'Developer Edition'),

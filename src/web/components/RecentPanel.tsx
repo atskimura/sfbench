@@ -28,6 +28,7 @@ export function RecentPanel() {
                   {timeFormat.format(new Date(entry.executedAt))}
                   {entry.tooling && <span className={styles.chip}>{t.tooling}</span>}
                   {entry.queryAll && <span className={styles.chip}>{t.queryAll}</span>}
+                  {entry.apiVersion && <span className={styles.chip}>{t.apiVersionChip(entry.apiVersion)}</span>}
                 </span>
               </button>
             </li>

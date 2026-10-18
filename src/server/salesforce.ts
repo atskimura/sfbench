@@ -76,6 +76,14 @@ export class SalesforceUnreachableError extends Error {
   }
 }
 
+/** The screen asked for an API version the org does not support: nothing was sent. */
+export class UnsupportedVersionError extends Error {
+  constructor(version: string) {
+    super(`The org does not support API version ${version}.`)
+    this.name = 'UnsupportedVersionError'
+  }
+}
+
 /** The fetch transport failed before or while talking to Salesforce. */
 class FetchFailure extends Error {
   /** False when the request was never sent (for example, no access token). */
@@ -115,7 +123,7 @@ export class OrgClient {
   private tokenValue: string | undefined
   /** The rejected token that the pending `token` run is replacing. */
   private replacing: string | undefined
-  private apiVersion: Promise<string> | undefined
+  private apiVersions: Promise<string[]> | undefined
 
   constructor(options: OrgClientOptions) {
     this.username = options.username
@@ -125,14 +133,28 @@ export class OrgClient {
     this.timeoutMs = options.timeoutMs
   }
 
-  /** The latest API version the org supports, such as "66.0". */
-  version(): Promise<string> {
-    this.apiVersion ??= this.request({ method: 'GET', path: '/services/data/' }).then((res) => {
-      const versions = res.body as { version: string }[]
-      return versions[versions.length - 1].version
-    })
-    this.apiVersion.catch(() => (this.apiVersion = undefined))
-    return this.apiVersion
+  /**
+   * The API versions the org supports, oldest first, such as "66.0" last. An
+   * org can list a version twice (seen around a release), so each is kept once.
+   */
+  versions(): Promise<string[]> {
+    this.apiVersions ??= this.request({ method: 'GET', path: '/services/data/' }).then((res) =>
+      [...new Set((res.body as { version: string }[]).map((v) => v.version))].sort((a, b) => Number(a) - Number(b)),
+    )
+    this.apiVersions.catch(() => (this.apiVersions = undefined))
+    return this.apiVersions
+  }
+
+  /**
+   * The API version to use: `requested` if the org supports it, else the latest
+   * when none is requested. A version the org does not support is refused
+   * (UnsupportedVersionError), never replaced by another.
+   */
+  async version(requested?: string): Promise<string> {
+    const versions = await this.versions()
+    if (requested === undefined) return versions[versions.length - 1]
+    if (!versions.includes(requested)) throw new UnsupportedVersionError(requested)
+    return requested
   }
 
   /** Sends a request. Throws SalesforceError for HTTP errors and OrgAuthError when the org needs a new login. */

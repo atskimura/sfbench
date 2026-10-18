@@ -14,6 +14,7 @@ import { APEX_DRAFT_KEY, saveEditorText } from './editorStorage.ts'
 import { useOrgs, type Seed } from './OrgContext.tsx'
 import type { EditorHandle } from './SoqlContext.tsx'
 import { useTask } from './useTask.ts'
+import { saveApiVersion } from './versionStorage.ts'
 
 export type ApexEditorHandle = EditorHandle & {
   /** Moves the cursor to a line and column (from 1) of the code. */
@@ -21,6 +22,7 @@ export type ApexEditorHandle = EditorHandle & {
 }
 
 type ApexValue = State & {
+  username: string
   /** The editor's first text; the code lives in the editor from then on. */
   initialCode: string
   registerEditor: (handle: ApexEditorHandle | null) => void
@@ -31,6 +33,9 @@ type ApexValue = State & {
   /** The code is no longer what the result shown was run with. */
   codeChanged: boolean
   goTo: (line: number, column: number | undefined) => void
+  /** The API version chosen, or undefined for the latest (docs/web.md "API バージョン"). */
+  apiVersion: string | undefined
+  setApiVersion: (version: string | undefined) => void
   history: ApexHistoryEntry[]
   historyLoading: boolean
   refreshHistory: () => void
@@ -57,12 +62,14 @@ export function ApexProvider({
   username,
   seed,
   initialCode,
+  initialApiVersion,
   children,
 }: {
   username: string
   seed: Seed | undefined
   /** Claimed when the workspace was made (Workspace.tsx). */
   initialCode: string
+  initialApiVersion: string | undefined
   children: ReactNode
 }) {
   const { handleCommonError } = useApp()
@@ -73,6 +80,7 @@ export function ApexProvider({
   // Drawn only when they change, not on each key.
   const [firstLine, setFirstLine] = useState(() => firstLineOf(initialCode))
   const [codeChanged, setCodeChanged] = useState(false)
+  const [apiVersion, setApiVersionState] = useState(initialApiVersion)
   // The code the result shown was run with.
   const shownCode = useRef<string | undefined>(undefined)
   const [history, setHistory] = useState<ApexHistoryEntry[]>([])
@@ -107,7 +115,7 @@ export function ApexProvider({
       // Never called while running (run does nothing then), so this run starts.
       dispatch({ type: 'running' })
       const run: ApexSnapshot = { code: text, ranAt: new Date().toISOString() }
-      const outcome = await startRun((signal) => api.apex(username, { code: text }, signal), 'ignore')
+      const outcome = await startRun((signal) => api.apex(username, { code: text, ...(apiVersion ? { apiVersion } : {}) }, signal), 'ignore')
       if (outcome.kind === 'stale') return
       // The server has written how it ended.
       void refreshHistory()
@@ -133,7 +141,7 @@ export function ApexProvider({
       if (failed.orgAuth) markAuthError(username, failed.reloginCommand)
       show({ state: 'error', run, message: failed.message, details: failed.details, reloginCommand: failed.reloginCommand })
     },
-    [startRun, username, refreshHistory, show, handleCommonError, handleOrgError, markAuthError],
+    [startRun, username, apiVersion, refreshHistory, show, handleCommonError, handleOrgError, markAuthError],
   )
 
   const run = useCallback(() => {
@@ -170,6 +178,7 @@ export function ApexProvider({
   const value = useMemo<ApexValue>(
     () => ({
       ...state,
+      username,
       initialCode,
       registerEditor: (handle) => {
         editor.current = handle
@@ -179,6 +188,11 @@ export function ApexProvider({
       empty: !firstLine,
       codeChanged,
       goTo: (line, column) => editor.current?.goTo(line, column),
+      apiVersion,
+      setApiVersion: (version) => {
+        setApiVersionState(version)
+        saveApiVersion(username, 'apex', version)
+      },
       history,
       historyLoading,
       refreshHistory: () => void refreshHistory(),
@@ -191,7 +205,7 @@ export function ApexProvider({
       closeNotice: () => dispatch({ type: 'noticeClosed' }),
       apexLeftOutFor: seed?.apexLeftOutFor,
     }),
-    [state, initialCode, onCodeChange, firstLine, codeChanged, history, historyLoading, refreshHistory, running, run, confirmRun, seed?.apexLeftOutFor],
+    [state, initialCode, onCodeChange, firstLine, codeChanged, apiVersion, username, history, historyLoading, refreshHistory, running, run, confirmRun, seed?.apexLeftOutFor],
   )
   return <ApexContext.Provider value={value}>{children}</ApexContext.Provider>
 }

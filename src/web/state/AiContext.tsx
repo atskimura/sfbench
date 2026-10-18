@@ -68,15 +68,23 @@ type Progress = (step: AiStep) => void
  * arguments: the values when it was pressed.
  */
 async function generateSoql(
-  input: { username: string; request: string; openObject: string | undefined; editorText: string; tooling: boolean; names: NameContext },
+  input: {
+    username: string
+    request: string
+    openObject: string | undefined
+    editorText: string
+    tooling: boolean
+    apiVersion: string | undefined
+    names: NameContext
+  },
   signal: AbortSignal,
   progress: Progress,
 ): Promise<Proposal> {
-  const { username, request, openObject, editorText, tooling, names } = input
+  const { username, request, openObject, editorText, tooling, apiVersion, names } = input
   progress('chooseObjects')
   const fieldBudget = budgetLeft(request, editorText)
   if (fieldBudget < MIN_FIELD_BUDGET) throw new Notice(t.aiTooLong)
-  const globals = (await describeGlobal(username, tooling)).sobjects
+  const globals = (await describeGlobal(username, tooling, apiVersion)).sobjects
   // Only an object in this API's list is a hint (not one open before switching to the Tooling API).
   const open = openObject ? findByName(globals, openObject, names.ns)?.name : undefined
   const { output: chosen } = await api.aiGenerate(
@@ -91,7 +99,7 @@ async function generateSoql(
   const objects = chosen.objects.map((o) => findByName(globals, o, names.ns)?.name).filter((o): o is string => Boolean(o))
   if (objects.length === 0) throw new Notice(t.aiNoObjects)
   progress('loadFields')
-  const describes: SObjectDescribe[] = await Promise.all(objects.map((o) => describeSObject(username, o, tooling)))
+  const describes: SObjectDescribe[] = await Promise.all(objects.map((o) => describeSObject(username, o, tooling, apiVersion)))
   progress('generate')
   const { output } = await api.aiGenerate(
     { task: 'generateSoql', input: { request, objectInfo: objectInfo(describes, names, fieldBudget), editorText, tooling, language: uiLanguage } },
@@ -102,20 +110,20 @@ async function generateSoql(
 
 /** Fix with AI: the query as it was run, not what the editor holds now. */
 async function fixSoql(
-  input: { username: string; error: string; rejected: Rejected; names: NameContext },
+  input: { username: string; error: string; rejected: Rejected; apiVersion: string | undefined; names: NameContext },
   signal: AbortSignal,
   progress: Progress,
 ): Promise<Proposal> {
-  const { username, error, names } = input
+  const { username, error, apiVersion, names } = input
   const { soql, tooling, prompt } = input.rejected
   progress('loadFields')
   const fieldBudget = budgetLeft(soql, error)
   if (fieldBudget < MIN_FIELD_BUDGET) throw new Notice(t.aiTooLong)
-  const globals = (await describeGlobal(username, tooling)).sobjects
+  const globals = (await describeGlobal(username, tooling, apiVersion)).sobjects
   const from = fromObjectOf(soql)
   // An object the org does not have may be the error itself: then no fields are sent.
   const object = from ? findByName(globals, from, names.ns) : undefined
-  const describes = object ? [await describeSObject(username, object.name, tooling)] : []
+  const describes = object ? [await describeSObject(username, object.name, tooling, apiVersion)] : []
   progress('fix')
   const { output } = await api.aiGenerate(
     {
@@ -175,6 +183,7 @@ export function AiProvider({ username, children }: { username: string; children:
       openObject: soql.panelObject,
       editorText: editorChip ? soql.getText() : '',
       tooling: soql.tooling,
+      apiVersion: soql.apiVersion,
       names: soql.names,
     }
     void start((signal, progress) => generateSoql(input, signal, progress), 'ignore').then(finish)
@@ -185,10 +194,10 @@ export function AiProvider({ username, children }: { username: string; children:
       if (availability !== 'ready') return
       // The proposal shows above the editor.
       setOpen('editor', true)
-      const input = { username, error, rejected, names: soql.names }
+      const input = { username, error, rejected, apiVersion: soql.apiVersion, names: soql.names }
       void start((signal, progress) => fixSoql(input, signal, progress), 'ignore').then(finish)
     },
-    [availability, setOpen, username, soql.names, start, finish],
+    [availability, setOpen, username, soql.names, soql.apiVersion, start, finish],
   )
 
   const cancel = useCallback(() => {

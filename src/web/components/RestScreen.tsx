@@ -5,7 +5,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { methodTakesBody, REST_METHODS, type RestHistoryEntry, type RestMethod } from '../../shared/api.ts'
 import { t } from '../i18n/i18n.ts'
-import { restMayChangeData } from '../rest/changes.ts'
 import { formatJson, responseText, sizeText } from '../rest/json.ts'
 import type { RestResult } from '../rest/restState.ts'
 import { useApp } from '../state/AppContext.tsx'
@@ -146,7 +145,6 @@ function Request() {
   const [tab, setTab] = useState<'body' | 'headers'>('body')
   const [hint, setHint] = useState<string>()
   const takesBody = methodTakesBody(rest.method)
-  const changesData = restMayChangeData(rest.method, rest.path)
 
   useEffect(() => {
     if (!hint) return
@@ -154,11 +152,8 @@ function Request() {
     return () => clearTimeout(timer)
   }, [hint])
 
-  // ⌘↵ sends only a request that changes no data (docs/rest.md "利用者と決めたこと").
-  const modEnter = () => {
-    if (changesData) setHint(t.restModEnterHint)
-    else rest.send()
-  }
+  // Cmd+Enter never sends, even a GET: it is too easy to press by mistake (docs/rest.md "利用者と決めたこと").
+  const modEnter = () => setHint(t.restModEnterHint)
   const format = () => {
     const formatted = formatJson(rest.getBody())
     if (formatted === undefined) setHint(t.restCannotFormat)
@@ -167,7 +162,7 @@ function Request() {
 
   return (
     <section className={`${panel.panel} ${styles.request}`} aria-label={t.restRequest}>
-      {/* Not a form: Enter in the path must not send (a DELETE, say). Send is the button, or Cmd+Enter for a request that changes no data. */}
+      {/* Not a form: Enter in the path must not send (a DELETE, say). Send is the button only. */}
       <div className={styles.line}>
         <label className="visually-hidden" htmlFor="rest-method">
           {t.restMethod}

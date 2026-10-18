@@ -17,7 +17,7 @@ import { ReloadButton } from './ReloadButton.tsx'
 
 export function ObjectPanel({ username }: { username: string }) {
   const soql = useSoql()
-  const globals = useLoadable(`${username}\n${soql.tooling}`, (refresh) => describeGlobal(username, soql.tooling, refresh))
+  const globals = useLoadable(`${username}\n${soql.tooling}\n${soql.apiVersion}`, (refresh) => describeGlobal(username, soql.tooling, soql.apiVersion, refresh))
   useReportOrgError(username, globals.error)
 
   // The FROM object, if the org has it (matching case and namespace loosely).
@@ -31,7 +31,7 @@ export function ObjectPanel({ username }: { username: string }) {
   const lastStillListed = last !== undefined && globals.data?.sobjects.some((o) => o.name === last)
   const current = found?.name ?? (soql.panelObject && lastStillListed ? last : undefined)
 
-  if (current) return <FieldPanel key={`${current}\n${soql.tooling}`} username={username} objectName={current} />
+  if (current) return <FieldPanel key={`${current}\n${soql.tooling}\n${soql.apiVersion}`} username={username} objectName={current} />
   return <ObjectList globals={globals} />
 }
 

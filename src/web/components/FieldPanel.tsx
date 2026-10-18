@@ -28,8 +28,8 @@ export function FieldPanel({ username, objectName }: { username: string; objectN
   const [filter, setFilter] = useState('')
   const [sort, setSort] = useState<Sort>('none')
   const tabsId = useId()
-  const describe = useLoadable(`${username}\n${objectName}\n${soql.tooling}`, (refresh) =>
-    describeSObject(username, objectName, soql.tooling, refresh),
+  const describe = useLoadable(`${username}\n${objectName}\n${soql.tooling}\n${soql.apiVersion}`, (refresh) =>
+    describeSObject(username, objectName, soql.tooling, soql.apiVersion, refresh),
   )
   useReportOrgError(username, describe.error)
   const d = describe.data
@@ -275,7 +275,9 @@ function ReferenceFields({
   childRelationship?: string
 }) {
   const soql = useSoql()
-  const describe = useLoadable(`${username}\n${objectName}\n${soql.tooling}`, () => describeSObject(username, objectName, soql.tooling))
+  const describe = useLoadable(`${username}\n${objectName}\n${soql.tooling}\n${soql.apiVersion}`, () =>
+    describeSObject(username, objectName, soql.tooling, soql.apiVersion),
+  )
   useReportOrgError(username, describe.error)
   if (describe.error !== undefined) return <p className={panel.empty}>{t.loadFailed}</p>
   if (describe.pending || !describe.data) return <p className={panel.empty} aria-busy="true">{t.loading}</p>
@@ -285,7 +287,7 @@ function ReferenceFields({
 function RelationshipList({ username, relationships, filter }: { username: string; relationships: ChildRelationship[]; filter: string }) {
   const soql = useSoql()
   // Child object labels come from the object list (already cached by the left panel).
-  const globals = useLoadable(`${username}\n${soql.tooling}`, () => describeGlobal(username, soql.tooling))
+  const globals = useLoadable(`${username}\n${soql.tooling}\n${soql.apiVersion}`, () => describeGlobal(username, soql.tooling, soql.apiVersion))
   const labels = useMemo(
     () => new Map((globals.data?.sobjects ?? []).map((o) => [o.name, o.label])),
     [globals.data],

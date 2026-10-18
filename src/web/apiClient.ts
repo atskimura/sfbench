@@ -22,6 +22,7 @@ import type {
   SessionResponse,
   Settings,
   SettingsUpdate,
+  VersionsResponse,
   WithApiUsage,
   WithFetchedAt,
 } from '../shared/api.ts'
@@ -106,6 +107,8 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
 
 const org = (username: string) => `/api/orgs/${encodeURIComponent(username)}`
 const flag = (name: string, on: boolean | undefined) => (on ? `${name}=1` : '')
+/** A version the user chose (docs/web.md "API バージョン"); left out for the latest. */
+const version = (v: string | undefined) => (v ? `version=${encodeURIComponent(v)}` : '')
 const query = (...parts: string[]) => {
   const q = parts.filter(Boolean).join('&')
   return q ? `?${q}` : ''
@@ -144,13 +147,15 @@ export const api = {
   /** Checks every org's connection again (about 10 seconds or more). */
   checkConnections: (signal?: AbortSignal) => request<OrgsResponse>('POST', '/api/orgs/check', undefined, signal),
   summary: (username: string, signal?: AbortSignal) => request<WithApiUsage<OrgSummary>>('GET', `${org(username)}/summary`, undefined, signal),
-  sobjects: (username: string, tooling: boolean, refresh = false) =>
-    request<DescribeGlobal>('GET', `${org(username)}/sobjects${query(flag('tooling', tooling), flag('refresh', refresh))}`),
-  describe: (username: string, name: string, tooling: boolean, refresh = false) =>
+  sobjects: (username: string, tooling: boolean, apiVersion: string | undefined, refresh = false) =>
+    request<DescribeGlobal>('GET', `${org(username)}/sobjects${query(flag('tooling', tooling), version(apiVersion), flag('refresh', refresh))}`),
+  describe: (username: string, name: string, tooling: boolean, apiVersion: string | undefined, refresh = false) =>
     request<DescribeSObject>(
       'GET',
-      `${org(username)}/sobjects/${encodeURIComponent(name)}${query(flag('tooling', tooling), flag('refresh', refresh))}`,
+      `${org(username)}/sobjects/${encodeURIComponent(name)}${query(flag('tooling', tooling), version(apiVersion), flag('refresh', refresh))}`,
     ),
+  /** The API versions the org supports, oldest first. */
+  versions: (username: string, signal?: AbortSignal) => request<VersionsResponse>('GET', `${org(username)}/versions`, undefined, signal),
   query: (username: string, req: QueryRequest, signal?: AbortSignal) =>
     request<WithApiUsage<QueryResponse>>('POST', `${org(username)}/query`, req, signal),
   nextPage: (username: string, nextRecordsUrl: string, signal?: AbortSignal) =>

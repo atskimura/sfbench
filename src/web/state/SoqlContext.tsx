@@ -24,6 +24,7 @@ import { markFor, promptForRun, type PromptMark } from '../ai/promptMark.ts'
 import { useApp } from './AppContext.tsx'
 import { useOrgs, type Seed } from './OrgContext.tsx'
 import { useTask } from './useTask.ts'
+import { saveApiVersion } from './versionStorage.ts'
 
 /** What the SOQL editor component exposes to the rest of the app. */
 export type EditorHandle = {
@@ -43,6 +44,9 @@ type SoqlState = {
   panelObject: string | undefined
   tooling: boolean
   queryAll: boolean
+  /** The API version chosen, or undefined for the latest (docs/web.md "API バージョン"). */
+  apiVersion: string | undefined
+  setApiVersion: (version: string | undefined) => void
   history: HistoryEntry[]
   /** The editor text as last settled (300 ms after typing stops), for the AI proposal's diff. */
   settledText: string
@@ -115,7 +119,18 @@ const SoqlContext = createContext<SoqlState | undefined>(undefined)
 const ResultContext = createContext<ResultState | undefined>(undefined)
 
 /** The workspace of one org: it is remade for each org (docs/web.md "非同期の流れ"). */
-export function SoqlProvider({ username, seed, children }: { username: string; seed: Seed | undefined; children: ReactNode }) {
+export function SoqlProvider({
+  username,
+  seed,
+  initialApiVersion,
+  children,
+}: {
+  username: string
+  seed: Seed | undefined
+  /** Claimed when the workspace was made (Workspace.tsx). */
+  initialApiVersion: string | undefined
+  children: ReactNode
+}) {
   const { settings, notify } = useApp()
   const { summaries, handleOrgError, markAuthError, reportApiUsage } = useOrgs()
   const summary = summaries[username]
@@ -125,6 +140,7 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
   const [panelObject, setPanelObject] = useState<string>()
   const [tooling, setToolingState] = useState(false)
   const [queryAll, setQueryAllState] = useState(false)
+  const [apiVersion, setApiVersionState] = useState(initialApiVersion)
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [settledText, setSettledText] = useState('')
   // The query an AI proposal or a history entry put in, with its request.
@@ -203,7 +219,12 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
       const useTooling = options.tooling ?? tooling
       const prompt = options.prompt
       const outcome = await startRun(
-        (signal) => api.query(username, { soql, tooling: useTooling, queryAll: !useTooling && queryAll, ...(prompt ? { prompt } : {}) }, signal),
+        (signal) =>
+          api.query(
+            username,
+            { soql, tooling: useTooling, queryAll: !useTooling && queryAll, ...(prompt ? { prompt } : {}), ...(apiVersion ? { apiVersion } : {}) },
+            signal,
+          ),
         options.whileRunning ?? 'ignore',
       )
       if (outcome.kind === 'stale') return
@@ -240,12 +261,20 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
       // Only a query Salesforce refused is offered to the AI to fix (not a timeout).
       setResult({ state: 'error', ...shown, rejected: rejected ? { soql, tooling: useTooling, prompt } : undefined })
     },
-    [startRun, username, tooling, queryAll, reportApiUsage, handleOrgError, markAuthError, refreshHistory],
+    [startRun, username, tooling, queryAll, apiVersion, reportApiUsage, handleOrgError, markAuthError, refreshHistory],
   )
   const run = useCallback(() => {
     const soql = editor.current?.getText() ?? ''
     void runSoql(soql, { prompt: promptForRun(mark, soql, tooling) })
   }, [runSoql, mark, tooling])
+
+  const setApiVersion = useCallback(
+    (version: string | undefined) => {
+      setApiVersionState(version)
+      saveApiVersion(username, 'soql', version)
+    },
+    [username],
+  )
 
   const setTooling = useCallback((on: boolean) => {
     setToolingState(on)
@@ -286,6 +315,8 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
       panelObject,
       tooling,
       queryAll,
+      apiVersion,
+      setApiVersion,
       history,
       settledText,
       registerEditor: (handle) => {
@@ -312,10 +343,12 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
         setMark(markFor(entry.soql, entry.tooling, entry.prompt))
         setToolingState(entry.tooling)
         setQueryAllState(!entry.tooling && entry.queryAll)
+        // A query remembers the version it ran on; one without ran on the latest.
+        setApiVersion(entry.apiVersion)
       },
       run,
     }),
-    [names, selection, firstLine, panelObject, tooling, queryAll, history, settledText, applyText, applyProposal, setTooling, setText, edit, run],
+    [names, selection, firstLine, panelObject, tooling, queryAll, apiVersion, setApiVersion, history, settledText, applyText, applyProposal, setTooling, setText, edit, run],
   )
   /** Stops the running query; only a run that was stopped empties the result. */
   const cancel = useCallback(() => {

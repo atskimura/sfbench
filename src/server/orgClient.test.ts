@@ -5,7 +5,7 @@ vi.mock('./sf/apiRequest.ts', async (importOriginal) => ({ ...(await importOrigi
 
 const { getAccessToken } = await import('./sf/commands.ts')
 const { apiRequest } = await import('./sf/apiRequest.ts')
-const { OrgClient, SalesforceTimeoutError, SalesforceUnreachableError } = await import('./salesforce.ts')
+const { OrgClient, SalesforceTimeoutError, SalesforceUnreachableError, UnsupportedVersionError } = await import('./salesforce.ts')
 const { OrgAuthError, SfCliError, SfTimeoutError } = await import('./sf/errors.ts')
 
 const tokenMock = vi.mocked(getAccessToken)
@@ -40,6 +40,20 @@ afterEach(() => {
 })
 
 describe('OrgClient', () => {
+  it('uses the latest API version, or a chosen one the org supports, and asks the org once', async () => {
+    fetchMock.mockResolvedValueOnce(ok([{ version: '64.0' }, { version: '65.0' }, { version: '66.0' }]))
+    const client = newClient()
+    expect(await client.version()).toBe('66.0')
+    expect(await client.version('64.0')).toBe('64.0')
+    await expect(client.version('20.0')).rejects.toBeInstanceOf(UnsupportedVersionError)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('lists each API version once, oldest first, as an org can repeat one', async () => {
+    fetchMock.mockResolvedValueOnce(ok([{ version: '9.0' }, { version: '67.0' }, { version: '68.0' }, { version: '68.0' }]))
+    expect(await newClient().versions()).toEqual(['9.0', '67.0', '68.0'])
+  })
+
   it('calls Salesforce with the token from sf and records API usage', async () => {
     fetchMock.mockResolvedValueOnce(ok())
     const client = newClient()

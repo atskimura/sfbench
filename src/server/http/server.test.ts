@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SalesforceError, SalesforceTimeoutError, SalesforceUnreachableError } from '../salesforce.ts'
-import { apexOutcomeOf, cacheControl, errorResponse, exceptionTypeOf, restOutcomeOf, unknownOrg } from './server.ts'
+import { apexOutcomeOf, cacheControl, errorResponse, exceptionTypeOf, restOutcomeOf, unknownOrg, versionOf } from './server.ts'
 import { ApexFileError, ApexRunError } from '../sf/apexRun.ts'
 import { OrgAuthError, SfCliError, SfNotFoundError, SfTimeoutError } from '../sf/errors.ts'
 import { RestRequestError } from '../rest.ts'
@@ -61,5 +61,13 @@ describe('Apex outcomes', () => {
   it('answers an unknown sf failure with its message for the screen', () => {
     expect(errorResponse(new ApexRunError('unexpectedExecuteCommandError', 'socket hang up'))).toMatchObject({ status: 502, body: { error: { code: 'SF_CLI_ERROR', message: 'socket hang up' } } })
     expect(errorResponse(new ApexFileError('ENOSPC'))).toMatchObject({ status: 500, body: { error: { code: 'NOT_RUN' } } })
+  })
+})
+
+describe('versionOf', () => {
+  it('takes a version shaped as Salesforce writes it, and nothing else', () => {
+    expect(versionOf(undefined)).toBeUndefined()
+    expect(versionOf('66.0')).toBe('66.0')
+    for (const bad of ['66', 'v66.0', '66.0 --json', 66, '']) expect(() => versionOf(bad)).toThrow('apiVersion')
   })
 })

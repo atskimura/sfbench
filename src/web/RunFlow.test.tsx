@@ -16,6 +16,7 @@ vi.mock('./apiClient.ts', async (importOriginal) => {
       settings: vi.fn(),
       saveSettings: vi.fn(),
       sobjects: vi.fn(),
+      versions: vi.fn(),
       describe: vi.fn(),
       history: vi.fn(),
       query: vi.fn(),
@@ -64,6 +65,7 @@ beforeEach(() => {
   mocked.summary.mockResolvedValue({ organizationType: 'Developer Edition', isSandbox: false, namespacePrefix: null })
   mocked.settings.mockResolvedValue({ omitNamespace: true, requestTimeoutSeconds: 120 })
   mocked.sobjects.mockResolvedValue({ sobjects: [{ name: 'Account', label: 'Account', queryable: true }], fetchedAt: now })
+  mocked.versions.mockResolvedValue({ versions: ['64.0', '65.0', '66.0'] })
   mocked.describe.mockResolvedValue({ name: 'Account', label: 'Account', fields: [field('Id', 'Account ID', { type: 'id' })], childRelationships: [], fetchedAt: now })
   mocked.history.mockResolvedValue({ entries: [] })
 })
@@ -204,5 +206,49 @@ describe('CSV export', () => {
     render(<App launch={launch} />)
     expect(await screen.findByText(t.locatorExpired)).toBeTruthy()
     expect((screen.getByRole('button', { name: t.exportCsv }) as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+// docs/web.md "API バージョン"
+describe('API version', () => {
+  const versionSelect = () => screen.findByLabelText<HTMLSelectElement>(t.apiVersionLabel)
+
+  it('runs the query and lists the objects on the version chosen, and keeps it over a reload in the same org', async () => {
+    mocked.query.mockResolvedValue({ totalSize: 0, done: true, records: [] })
+    render(<App launch={{ org: 'demo', query: 'SELECT Id FROM Account', run: false }} />)
+    const select = await versionSelect()
+    await within(select).findByRole('option', { name: t.apiVersionLatest('66.0') })
+    await userEvent.selectOptions(select, '64.0')
+    await waitFor(() => expect(mocked.sobjects.mock.calls.some((call) => call[2] === '64.0')).toBe(true))
+    await userEvent.click(runButton())
+    await waitFor(() => expect(mocked.query).toHaveBeenCalled())
+    expect(mocked.query.mock.calls[0][1]).toMatchObject({ apiVersion: '64.0' })
+    cleanup()
+    // A reload has no launch.
+    render(<App launch={undefined} />)
+    expect((await versionSelect()).value).toBe('64.0')
+  })
+
+  it('sends no version for the latest', async () => {
+    mocked.query.mockResolvedValue({ totalSize: 0, done: true, records: [] })
+    render(<App launch={launch} />)
+    await waitFor(() => expect(mocked.query).toHaveBeenCalled())
+    expect(mocked.query.mock.calls[0][1]).not.toHaveProperty('apiVersion')
+  })
+
+  it('goes back to the version a recent query ran on, and to the latest for one without', async () => {
+    mocked.history.mockResolvedValue({
+      entries: [
+        { soql: 'SELECT Id FROM Account', tooling: false, queryAll: false, executedAt: now, apiVersion: '65.0' },
+        { soql: 'SELECT Name FROM Account', tooling: false, queryAll: false, executedAt: now },
+      ],
+    })
+    render(<App launch={{ org: 'demo' }} />)
+    const recent = await screen.findByRole('region', { name: t.recent })
+    await userEvent.click(await within(recent).findByRole('button', { name: /SELECT Id FROM Account/ }))
+    expect((await versionSelect()).value).toBe('65.0')
+    expect(within(recent).getByText(t.apiVersionChip('65.0'))).toBeTruthy()
+    await userEvent.click(within(recent).getByRole('button', { name: /SELECT Name FROM Account/ }))
+    expect((await versionSelect()).value).toBe('')
   })
 })

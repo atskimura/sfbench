@@ -58,13 +58,13 @@ CLI の内部構造が変わっても、出力の形が保たれる限り動き�
 | 既定の組織の解決 | `sf config get target-org --json` | CLI の入口 |
 | アクセストークンの取得 | `sf org auth show-access-token --no-prompt --json` | サーバー |
 | 代わりの経路での API 呼び出し | `sf api request rest --file <request.json> --include` | サーバー |
-| 匿名 Apex の実行 | `sf apex run --file <code.apex> --json` | サーバー |
+| 匿名 Apex の実行 | `sf apex run --file <code.apex> [--api-version <バージョン>] --json` | サーバー |
 | 組織を開く | `sf org open` | サーバー |
 
 呼び出しは次の規則に従う。
 
 - 対象の組織は引数ではなく環境変数 `SF_TARGET_ORG` で渡す。値は `sf org list` に載っているユーザー名だけを受け付ける。
-- 利用者の入力（SOQL、REST API のパスやボディ、Apex のコード）をコマンドライン引数に載せない。`sf api request rest` には、メソッド、URL、ヘッダー、ボディを書いた JSON ファイルを `--file` で渡す。`sf apex run` には、コードを書いたファイルを `--file` で渡す。ファイルは `~/.sfbench/tmp/` に作り、呼び出し後に消す。引数には英数字だけのファイル名を渡す。
+- 利用者の入力（SOQL、REST API のパスやボディ、Apex のコード）をコマンドライン引数に載せない。`sf api request rest` には、メソッド、URL、ヘッダー、ボディを書いた JSON ファイルを `--file` で渡す。`sf apex run` には、コードを書いたファイルを `--file` で渡す。ファイルは `~/.sfbench/tmp/` に作り、呼び出し後に消す。引数には英数字だけのファイル名を渡す。例外は `sf apex run` の `--api-version` で、画面が選んだ値を、形と組織が対応するバージョンの中にあることを確かめてから渡す（[web.md](web.md)「API バージョン」）。
 - `sf org open` にはパスを渡さず、組織のホームを開く。
 - `sf` は、起動前に PATH の各ディレクトリから絶対パスを解決し、その絶対パスで起動する（Windows では `sf.cmd` を探す）。作業ディレクトリは PATH の探索に含めない。Windows の cmd.exe はコマンドを PATH より先に作業ディレクトリから探すので、利用者が信頼できないリポジトリで `npx sfbench` を実行したときに、そこにある `sf.cmd` を起動しないようにするためである。
 - サーバーが起動する子プロセスの作業ディレクトリは `~/.sfbench/tmp/` に固定する。例外は、CLI の入口が実行する `sf config get target-org` で、利用者の作業ディレクトリのまま実行する。プロジェクトごとの設定（`.sf/config.json`）を読むためである。この場合も `sf` は絶対パスで起動するので、作業ディレクトリにある実行ファイルは起動しない。
@@ -189,14 +189,15 @@ Salesforce の呼び出しも AI の API の呼び出しも、これでプロキ
 | `POST /api/session` | 交換用 | 起動用のコードを、セッショントークンと起動時の指定に交換する |
 | `GET /api/orgs` | 画面用 | 組織の一覧（トークンを除く）と、各組織を使えるか。`waitForCheck=1` を付けると、裏で動いている接続の確認が終わってから答える |
 | `POST /api/orgs/check` | 画面用 | 一覧を取り直し、各組織への接続を確かめ直す |
+| `GET /api/orgs/:user/versions` | 画面用 | 組織が対応する API バージョン（古い順） |
 | `GET /api/orgs/:user/summary` | 画面用 | 組織の詳しい種別（`Organization` の `OrganizationType`、`IsSandbox`）と名前空間 |
-| `GET /api/orgs/:user/sobjects` | 画面用 | describeGlobal |
-| `GET /api/orgs/:user/sobjects/:name` | 画面用 | describe |
-| `POST /api/orgs/:user/query` | 画面用 | SOQL の実行（`{ soql, tooling, queryAll }`） |
+| `GET /api/orgs/:user/sobjects` | 画面用 | describeGlobal。`version=` で API バージョンを選べる |
+| `GET /api/orgs/:user/sobjects/:name` | 画面用 | describe。`version=` で API バージョンを選べる |
+| `POST /api/orgs/:user/query` | 画面用 | SOQL の実行（`{ soql, tooling, queryAll, apiVersion? }`） |
 | `POST /api/orgs/:user/query/next` | 画面用 | 続きのページ（`{ nextRecordsUrl }`） |
 | `POST /api/orgs/:user/rest` | 画面用 | REST API の実行（`{ method, path, headers, body }`）。Salesforce が返したステータスによらず、200 で `{ id, status, headers, body, size, elapsedMs }` を返す（[rest.md](rest.md)） |
 | `GET /api/orgs/:user/rest/history` | 画面用 | REST API の実行履歴 |
-| `POST /api/orgs/:user/apex` | 画面用 | 匿名 Apex の実行（`{ code }`）。コンパイルエラーと実行時の例外も 200 で返す（[apex.md](apex.md)「応答の形」） |
+| `POST /api/orgs/:user/apex` | 画面用 | 匿名 Apex の実行（`{ code, apiVersion? }`）。コンパイルエラーと実行時の例外も 200 で返す（[apex.md](apex.md)「応答の形」） |
 | `GET /api/orgs/:user/apex/history` | 画面用 | 匿名 Apex の実行履歴 |
 | `POST /api/orgs/:user/open` | 画面用 | 組織のホームを、ログイン済みの状態でブラウザに開く |
 | `GET /api/orgs/:user/history` | 画面用 | 最近のクエリ |

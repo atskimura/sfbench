@@ -110,9 +110,10 @@ function toRun(r: Record<string, unknown>): ApexRun {
  * Runs anonymous Apex in the org. The code goes in a file so that it never
  * appears on the command line. Throws OrgAuthError (did not run), SfTimeoutError
  * (sf was stopped; Salesforce may still run it), ApexFileError (did not run)
- * or ApexRunError (unknown).
+ * or ApexRunError (unknown). `apiVersion` is the only value from the screen on
+ * the command line, and only after it was found among the org's versions.
  */
-export async function runApex(username: string, code: string, tmpDir: string, timeoutMs: number): Promise<ApexRun> {
+export async function runApex(username: string, code: string, tmpDir: string, timeoutMs: number, apiVersion?: string): Promise<ApexRun> {
   const fileName = `apex-${randomBytes(8).toString('hex')}.apex`
   const filePath = join(tmpDir, fileName)
   try {
@@ -122,7 +123,7 @@ export async function runApex(username: string, code: string, tmpDir: string, ti
       throw new ApexFileError((e as Error).message)
     }
     // An SfTimeoutError from runSf goes to the caller as it is.
-    const { stdout, stderr } = await runSf(['apex', 'run', '-f', fileName, '--json'], { targetOrg: username, cwd: tmpDir, timeoutMs })
+    const { stdout, stderr } = await runSf(['apex', 'run', '-f', fileName, ...(apiVersion ? ['--api-version', apiVersion] : []), '--json'], { targetOrg: username, cwd: tmpDir, timeoutMs })
     const output = parseApexOutput(stdout, stderr)
     if (output.kind === 'ran') return output.run
     if (output.kind === 'authError') throw new OrgAuthError(username, output.message)

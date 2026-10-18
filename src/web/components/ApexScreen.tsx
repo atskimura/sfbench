@@ -14,6 +14,7 @@ import { useApp } from '../state/AppContext.tsx'
 import { useOrgs } from '../state/OrgContext.tsx'
 import { PanelsProvider, usePanels } from '../state/PanelsContext.tsx'
 import { ApexEditor, LogView } from './ApexCode.tsx'
+import { ApiVersionSelect } from './ApiVersionSelect.tsx'
 import { CollapseButton } from './CollapseButton.tsx'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { CopyButton } from './CopyButton.tsx'
@@ -105,6 +106,7 @@ function Code() {
       <div className={panel.header}>
         <span className={panel.title}>{t.apexEditor}</span>
         <span className={panel.spacer} />
+        <ApiVersionSelect username={apex.username} value={apex.apiVersion} onChange={apex.setApiVersion} />
         <RunButton />
       </div>
       {hint && (
