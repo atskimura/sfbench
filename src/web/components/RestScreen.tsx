@@ -1,5 +1,7 @@
-// The REST API screen: the history on the left, the request at the top right,
-// the response below (docs/screens.md "REST API の画面", docs/rest.md).
+// The REST API screen, laid out as the SOQL screen: the request at the top
+// with the history at its right, the response below across the width
+// (docs/screens.md "REST API の画面", docs/rest.md). The request area and the
+// history can be closed.
 import { useEffect, useMemo, useState } from 'react'
 import { methodTakesBody, REST_METHODS, type RestHistoryEntry, type RestMethod } from '../../shared/api.ts'
 import { t } from '../i18n/i18n.ts'
@@ -9,27 +11,58 @@ import type { RestResult } from '../rest/restState.ts'
 import { useApp } from '../state/AppContext.tsx'
 import { useOrgs } from '../state/OrgContext.tsx'
 import { useRest } from '../state/RestContext.tsx'
+import { usePanels, PanelsProvider } from '../state/PanelsContext.tsx'
+import { CollapseButton } from './CollapseButton.tsx'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { CopyCommand } from './CopyCommand.tsx'
 import { ErrorDetails } from './ErrorDetails.tsx'
 import { JsonEditor, JsonView } from './JsonCode.tsx'
 import panel from './Panel.module.css'
 import { ReloadButton } from './ReloadButton.tsx'
+import { Divider, Strip } from './Split.tsx'
 import styles from './RestScreen.module.css'
 
 const timeFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 
 export function RestScreen() {
+  return (
+    // Remembered apart from the SOQL screen's panels.
+    <PanelsProvider storageKey="sfbench.restPanels">
+      <Layout />
+    </PanelsProvider>
+  )
+}
+
+function Layout() {
   const rest = useRest()
+  const { open, setOpen } = usePanels()
   return (
     <div className={styles.screen}>
-      <History />
-      <div className={styles.main}>
-        <Notices />
+      <Notices />
+      {/* Kept mounted while closed: the body editor holds the text. */}
+      <div className={styles.top} hidden={!open.restRequest}>
         <Request />
-        <Response />
+        {open.restHistory ? <History /> : <Strip label={t.showRestHistory} text={t.restHistory} onClick={() => setOpen('restHistory', true)} />}
       </div>
+      {!open.restRequest && <ClosedRequest />}
+      <Divider open={open.restRequest} showLabel={t.showRestRequest} hideLabel={t.hideRestRequest} onToggle={() => setOpen('restRequest', !open.restRequest)} />
+      <Response />
       {rest.confirming && <Confirm />}
+    </div>
+  )
+}
+
+/** The closed request area: the method, the path and Send. */
+function ClosedRequest() {
+  const rest = useRest()
+  return (
+    <div className={`${panel.panel} ${styles.closedRequest}`}>
+      <MethodChip method={rest.method} />
+      <span className={styles.path}>{rest.path}</span>
+      <span className={panel.spacer} />
+      <button type="button" className={`${panel.button} ${panel.primary}`} disabled={rest.sending || !rest.path.trim()} onClick={rest.send}>
+        {rest.sending ? t.restSending : t.restSend}
+      </button>
     </div>
   )
 }
@@ -46,6 +79,7 @@ function History() {
         <span className={panel.title}>{t.restHistory}</span>
         <span className={panel.spacer} />
         <ReloadButton label={t.reloadRestHistory} busy={rest.historyLoading} onClick={rest.refreshHistory} />
+        <CollapseButton name="restHistory" label={t.hideRestHistory} side="right" />
       </div>
       <div className={panel.body}>
         {rest.history.length === 0 && <p className={panel.empty}>{rest.historyLoading ? t.loading : t.restHistoryEmpty}</p>}

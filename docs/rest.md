@@ -46,6 +46,7 @@ sessionStorage（`sfbench.mode`）に保存し、タブを再読み込みした�
 エディタ領域を閉じるときにすでに使っている作りと同じである。
 React の Activity は使わない。隠したときに effect の後始末が走り、`useTask` が要求を中止するからである（web.md「`useTask` の状態と遷移」）。
 REST API の画面は、最初に開いたときに作り、以後は隠すだけにする。
+画面の中の配置とパネルの開閉は、SOQL の画面にそろえる（screens.md「REST API の画面」）。開閉の状態は、SOQL の画面とは別のキー（`sfbench.restPanels`）で localStorage に覚える。
 
 `SoqlProvider`、`PanelsProvider`、`AiProvider` は SOQL の画面だけを、`RestProvider` は REST API の画面だけを包む。
 2つの画面は、互いの状態を読まない。

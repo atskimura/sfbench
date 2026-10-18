@@ -8,6 +8,7 @@ import { AiProvider } from '../state/AiContext.tsx'
 import { useApp } from '../state/AppContext.tsx'
 import { RestProvider } from '../state/RestContext.tsx'
 import { RestScreen } from './RestScreen.tsx'
+import { Divider, Strip } from './Split.tsx'
 import { useOrgs, type Seed } from '../state/OrgContext.tsx'
 import { PanelsProvider, usePanels } from '../state/PanelsContext.tsx'
 import { SoqlProvider, useSoql } from '../state/SoqlContext.tsx'
@@ -49,7 +50,7 @@ function OrgWorkspace({ username, seed }: { username: string; seed: Seed | undef
     <>
       <div className={styles.screen} hidden={mode !== 'soql'}>
         <SoqlProvider username={username} seed={seed}>
-          <PanelsProvider>
+          <PanelsProvider storageKey="sfbench.panels">
             {/* Inside both: Replace writes the editor, and Fix with AI opens the editor area. */}
             <AiProvider username={username}>
               <Layout username={username} initialText={seed?.query} />
@@ -92,11 +93,7 @@ function Layout({ username, initialText }: { username: string; initialText: stri
           )}
         </div>
         {!open.editor && <ClosedEditor />}
-        <div className={styles.divider}>
-          <button type="button" className={panel.button} onClick={() => setOpen('editor', !open.editor)} aria-expanded={open.editor}>
-            {open.editor ? t.hideEditor : t.showEditor}
-          </button>
-        </div>
+        <Divider open={open.editor} showLabel={t.showEditor} hideLabel={t.hideEditor} onToggle={() => setOpen('editor', !open.editor)} />
         <ResultPanel />
       </div>
     </div>
@@ -116,14 +113,5 @@ function ClosedEditor() {
       <RunButton />
       <code className={styles.firstLine}>{soql.firstLine}</code>
     </div>
-  )
-}
-
-/** A closed panel: a narrow vertical bar that opens it. */
-function Strip({ label, text, onClick }: { label: string; text: string; onClick: () => void }) {
-  return (
-    <button type="button" className={styles.strip} aria-label={label} title={label} onClick={onClick}>
-      <span className={styles.stripText}>{text}</span>
-    </button>
   )
 }

@@ -2,29 +2,35 @@
 .screen {
   flex: 1;
   min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.screen[hidden] {
-  display: none;
-}
-
-.history {
-  flex: 1 1 260px;
-  max-width: 340px;
-  height: calc(100vh - var(--header-height) - 2 * var(--space-2));
-}
-
-.main {
-  flex: 999 1 560px;
-  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   height: calc(100vh - var(--header-height) - 2 * var(--space-2));
+}
+
+/* The request with the history at its right, as the SOQL editor and its recent queries. */
+.top {
+  flex: none;
+  display: flex;
+  gap: var(--space-2);
+  height: 320px;
+}
+
+.top[hidden] {
+  display: none;
+}
+
+.history {
+  flex: 0 0 300px;
+  min-width: 0;
+}
+
+.closedRequest {
+  flex: none;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
 }
 
 .list {
@@ -159,8 +165,8 @@
 }
 
 .request {
-  flex: none;
-  height: 320px;
+  flex: 1;
+  min-width: 0;
 }
 
 .line {

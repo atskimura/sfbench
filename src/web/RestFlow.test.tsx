@@ -113,6 +113,7 @@ beforeEach(() => {
   mocked.history.mockResolvedValue({ entries: [] })
   mocked.restHistory.mockResolvedValue({ entries: [] })
   sessionStorage.clear()
+  localStorage.clear()
   mocked.query.mockResolvedValue({ totalSize: 1, done: true, records: [{ attributes: { type: 'Account', url: '' }, Id: '001', Name: 'Acme' }] })
 })
 afterEach(() => {
@@ -282,6 +283,20 @@ describe('REST API screen', () => {
     await new Promise((resolve) => setTimeout(resolve, 400))
     const saved = JSON.parse(sessionStorage.getItem('sfbench.restDraft') ?? 'null') as { draft: { method: string; path: string; body: string } }
     expect(saved.draft).toMatchObject({ method: 'POST', path, body: '{"Name":"A"}' })
+  })
+
+  it('closes the history and the request area, and sends from the closed request', async () => {
+    mocked.rest.mockResolvedValue(answer(200))
+    await openRest()
+    await fill('GET', path)
+    await userEvent.click(screen.getByRole('button', { name: t.hideRestHistory }))
+    expect(screen.queryByRole('region', { name: t.restHistory })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: t.showRestHistory }))
+    expect(screen.getByRole('region', { name: t.restHistory })).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: t.hideRestRequest }))
+    await userEvent.click(screen.getByRole('button', { name: t.restSend }))
+    expect(await within(response()).findByText('200')).toBeTruthy()
+    expect(JSON.parse(localStorage.getItem('sfbench.restPanels') ?? '{}')).toMatchObject({ restRequest: false })
   })
 
   it('puts a history entry back into the fields without sending it', async () => {

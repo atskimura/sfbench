@@ -101,50 +101,6 @@
   color: var(--color-muted);
 }
 
-/* The open and close button sits on the border between the editor and the results. */
-.divider {
-  flex: none;
-  display: flex;
-  justify-content: center;
-  height: 0;
-  position: relative;
-  z-index: 2;
-}
-
-.divider > button {
-  position: absolute;
-  /* Centered on the gap between the editor and the results. */
-  top: calc(-1 * var(--space-2) / 2);
-  transform: translateY(-50%);
-  background: var(--color-panel);
-}
-
-.strip {
-  flex: 0 0 36px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  padding: var(--space-3) 0;
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius);
-  background: var(--color-panel);
-  color: var(--color-muted);
-  cursor: pointer;
-  writing-mode: vertical-rl;
-}
-
-.strip:hover {
-  color: var(--color-ink);
-  background: var(--color-panel-muted);
-}
-
-.stripText {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 600;
-}
-
 .noOrg {
   flex: 1;
   align-items: center;
