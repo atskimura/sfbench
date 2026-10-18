@@ -94,7 +94,18 @@ A REST API request or Apex, which may change data, is only filled in: you send o
 
 ### From an AI agent
 
-Ask an AI agent such as Claude Code to "list the won opportunities in sfbench", and it can write the SOQL and start sfbench like this:
+AI agents do not know sfbench yet.
+Asked to "use sfbench" with no hint, Claude Code looked for an `sfbench` command, did not find it, and ran the query with the sf CLI instead.
+Add these lines to your agent's instructions (`CLAUDE.md` for Claude Code, `AGENTS.md` for Codex):
+
+```markdown
+## sfbench
+
+To show Salesforce SOQL, REST API requests or anonymous Apex in the user's browser, use sfbench with `npx -y sfbench`.
+Run `npx -y sfbench --help` to see how.
+```
+
+Then ask Claude Code to "list the won opportunities in sfbench", and it reads `--help`, writes the SOQL and starts sfbench like this:
 
 ```
 npx -y sfbench -o my-org --query "SELECT Id, Name, Amount FROM Opportunity WHERE IsWon = true" --run

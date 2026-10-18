@@ -94,7 +94,18 @@ npx sfbench
 
 ### AI のエージェントから使う
 
-Claude Code などの AI のエージェントに「sfbench で成約済みの商談を一覧して」と頼むと、エージェントは SOQL を組み立てて次のように起動できます。
+AI のエージェントは、sfbench をまだ知りません。
+何も教えずに「sfbench で〜」と頼むと、Claude Code は `sfbench` コマンドを探して見つけられず、sf CLI で直接クエリを実行しました。
+エージェントの指示ファイル（Claude Code なら `CLAUDE.md`、Codex なら `AGENTS.md`）に、次の数行を足してください。
+
+```markdown
+## sfbench
+
+Salesforce の SOQL、REST API、匿名 Apex を利用者のブラウザで見せるときは、sfbench を `npx -y sfbench` で使う。
+使い方は `npx -y sfbench --help` で確かめる。
+```
+
+これで、Claude Code に「sfbench で成約済みの商談を一覧して」と頼むと、エージェントは `--help` を読み、SOQL を組み立てて次のように起動します。
 
 ```
 npx -y sfbench -o my-org --query "SELECT Id, Name, Amount FROM Opportunity WHERE IsWon = true" --run

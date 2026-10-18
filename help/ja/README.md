@@ -93,6 +93,8 @@ SOQL の実行は読み取りだけなので確認しません。
 ### AI のエージェントから開く
 
 Claude Code などの AI のエージェントは、クエリや要求を入れた状態で sfbench を開けます。
+エージェントはまだ sfbench を知らないので、指示ファイル（`CLAUDE.md` や `AGENTS.md`）に使い方を書いておきます。
+書く内容は [README](../../README.ja.md#ai-のエージェントから使う) にあります。
 
 ```
 npx -y sfbench -o my-org --query "SELECT Id, Name FROM Account" --run
