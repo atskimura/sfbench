@@ -196,7 +196,7 @@ Salesforce の呼び出しも AI の API の呼び出しも、これでプロキ
 | `GET /api/orgs/:user/sobjects/:name` | 画面用 | describe。`version=` で API バージョンを選べる |
 | `POST /api/orgs/:user/query` | 画面用 | SOQL の実行（`{ soql, tooling, queryAll, apiVersion?, prompt? }`） |
 | `POST /api/orgs/:user/query/next` | 画面用 | 続きのページ（`{ nextRecordsUrl }`） |
-| `POST /api/orgs/:user/ai/agent` | 画面用 | REST API と Apex の AI。ツールで組織のメタデータを読ませて組む（[ai-agent.md](ai-agent.md)） |
+| `POST /api/orgs/:user/ai/agent` | 画面用 | SOQL、REST API、Apex の AI。ツールで組織のメタデータを読ませて組む（[ai-agent.md](ai-agent.md)） |
 | `POST /api/orgs/:user/rest` | 画面用 | REST API の実行（`{ method, path, headers, body }`）。Salesforce が返したステータスによらず、200 で `{ id, status, headers, body, size, elapsedMs }` を返す（[rest.md](rest.md)） |
 | `GET /api/orgs/:user/rest/history` | 画面用 | REST API の実行履歴 |
 | `POST /api/orgs/:user/records/update` | 画面用 | 結果の表の保存（`{ object, records, allOrNone, apiVersion? }`、200件まで）。1件ずつの成否を返す（[edit.md](edit.md)） |
@@ -206,7 +206,6 @@ Salesforce の呼び出しも AI の API の呼び出しも、これでプロキ
 | `POST /api/orgs/:user/open` | 画面用 | 組織のホームを、ログイン済みの状態でブラウザに開く |
 | `GET /api/orgs/:user/history` | 画面用 | 最近のクエリ |
 | `GET /api/settings`、`PUT /api/settings` | 画面用 | 設定 |
-| `POST /api/ai/generate` | 画面用 | AI に生成させる |
 | `POST /api/ai/test` | 画面用 | AI の接続を試す |
 
 `:user` には組織のユーザー名が入る。
@@ -473,7 +472,7 @@ Windows ではこの権限の指定が効かないので、ユーザーのプロ
 
 - 既定は無効である。設定画面で選ぶまで、AI を一切呼ばない。
 - 未設定のときは、AI の入力欄の位置に設定への案内を出す。設定画面で Off を選んだ場合は、AI に関する表示をすべて隠す。
-- AI は API で呼ぶ。対応する提供元は Anthropic と OpenAI の2つである。Anthropic は Messages API で、OpenAI は SOQL の AI を Chat Completions API で、ツールを使う REST API と Apex の AI を Responses API で呼ぶ。どれもサーバーが `fetch` で呼ぶ。OpenAI 互換の API（Gemini、OpenRouter、手元で動かすモデルなど）には対応しない（理由は [ai.md](ai.md)）。
+- AI は API で呼ぶ。対応する提供元は Anthropic と OpenAI の2つである。Anthropic は Messages API で、OpenAI は Responses API で呼び、どの画面の AI にもツールを呼ばせる（[ai-agent.md](ai-agent.md)）。どれもサーバーが `fetch` で呼ぶ。OpenAI 互換の API（Gemini、OpenRouter、手元で動かすモデルなど）には対応しない（理由は [ai.md](ai.md)）。
 - モデル ID と API キーを、設定画面で入れる。モデル ID は sfbench に埋め込まない。モデルが廃止されたときに、利用者が書き換えるだけで済むようにするためである。
 - API キーは `~/.sfbench/settings.json` に保存し、画面には返さない。
 - AI を呼ぶのは、利用者が「生成」か「AI で直す」を押したときだけである。

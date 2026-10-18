@@ -77,7 +77,7 @@ Pills with a ✓ are sent.
 
 | Screen | Always sent | Pills you can turn off or on |
 | --- | --- | --- |
-| SOQL | Object list, fields of the chosen objects | Editor text |
+| SOQL | The org's metadata (read by the AI as it needs) | Editor text |
 | REST API | The org's metadata (read by the AI as it needs) | The request now, the last result |
 | Apex | The org's metadata (read by the AI as it needs) | The code now, the last result |
 
