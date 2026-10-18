@@ -195,3 +195,8 @@
 .top:has([data-ai-proposal]) .code > :last-child {
   min-height: 160px;
 }
+
+/* The toolbar under the AI input, as the SOQL editor's. */
+.toolbar {
+  flex-wrap: wrap;
+}

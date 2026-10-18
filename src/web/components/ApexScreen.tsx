@@ -104,14 +104,13 @@ function Code() {
   }, [hint])
   return (
     <section className={`${panel.panel} ${styles.code}`} aria-label={t.apexEditor}>
-      <div className={panel.header}>
-        <span className={panel.title}>{t.apexEditor}</span>
-        <span className={panel.spacer} />
-        <ApiVersionSelect username={apex.username} value={apex.apiVersion} onChange={apex.setApiVersion} />
-        <RunButton />
-      </div>
+      {/* As the SOQL editor: the AI on top, then the toolbar, then the code. */}
       <ApexAiBar />
       <ApexProposalCard />
+      <div className={`${panel.header} ${styles.toolbar}`}>
+        <RunButton />
+        <ApiVersionSelect username={apex.username} value={apex.apiVersion} onChange={apex.setApiVersion} />
+      </div>
       {hint && (
         <p className={styles.hint} role="status">
           {t.apexModEnterHint}
