@@ -41,3 +41,8 @@ Tell the user what you prepared and that nothing changes until they press Send o
 - Add `--json` to get the opened URL as JSON, and `--no-open` to print the URL without opening a browser.
 - `npx -y sfbench stop` stops the background server.
 - If the sf CLI is not installed or the org needs a new login, sfbench says so; pass that on to the user.
+- sfbench cannot run inside a command sandbox: it writes `~/.sfbench/` and keeps a local server running. If it stops with "The sfbench server did not start" while your shell is sandboxed, do not work around it; tell the user to let sfbench run outside the sandbox, in Claude Code by adding this to `~/.claude/settings.json`:
+
+  ```json
+  "sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench"] }
+  ```

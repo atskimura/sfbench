@@ -56,6 +56,16 @@ sfbench のサーバーが止まったか、起動し直されました。
 送り直す前に、Salesforce の画面か実行履歴で確かめてください。
 同じ要求やコードを送り直そうとすると、sfbench は確認のダイアログを出します。
 
+## AI のエージェントから開くと「The sfbench server did not start」と出る
+
+エージェントのシェルがサンドボックスの中で動いています。
+sfbench は `~/.sfbench/` に書き込み、ローカルのサーバーを動かし続けるので、サンドボックスの中では起動できません。
+Claude Code では、`~/.claude/settings.json` に次を足して、sfbench だけをサンドボックスの外で動かしてください。
+
+```json
+"sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench"] }
+```
+
 ## AI が使えない
 
 - 「接続を確かめる」で、提供元のエラー文を確かめてください。API キーの誤り、モデル ID の誤り、残高の不足がよくある原因です。
