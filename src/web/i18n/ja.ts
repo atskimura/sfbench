@@ -34,6 +34,7 @@ export const ja: Messages = {
   aiOff: 'AI は使えません。',
   aiEditorTooLong: 'エディタの内容が長すぎて AI に送れません。「エディタの内容」の札を外してから、もう一度試してください。',
   aiQueryTooLong: 'クエリが長すぎて AI に送れません。',
+  aiRequestTooLong: '要望が長すぎて AI に送れません。短くしてから、もう一度試してください。',
   aiSetUp: 'AI を設定',
   aiSetUpNote: '設定で AI を選び、モデルと API キーを入れてください。',
   aiPlaceholder: 'やりたいことを書く（例: 今月成約した商談を金額の大きい順に）',

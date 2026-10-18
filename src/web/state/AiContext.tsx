@@ -73,7 +73,10 @@ export function AiProvider({ username, children }: { username: string; children:
     }
     start(async (signal, progress) => {
       progress('think')
-      const { output } = await api.aiAgent(username, { task: 'generateSoql', input, ...(apiVersion ? { apiVersion } : {}) }, signal).catch(tooLong(t.aiEditorTooLong))
+      const { output } = await api
+        .aiAgent(username, { task: 'generateSoql', input, ...(apiVersion ? { apiVersion } : {}) }, signal)
+        // Without the editor text, only the request can make the body too large.
+        .catch(tooLong(editor.trim() ? t.aiEditorTooLong : t.aiRequestTooLong))
       return { ...output, tooling, apiVersion, prompt: text }
     }, getText)
   }, [request, availability, username, editorChip, soql, start, getText])

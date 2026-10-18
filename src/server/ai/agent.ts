@@ -8,7 +8,7 @@ import { anthropicConversation } from './anthropic.ts'
 import type { Conversation, ConversationRequest, ToolSpec } from './conversation.ts'
 import { AiError } from './errors.ts'
 import { openAiConversation } from './openai.ts'
-import { findObject, METADATA_TOOLS, newReadState, readObject, runTool, shown, type MetadataSource, type ReadState } from './tools.ts'
+import { findObject, MAX_READ_BYTES, METADATA_TOOLS, newReadState, readObject, runTool, shown, type MetadataSource, type ReadState } from './tools.ts'
 
 /** Local models are out, but large models can still take minutes (docs/ai.md "API"). */
 export const AI_TIMEOUT_MS = 300_000
@@ -18,8 +18,8 @@ export const MAX_TOOL_CALLS = 8
 /** The most text the tools return in one request, about 30,000 tokens. */
 export const MAX_TOOL_BYTES = 100_000
 
-/** Which limit stops the tools: the number of calls, or the text they return. */
-const limitName = (calls: number) => (calls >= MAX_TOOL_CALLS ? `the limit of ${MAX_TOOL_CALLS} tool calls` : `the limit of what the tools return (${MAX_TOOL_BYTES / 1000} KB)`)
+/** Which limit stops the tools: the text they return, or else the number of calls. */
+const limitName = (toolBytes: number) => (toolBytes >= MAX_TOOL_BYTES ? `the limit of what the tools return (${MAX_TOOL_BYTES / 1000} KB)` : `the limit of ${MAX_TOOL_CALLS} tool calls`)
 
 const CONVERSATIONS: Record<'anthropic' | 'openai', (req: ConversationRequest) => Conversation> = {
   anthropic: anthropicConversation,
@@ -55,8 +55,8 @@ async function givenMetadata(req: AgentTaskRequest, source: MetadataSource, stat
     return open ? { openObject: shown(source, open.name) } : {}
   }
   if (req.task === 'fixSoql' && req.input.object) {
-    // Within the most of one read, as the AI's own read would be; complete, it counts as read.
-    const fields = await readObject(source, req.input.object, MAX_TOOL_BYTES, state)
+    // Within one result, so that the AI can still find fields with what is left.
+    const fields = await readObject(source, req.input.object, MAX_READ_BYTES, state)
     return fields ? { fields } : {}
   }
   return {}
@@ -124,10 +124,10 @@ export async function runAgent<T extends AgentTask>(
         continue
       }
       if (toolCalls >= MAX_TOOL_CALLS || toolBytes >= MAX_TOOL_BYTES) {
-        if (nudgedAtLimit) throw new AiError('AI_BAD_OUTPUT', `The AI kept reading the org's metadata past the limit (${limitName(toolCalls)}).`)
+        if (nudgedAtLimit) throw new AiError('AI_BAD_OUTPUT', `The AI kept reading the org's metadata past the limit (${limitName(toolBytes)}).`)
         nudgedAtLimit = true
         // Every call of the turn needs its answer before anything else can be said.
-        conversation.answer(turn.calls.map((c) => ({ id: c.id, content: `Not run: ${limitName(toolCalls)} is reached. Call submit now with your best answer.` })))
+        conversation.answer(turn.calls.map((c) => ({ id: c.id, content: `Not run: ${limitName(toolBytes)} is reached. Call submit now with your best answer.` })))
         continue
       }
       const results = []
@@ -136,7 +136,7 @@ export async function runAgent<T extends AgentTask>(
         if (both.aborted) throw both.reason
         toolCalls++
         const over = toolCalls > MAX_TOOL_CALLS || toolBytes >= MAX_TOOL_BYTES
-        const content = over ? `Not run: ${limitName(toolCalls)} is reached. Call submit now.` : await runTool(source, call.name, call.input, MAX_TOOL_BYTES - toolBytes, state)
+        const content = over ? `Not run: ${limitName(toolBytes)} is reached. Call submit now.` : await runTool(source, call.name, call.input, MAX_TOOL_BYTES - toolBytes, state)
         toolBytes += encoder.encode(content).length
         results.push({ id: call.id, content })
       }

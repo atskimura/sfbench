@@ -326,6 +326,11 @@ describe('AI', () => {
     await userEvent.click(screen.getByRole('button', { name: t.aiGenerate }))
     await waitFor(() => expect(mocked.aiAgent).toHaveBeenCalledTimes(2))
     expect((await screen.findByRole('alert')).textContent).toBe(t.aiEditorTooLong)
+    // Without the editor text, only the request can be too long.
+    await userEvent.click(screen.getByRole('button', { name: t.aiEditorChip }))
+    await userEvent.click(screen.getByRole('button', { name: t.aiGenerate }))
+    await waitFor(() => expect(mocked.aiAgent).toHaveBeenCalledTimes(3))
+    expect((await screen.findByRole('alert')).textContent).toBe(t.aiRequestTooLong)
     mocked.query.mockRejectedValue(rejected("No such column 'Nmae'"))
     cleanup()
     render(<App launch={{ org: 'demo', query: 'SELECT Nmae FROM Account', run: true }} />)

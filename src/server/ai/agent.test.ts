@@ -404,11 +404,15 @@ describe('SOQL', () => {
         'Object Giant__c (Giant) has 3000 fields and 0 child relationships, too many to list: use findFields to find the ones you need.',
       )
       expect([...state.listed]).toEqual(['Giant__c'])
-      expect(await tool(giant, 'describeObject', { name: 'Giant__c' }, 30_000)).toContain('Not returned')
+      // Enough left to find fields: findFields; too little even for that: near the limit.
+      expect(await tool(giant, 'describeObject', { name: 'Giant__c' }, 30_000)).toContain('too many to list')
+      expect(await tool(giant, 'describeObject', { name: 'Giant__c' }, 3_000)).toContain('Not returned')
     })
 
     it('finds a reference by its relationship name', async () => {
       expect(await tool(bigSource, 'findFields', { object: 'Huge__c', keywords: ['rel_7__r'] })).toContain('Field_7__c reference(Account) relationship Rel_7__r')
+      // An exact relationship name comes first, before fields that only contain the word.
+      expect((await tool(bigSource, 'findFields', { object: 'Huge__c', keywords: ['rel_17__r', 'field_1'] })).split('\n')[1]).toMatch(/^Field_17__c /)
     })
 
     it('finds fields and child relationships in full, exact names first, and says how many more there are', async () => {
@@ -442,6 +446,15 @@ describe('SOQL', () => {
       expect(await runTool(bigSource, 'describeObject', { name: 'Gone__c' }, Infinity, state)).toContain('no object named Gone__c')
       expect(await runTool(bigSource, 'describeObject', { name: 'Small__c' }, 60, state)).toContain('Not returned')
       expect([...state.listed]).toEqual(['Big__c'])
+    })
+
+    it('gives the FROM object of a fix within one result, leaving the rest for findFields', async () => {
+      const fields = Array.from({ length: 3000 }, (_, i) => ({ name: `A_Very_Long_Field_Name_For_Testing_${i}__c`, label: 'L', type: 'string' }))
+      const giant: MetadataSource = { objects: async () => [{ name: 'Giant__c', label: 'Giant' }], describe: async () => ({ name: 'Giant__c', label: 'Giant', fields }) }
+      const fetch = anthropicReplies([use('t1', 'submit', { soql: 'SELECT Id FROM Giant__c', explanation: 'x' })])
+      const req: AgentTaskRequest = { task: 'fixSoql', input: { soql: 'SELECT X FROM Giant__c', error: 'e', object: 'Giant__c', tooling: false, language: 'en', timeZone: 'UTC' } }
+      await runAgent(anthropic, req, giant, '66.0', never)
+      expect(sentBody(fetch, 0).messages[0].content).toContain('too many to list: use findFields')
     })
 
     it('gives the FROM object of a fix as describeObject would, and tells the AI not to read it again', async () => {

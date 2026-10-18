@@ -34,6 +34,7 @@ export const en = {
   aiOff: 'AI is off.',
   aiEditorTooLong: 'The editor text is too long to send to the AI. Turn off "Editor text" and try again.',
   aiQueryTooLong: 'The query is too long to send to the AI.',
+  aiRequestTooLong: 'The request is too long to send to the AI. Shorten it and try again.',
   aiSetUp: 'Set up AI',
   aiSetUpNote: 'Choose an AI and enter its model and API key in the settings.',
   aiPlaceholder: 'Describe the query, e.g. opportunities won this month, largest first',

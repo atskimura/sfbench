@@ -105,6 +105,8 @@ export const MAX_READ_BYTES = 40_000
 
 const bytes = (text: string) => encoder.encode(text).length
 const NEAR_LIMIT = 'Not returned: the limit of what the tools return is near. Answer with what you have.'
+/** Below this much budget, findFields could not return even a few lines: the tools are near their limit. */
+const MIN_USEFUL_BYTES = 4_000
 
 function fieldLine(f: FieldJson, name: (n: string) => string, full: boolean): string {
   const parts = [name(f.name), f.type === 'reference' && f.referenceTo?.length ? `reference(${f.referenceTo.map(name).join(',')})` : f.type]
@@ -206,8 +208,8 @@ export async function readObject(source: MetadataSource, name: string, budget: n
     state.listed.add(found.object.name)
     return text
   }
-  // Too many names for any budget, with much of it left: the AI finds what it needs instead.
-  if (budget < MAX_READ_BYTES) return NEAR_LIMIT
+  // Too many names for the budget, with enough left to find fields: the AI finds what it needs instead.
+  if (budget < MIN_USEFUL_BYTES) return NEAR_LIMIT
   state.listed.add(found.object.name)
   return `Object ${shownName} (${found.d.label}) has ${found.d.fields.length} fields and ${childrenOf(found.d).length} child relationships, too many to list: use findFields to find the ones you need.`
 }
@@ -224,15 +226,16 @@ export async function findFieldsText(source: MetadataSource, objectName: string,
   const name = (n: string) => shown(source, n)
   // Both the name as shown and the full name, so that either spelling finds it.
   const names = (n: string) => [n.toLowerCase(), name(n).toLowerCase()]
-  const exact = (n: string) => names(n).some((x) => words.includes(x))
+  const exact = (n: string | null | undefined) => (n ? names(n).some((x) => words.includes(x)) : false)
+  const exactField = (f: FieldJson) => exact(f.name) || exact(f.relationshipName)
   const contains = (n: string, label = '') => [...names(n), label.toLowerCase()].some((x) => words.some((w) => x.includes(w)))
   // A reference is also found by its relationship name (Account__r), as SOQL follows it by that name.
   const fields = found.d.fields.filter((f) => contains(f.name, f.label) || (f.relationshipName ? contains(f.relationshipName) : false))
   const children = childrenOf(found.d).filter((r) => contains(r.relationshipName!) || contains(r.childSObject))
   const lines = [
-    ...fields.filter((f) => exact(f.name)).map((f) => fieldLine(f, name, true)),
+    ...fields.filter(exactField).map((f) => fieldLine(f, name, true)),
     ...children.filter((r) => exact(r.relationshipName!)).map((r) => `child relationship ${childLine(r, name)}`),
-    ...fields.filter((f) => !exact(f.name)).map((f) => fieldLine(f, name, true)),
+    ...fields.filter((f) => !exactField(f)).map((f) => fieldLine(f, name, true)),
     ...children.filter((r) => !exact(r.relationshipName!)).map((r) => `child relationship ${childLine(r, name)}`),
   ]
   if (lines.length === 0) return `No field or child relationship of ${name(found.object.name)} matches.`
