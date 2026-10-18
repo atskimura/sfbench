@@ -88,6 +88,12 @@ describe('runApex', () => {
     expect(readdirSync(dir)).toEqual([])
   })
 
+  it('gives sf a chosen API version', async () => {
+    runMock.mockResolvedValueOnce({ stdout: fixture('apex-run-success.json'), stderr: '', exitCode: 0 })
+    await runApex('u@example.com', 'x', dir, 1000, '55.0')
+    expect(runMock.mock.calls[0][0]).toEqual(['apex', 'run', '-f', expect.stringMatching(/^apex-[0-9a-f]+\.apex$/), '--api-version', '55.0', '--json'])
+  })
+
   it('throws a lost login and an unknown failure apart', async () => {
     runMock.mockResolvedValueOnce({ stdout: JSON.stringify({ status: 1, message: 'invalid_grant: expired access/refresh token' }), stderr: '', exitCode: 1 })
     await expect(runApex('u@example.com', 'x', dir, 1000)).rejects.toBeInstanceOf(OrgAuthError)

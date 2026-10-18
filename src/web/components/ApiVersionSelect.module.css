@@ -1,0 +1,18 @@
+/* The API version select in the SOQL and Apex toolbars. */
+.version {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-small);
+  color: var(--color-muted);
+}
+
+.select {
+  height: var(--control-height-small);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  padding: 0 var(--space-1);
+  background: var(--color-panel);
+  color: var(--color-ink);
+  font-size: var(--font-size-small);
+}

@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { initialState, reducer, type Shown } from './aiState.ts'
 
-const proposal = (soql: string): Shown => ({ soql, explanation: '', tooling: false, prompt: 'p', before: '' })
+const proposal = (soql: string): Shown => ({ soql, explanation: '', tooling: false, apiVersion: undefined, prompt: 'p', before: '' })
 const shown = reducer(initialState, { type: 'done', proposal: proposal('SELECT Id FROM Account') })
 
 describe('AI proposal and failure', () => {

@@ -4,15 +4,17 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type DescribeGlobal, type DescribeSObject } from '../apiClient.ts'
 
 const globals = new Map<string, Promise<DescribeGlobal>>()
+const versions = new Map<string, Promise<string[]>>()
 const objects = new Map<string, Promise<DescribeSObject>>()
 
 const key = (...parts: (string | boolean)[]) => parts.join('\n')
 
-export function describeGlobal(username: string, tooling: boolean, refresh = false): Promise<DescribeGlobal> {
-  const k = key(username, tooling)
+/** `version` is the API version chosen, undefined for the latest (docs/web.md "API バージョン"). */
+export function describeGlobal(username: string, tooling: boolean, version: string | undefined, refresh = false): Promise<DescribeGlobal> {
+  const k = key(username, tooling, version ?? '')
   let pending = globals.get(k)
   if (!pending || refresh) {
-    pending = api.sobjects(username, tooling, refresh)
+    pending = api.sobjects(username, tooling, version, refresh)
     globals.set(k, pending)
     const stored = pending
     pending.catch(() => globals.get(k) === stored && globals.delete(k))
@@ -20,11 +22,11 @@ export function describeGlobal(username: string, tooling: boolean, refresh = fal
   return pending
 }
 
-export function describeSObject(username: string, name: string, tooling: boolean, refresh = false): Promise<DescribeSObject> {
-  const k = key(username, tooling, name.toLowerCase())
+export function describeSObject(username: string, name: string, tooling: boolean, version: string | undefined, refresh = false): Promise<DescribeSObject> {
+  const k = key(username, tooling, version ?? '', name.toLowerCase())
   let pending = objects.get(k)
   if (!pending || refresh) {
-    pending = api.describe(username, name, tooling, refresh)
+    pending = api.describe(username, name, tooling, version, refresh)
     objects.set(k, pending)
     const stored = pending
     pending.catch(() => objects.get(k) === stored && objects.delete(k))
@@ -32,11 +34,23 @@ export function describeSObject(username: string, name: string, tooling: boolean
   return pending
 }
 
+/** The API versions the org supports, oldest first: asked once per tab. */
+export function apiVersions(username: string): Promise<string[]> {
+  let pending = versions.get(username)
+  if (!pending) {
+    pending = api.versions(username).then((res) => res.versions)
+    versions.set(username, pending)
+    const stored = pending
+    pending.catch(() => versions.get(username) === stored && versions.delete(username))
+  }
+  return pending
+}
 
 /** Forgets every describe, as a new tab would (used between tests). */
 export function clearDescribeCache(): void {
   globals.clear()
   objects.clear()
+  versions.clear()
 }
 
 export type Loadable<T> = {

@@ -17,6 +17,7 @@ vi.mock('./apiClient.ts', async (importOriginal) => {
       settings: vi.fn(),
       saveSettings: vi.fn(),
       sobjects: vi.fn(),
+      versions: vi.fn(),
       describe: vi.fn(),
       history: vi.fn(),
       query: vi.fn(),
@@ -100,6 +101,7 @@ beforeEach(() => {
   mocked.summary.mockResolvedValue({ organizationType: 'Developer Edition', isSandbox: false, namespacePrefix: null })
   mocked.settings.mockResolvedValue({ omitNamespace: true, requestTimeoutSeconds: 120 })
   mocked.sobjects.mockResolvedValue({ sobjects: [], fetchedAt: now })
+  mocked.versions.mockResolvedValue({ versions: ['64.0', '65.0', '66.0'] })
   mocked.history.mockResolvedValue({ entries: [] })
   mocked.restHistory.mockResolvedValue({ entries: [] })
   mocked.apexHistory.mockResolvedValue({ entries: [] })
@@ -303,6 +305,21 @@ describe('Apex screen', () => {
     // The launch is a new one; a reload has no launch.
     const editor = await openApex(undefined)
     await waitFor(() => expect(editor.textContent).toBe(code))
+  })
+})
+
+describe('Apex API version', () => {
+  it('runs on the version chosen', async () => {
+    mocked.versions.mockResolvedValue({ versions: ['55.0', '66.0'] })
+    mocked.apex.mockResolvedValue(answer())
+    await openApex()
+    const select = within(screen.getByRole('region', { name: t.apexEditor })).getByLabelText<HTMLSelectElement>(t.apiVersionLabel)
+    await within(select).findByRole('option', { name: '55.0' })
+    await userEvent.selectOptions(select, '55.0')
+    write(code)
+    await userEvent.click(runButton())
+    await within(result()).findByText(t.apexSuccess)
+    expect(mocked.apex).toHaveBeenCalledWith('admin@demo.example.com', { code, apiVersion: '55.0' }, expect.any(AbortSignal))
   })
 })
 

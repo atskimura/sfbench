@@ -27,12 +27,14 @@ import {
   type RestResponse,
   type SessionResponse,
   type SettingsUpdate,
+  type VersionsResponse,
 } from '../../shared/api.ts'
 import { log } from '../log.ts'
 import type { OrgRegistry } from '../orgs.ts'
 import type { Paths } from '../paths.ts'
 import {
   InvalidPathError,
+  UnsupportedVersionError,
   OrgClient,
   SalesforceError,
   SalesforceTimeoutError,
@@ -303,10 +305,18 @@ export class App {
       return
     }
 
+    if (rest === 'versions' && method === 'GET') {
+      sendJson(res, 200, { versions: await client.versions() } satisfies VersionsResponse)
+      return
+    }
+
     if (rest === 'sobjects' && method === 'GET') {
       const tooling = url.searchParams.get('tooling') === '1'
-      const described = await this.options.orgs.cachedDescribe(client, tooling ? 'tooling:global' : 'global', refresh, async () => {
-        const version = await client.version()
+      // A version the screen chose is cached apart from the latest (docs/web.md "API バージョン").
+      const requested = versionOf(url.searchParams.get('version') ?? undefined)
+      const prefix = requested ? `v${requested}:` : ''
+      const described = await this.options.orgs.cachedDescribe(client, `${prefix}${tooling ? 'tooling:global' : 'global'}`, refresh, async () => {
+        const version = await client.version(requested)
         return (await client.request({ method: 'GET', path: `/services/data/v${version}/${tooling ? 'tooling/' : ''}sobjects/` })).body
       })
       sendJson(res, 200, withUsage({ ...(described.body as object), fetchedAt: described.fetchedAt }))
@@ -317,8 +327,10 @@ export class App {
     if (describe && method === 'GET') {
       const name = describe[1]
       const tooling = url.searchParams.get('tooling') === '1'
-      const described = await this.options.orgs.cachedDescribe(client, `${tooling ? 'tooling:' : ''}${name}`, refresh, async () => {
-        const version = await client.version()
+      const requested = versionOf(url.searchParams.get('version') ?? undefined)
+      const prefix = requested ? `v${requested}:` : ''
+      const described = await this.options.orgs.cachedDescribe(client, `${prefix}${tooling ? 'tooling:' : ''}${name}`, refresh, async () => {
+        const version = await client.version(requested)
         return (
           await client.request({
             method: 'GET',
@@ -336,7 +348,8 @@ export class App {
       const tooling = q.tooling === true
       const queryAll = q.queryAll === true
       if (tooling && queryAll) throw new HttpError(400, 'BAD_REQUEST', 'The Tooling API does not support Query All')
-      const version = await client.version()
+      const apiVersion = versionOf(q.apiVersion)
+      const version = await client.version(apiVersion)
       const endpoint = tooling ? 'tooling/query' : queryAll ? 'queryAll' : 'query'
       const result = await client.request({
         method: 'GET',
@@ -348,6 +361,7 @@ export class App {
         tooling,
         queryAll,
         executedAt: new Date().toISOString(),
+        ...(apiVersion ? { apiVersion } : {}),
         ...(typeof q.prompt === 'string' && q.prompt.trim() ? { prompt: q.prompt.trim().slice(0, 2000) } : {}),
       })
       sendJson(res, 200, withUsage(result.body as object))
@@ -442,9 +456,12 @@ export class App {
    * written: Apex may always change data. The screen going away does not stop it.
    */
   private async runApexRequest(req: IncomingMessage, res: ServerResponse, client: OrgClient): Promise<void> {
-    const { code } = (await readJsonObject(req)) as Partial<ApexRequest>
+    const { code, apiVersion } = (await readJsonObject(req)) as Partial<ApexRequest>
     if (typeof code !== 'string' || !code.trim()) throw new HttpError(400, 'BAD_REQUEST', 'code is required')
     if (code.length > MAX_APEX_CODE) throw new HttpError(400, 'BAD_REQUEST', `Anonymous Apex can be at most ${MAX_APEX_CODE} characters.`)
+    // Checked before anything is recorded or run: sf would refuse a version the org does not have only after starting.
+    const requested = versionOf(apiVersion)
+    if (requested !== undefined) await client.version(requested)
     const dir = this.options.paths.apexHistoryDir
     let id: string
     try {
@@ -465,7 +482,7 @@ export class App {
     const timeoutMs = this.options.settings.get().requestTimeoutSeconds * 1000 + SF_START_MS
     let run: ApexRun
     try {
-      run = await runApex(client.username, code, this.options.paths.tmpDir, timeoutMs)
+      run = await runApex(client.username, code, this.options.paths.tmpDir, timeoutMs, requested)
     } catch (e) {
       finish(apexOutcomeOf(e))
       // The name only: sf's message can hold an exception's text.
@@ -648,7 +665,7 @@ export function errorResponse(e: unknown): { status: number; body: ApiError } {
   }
   if (e instanceof SalesforceUnreachableError) return { status: 502, body: errorBody('SALESFORCE_UNREACHABLE', e.message) }
   if (e instanceof SalesforceTimeoutError) return { status: 504, body: errorBody('SALESFORCE_TIMEOUT', e.message) }
-  if (e instanceof InvalidPathError || e instanceof RestRequestError || e instanceof NotJsonBodyError) return { status: 400, body: errorBody('BAD_REQUEST', e.message) }
+  if (e instanceof InvalidPathError || e instanceof RestRequestError || e instanceof NotJsonBodyError || e instanceof UnsupportedVersionError) return { status: 400, body: errorBody('BAD_REQUEST', e.message) }
   if (e instanceof SfNotFoundError) return { status: 503, body: errorBody('SF_CLI_NOT_FOUND', e.message) }
   if (e instanceof AiError) {
     const status = { AI_NOT_CONFIGURED: 400, AI_ERROR: 502, AI_BAD_OUTPUT: 502, AI_TIMEOUT: 504 }[e.code]
@@ -685,6 +702,16 @@ export function restOutcomeOf(e: unknown): RestOutcome | undefined {
 const SF_START_MS = 15_000
 /** A longer debug log is not passed back (Salesforce's own limit for a debug log). */
 const MAX_APEX_LOG_BYTES = 20 * 1024 * 1024
+
+/**
+ * The API version the screen chose, or undefined for the latest. Only the
+ * shape is checked here; whether the org supports it, by OrgClient.version.
+ */
+export function versionOf(value: unknown): string | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string' || !/^\d{1,3}\.0$/.test(value)) throw new HttpError(400, 'BAD_REQUEST', 'apiVersion must look like 66.0')
+  return value
+}
 
 /**
  * How a failed Apex run ends in the history: undefined when it did not run

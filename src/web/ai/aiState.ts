@@ -8,6 +8,8 @@ export type AiStep = 'chooseObjects' | 'loadFields' | 'generate' | 'fix'
 export type Proposal = SoqlOutput & {
   /** The API the query was written for: it runs with this one. */
   tooling: boolean
+  /** The API version whose objects and fields the AI was given: it runs on this one too. */
+  apiVersion: string | undefined
   /** The request behind the query, recorded when it runs (docs/ai.md "要望の印"). */
   prompt: string | undefined
 }

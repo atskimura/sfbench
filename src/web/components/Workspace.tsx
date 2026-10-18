@@ -8,6 +8,7 @@ import { AiProvider } from '../state/AiContext.tsx'
 import { useApp } from '../state/AppContext.tsx'
 import { ApexProvider } from '../state/ApexContext.tsx'
 import { APEX_DRAFT_KEY, claimEditorText } from '../state/editorStorage.ts'
+import { claimApiVersion } from '../state/versionStorage.ts'
 import { RestProvider } from '../state/RestContext.tsx'
 import { ApexScreen } from './ApexScreen.tsx'
 import { RestScreen } from './RestScreen.tsx'
@@ -55,11 +56,13 @@ function OrgWorkspace({ username, seed }: { username: string; seed: Seed | undef
   // The Apex draft is claimed with the workspace, not with the Apex screen:
   // another org's draft must not wait in the storage to come back (editorStorage.ts).
   const [apexCode] = useState(() => claimEditorText(username, seed?.apex?.code, APEX_DRAFT_KEY))
+  // So are the API versions chosen: another org starts at the latest.
+  const [versions] = useState(() => ({ soql: claimApiVersion(username, 'soql'), apex: claimApiVersion(username, 'apex') }))
   if (mode === 'apex' && !apexOpened) setApexOpened(true)
   return (
     <>
       <div className={styles.screen} hidden={mode !== 'soql'}>
-        <SoqlProvider username={username} seed={seed}>
+        <SoqlProvider username={username} seed={seed} initialApiVersion={versions.soql}>
           <PanelsProvider storageKey="sfbench.panels" names={SOQL_PANELS}>
             {/* Inside both: Replace writes the editor, and Fix with AI opens the editor area. */}
             <AiProvider username={username}>
@@ -77,7 +80,7 @@ function OrgWorkspace({ username, seed }: { username: string; seed: Seed | undef
       )}
       {apexOpened && (
         <div className={styles.screen} hidden={mode !== 'apex'}>
-          <ApexProvider username={username} seed={seed} initialCode={apexCode}>
+          <ApexProvider username={username} seed={seed} initialCode={apexCode} initialApiVersion={versions.apex}>
             <ApexScreen />
           </ApexProvider>
         </div>

@@ -48,7 +48,12 @@ export type QueryRequest = {
   queryAll?: boolean
   /** The request to the AI that wrote this query, kept in the history (docs/ai.md "最近のクエリへの記録"). */
   prompt?: string
+  /** An API version the user chose; the latest when left out (docs/web.md "API バージョン"). */
+  apiVersion?: string
 }
+
+/** GET /api/orgs/:user/versions: the API versions the org supports, oldest first. */
+export type VersionsResponse = { versions: string[] }
 
 export type NextPageRequest = { nextRecordsUrl: string }
 
@@ -70,6 +75,8 @@ export type HistoryEntry = {
   executedAt: string
   /** The request the user typed for the AI (milestone 3). */
   prompt?: string
+  /** The API version chosen for it, when it was not the latest. */
+  apiVersion?: string
 }
 
 export type HistoryResponse = { entries: HistoryEntry[] }
@@ -189,7 +196,11 @@ export type LaunchOptions = {
 export const MAX_APEX_CODE = 32_000
 
 /** POST /api/orgs/:user/apex */
-export type ApexRequest = { code: string }
+export type ApexRequest = {
+  code: string
+  /** An API version the user chose; the latest when left out (docs/web.md "API バージョン"). */
+  apiVersion?: string
+}
 
 export type ApexResult = 'success' | 'compileError' | 'runtimeError'
 

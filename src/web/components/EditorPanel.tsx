@@ -5,6 +5,7 @@ import { useResult, useSoql } from '../state/SoqlContext.tsx'
 import styles from './EditorPanel.module.css'
 import panel from './Panel.module.css'
 import { AiBar, ProposalCard } from './AiBar.tsx'
+import { ApiVersionSelect } from './ApiVersionSelect.tsx'
 import { SoqlEditor } from './SoqlEditor.tsx'
 
 export function RunButton() {
@@ -56,6 +57,7 @@ export function EditorPanel({ username, initialText }: { username: string; initi
           />
           {t.tooling}
         </label>
+        <ApiVersionSelect username={username} value={soql.apiVersion} onChange={soql.setApiVersion} />
         <span className={panel.spacer} />
         <button type="button" className={panel.button} onClick={soql.format}>
           {t.format}
