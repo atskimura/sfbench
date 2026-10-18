@@ -198,6 +198,14 @@ describe('REST API screen', () => {
     expect(mocked.rest).toHaveBeenCalledTimes(1)
   })
 
+  it('asks before a request that may change data while the history cannot be loaded', async () => {
+    mocked.restHistory.mockRejectedValue(new ApiRequestError(500, 'INTERNAL_ERROR', 'boom'))
+    await openRest()
+    await fill('POST', path)
+    await userEvent.click(screen.getByRole('button', { name: t.restSend }))
+    expect((await screen.findByRole('dialog')).textContent).toContain(t.restConfirmNoHistory)
+  })
+
   it('does not send on Enter in the path, even a DELETE', async () => {
     await openRest()
     await fill('DELETE', path + '/001')
@@ -207,8 +215,10 @@ describe('REST API screen', () => {
 
   it('asks again right after an unknown outcome, before the history is loaded again', async () => {
     mocked.rest.mockRejectedValueOnce(new ApiRequestError(502, 'SALESFORCE_UNREACHABLE', 'broke'))
-    mocked.restHistory.mockReturnValue(new Promise(() => {}))
+    // Loaded once when the screen opens, then never again.
+    mocked.restHistory.mockResolvedValueOnce({ entries: [] }).mockReturnValue(new Promise(() => {}))
     await openRest()
+    await waitFor(() => expect(mocked.restHistory).toHaveBeenCalledTimes(1))
     await fill('POST', path)
     await userEvent.click(screen.getByRole('button', { name: t.restSend }))
     await within(response()).findByText(t.restUnknown)

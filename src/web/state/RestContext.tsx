@@ -71,13 +71,16 @@ export function RestProvider({ username, seed, children }: { username: string; s
   const [first] = useState(() =>
     claimRestDraft(username, seed?.rest && { method: seed.rest.method, path: seed.rest.path, headers: [], body: seed.rest.body ?? '' }, emptyDraft),
   )
-  // The draft as it is now: the one source the fields render from and the
-  // storage saves. The body is the editor's text, followed on each change.
+  // The draft as it is now: what is saved and sent. `fields` below is its
+  // copy for drawing, written only by `change`. The body is the editor's
+  // text, followed on each change.
   const latest = useRef<RestDraft>(first)
   const [fields, setFields] = useState<Omit<RestDraft, 'body'>>({ method: first.method, path: first.path, headers: first.headers })
   const body = useRef<EditorHandle | null>(null)
   const [state, dispatch] = useReducer(reducer, Boolean(seed?.rest), initialState)
   const [history, setHistory] = useState<RestHistoryEntry[]>([])
+  // Until it has been loaded once, an earlier unknown outcome cannot be told (confirm.ts).
+  const [historyLoaded, setHistoryLoaded] = useState(false)
   // The progress is whether the request being sent may change data.
   const { start: startSend, cancel: cancelSend, running: sending, progress: sendingChangesData } = useTask<boolean>()
   const { start: startHistory, running: historyLoading } = useTask()
@@ -120,7 +123,10 @@ export function RestProvider({ username, seed, children }: { username: string; s
   const refreshHistory = useCallback(async () => {
     const outcome = await startHistory((signal) => api.restHistory(username, signal), 'replace')
     // A failure shows nothing: the list stays as it was (docs/rest.md "画面").
-    if (outcome.kind === 'done') setHistory(outcome.value.entries)
+    if (outcome.kind === 'done') {
+      setHistory(outcome.value.entries)
+      setHistoryLoaded(true)
+    }
   }, [startHistory, username])
 
   useEffect(() => {
@@ -174,10 +180,10 @@ export function RestProvider({ username, seed, children }: { username: string; s
     if (sending) return
     const request = snapshotOf(latest.current)
     if (!request.path) return
-    const reasons = needsConfirm(request, { isProduction, history })
+    const reasons = needsConfirm(request, { isProduction, history, historyLoaded })
     if (reasons.length > 0) dispatch({ type: 'confirm', request, reasons })
     else void sendNow(request)
-  }, [sending, isProduction, history, sendNow])
+  }, [sending, isProduction, history, historyLoaded, sendNow])
 
   const { confirming } = state
   const confirmSend = useCallback(() => {
@@ -187,8 +193,11 @@ export function RestProvider({ username, seed, children }: { username: string; s
 
   const cancel = useCallback(() => {
     // Only a request that changes no data offers Cancel; a stopped one empties the result.
-    if (cancelSend()) dispatch({ type: 'cancelled' })
-  }, [cancelSend])
+    if (!cancelSend()) return
+    dispatch({ type: 'cancelled' })
+    // The server goes on and records it: show that it was sent.
+    void refreshHistory()
+  }, [cancelSend, refreshHistory])
 
   const loadEntry = useCallback(
     (entry: RestHistoryEntry) => {

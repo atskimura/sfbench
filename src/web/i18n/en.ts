@@ -190,6 +190,7 @@ export const en = {
   restConfirmTitle: 'Send this request?',
   restConfirmProduction: (org: string, request: string) => `This runs ${request} in the production org ${org}.`,
   restConfirmUnknown: 'The outcome of the last time this request was sent is not known. Check in Salesforce before you send it.',
+  restConfirmNoHistory: 'The history has not been loaded, so whether this request was sent before with an unknown outcome cannot be told.',
   restConfirmSend: 'Send',
   restPendingShort: 'Waiting',
   restUnknownShort: 'Unknown',

@@ -386,7 +386,11 @@ function Confirm() {
   const confirming = rest.confirming!
   const request = t.restSentRequest(confirming.request.method, confirming.request.path)
   const lines = confirming.reasons.map((reason) =>
-    reason === 'production' ? t.restConfirmProduction(selectedOrg?.alias ?? selected ?? '', request) : t.restConfirmUnknown,
+    reason === 'production'
+      ? t.restConfirmProduction(selectedOrg?.alias ?? selected ?? '', request)
+      : reason === 'unknownOutcome'
+        ? t.restConfirmUnknown
+        : t.restConfirmNoHistory,
   )
   return (
     <ConfirmDialog

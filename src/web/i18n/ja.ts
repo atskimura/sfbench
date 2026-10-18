@@ -188,6 +188,7 @@ export const ja: Messages = {
   restConfirmTitle: '送信の確認',
   restConfirmProduction: (org: string, request: string) => `本番の組織 ${org} で ${request} を実行します。`,
   restConfirmUnknown: '同じ要求の前の送信は、結果が分かっていません。Salesforce で確かめてから送ってください。',
+  restConfirmNoHistory: '実行履歴を読み込めていないので、同じ要求を前に送った結果を確かめられません。',
   restConfirmSend: '送信する',
   restPendingShort: '応答待ち',
   restUnknownShort: '不明',
