@@ -2,8 +2,12 @@
 // queries at the top right, results below (docs/screens.md "SOQL の画面").
 // The object list, the editor area and the recent queries can be closed
 // (docs/screens.md "パネルの開閉").
+import { useState } from 'react'
 import { t } from '../i18n/i18n.ts'
 import { AiProvider } from '../state/AiContext.tsx'
+import { useApp } from '../state/AppContext.tsx'
+import { RestProvider } from '../state/RestContext.tsx'
+import { RestScreen } from './RestScreen.tsx'
 import { useOrgs, type Seed } from '../state/OrgContext.tsx'
 import { PanelsProvider, usePanels } from '../state/PanelsContext.tsx'
 import { SoqlProvider, useSoql } from '../state/SoqlContext.tsx'
@@ -30,16 +34,37 @@ export function Workspace() {
   return <OrgWorkspace key={selected} username={selected} seed={seed} />
 }
 
+/**
+ * Both screens stay drawn once opened, and the one not chosen is hidden, never
+ * unmounted: a request running in it (a REST request that may change data, a
+ * query) goes on, and its result shows when the screen is chosen again
+ * (docs/rest.md "作業画面の作り"). Do not draw the screens conditionally.
+ */
 function OrgWorkspace({ username, seed }: { username: string; seed: Seed | undefined }) {
+  const { mode } = useApp()
+  // The REST API screen is made when it is first chosen, then kept.
+  const [restOpened, setRestOpened] = useState(mode === 'rest')
+  if (mode === 'rest' && !restOpened) setRestOpened(true)
   return (
-    <SoqlProvider username={username} seed={seed}>
-      <PanelsProvider>
-        {/* Inside both: Replace writes the editor, and Fix with AI opens the editor area. */}
-        <AiProvider username={username}>
-          <Layout username={username} initialText={seed?.query} />
-        </AiProvider>
-      </PanelsProvider>
-    </SoqlProvider>
+    <>
+      <div className={styles.screen} hidden={mode !== 'soql'}>
+        <SoqlProvider username={username} seed={seed}>
+          <PanelsProvider>
+            {/* Inside both: Replace writes the editor, and Fix with AI opens the editor area. */}
+            <AiProvider username={username}>
+              <Layout username={username} initialText={seed?.query} />
+            </AiProvider>
+          </PanelsProvider>
+        </SoqlProvider>
+      </div>
+      {restOpened && (
+        <div className={styles.screen} hidden={mode !== 'rest'}>
+          <RestProvider username={username} seed={seed}>
+            <RestScreen />
+          </RestProvider>
+        </div>
+      )}
+    </>
   )
 }
 

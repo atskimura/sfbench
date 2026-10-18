@@ -36,6 +36,9 @@ type AppState = {
   handleCommonError: (e: unknown) => boolean
   /** Handles an error app-wide, or else notifies it (for a failure with no place of its own). */
   reportError: (e: unknown) => void
+  /** The screen shown: SOQL or REST API (docs/rest.md "モードの置き場所"). */
+  mode: Mode
+  setMode: (mode: Mode) => void
   /** The settings dialog, opened from the header or from the AI input's notice. */
   settingsOpen: boolean
   setSettingsOpen: (open: boolean) => void
@@ -45,12 +48,42 @@ const AppContext = createContext<AppState | undefined>(undefined)
 
 let nextId = 1
 
-export function AppProvider({ children }: { children: ReactNode }) {
+export type Mode = 'soql' | 'rest'
+
+const MODE_KEY = 'sfbench.mode'
+
+function readMode(): Mode {
+  try {
+    return sessionStorage.getItem(MODE_KEY) === 'rest' ? 'rest' : 'soql'
+  } catch {
+    return 'soql'
+  }
+}
+
+function saveMode(mode: Mode): void {
+  try {
+    sessionStorage.setItem(MODE_KEY, mode)
+  } catch {
+    // Only the reload convenience is lost.
+  }
+}
+
+/** `initialMode` is the launch's (--rest opens the REST API screen); a tab reload keeps the screen it showed. */
+export function AppProvider({ initialMode, children }: { initialMode?: Mode; children: ReactNode }) {
   const [sessionLost, setSessionLost] = useState(false)
   const [sfNotFound, setSfNotFound] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [settings, setSettings] = useState<Settings>()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [mode, setModeState] = useState<Mode>(() => {
+    // Saved at once, so that a reload after the launch keeps the screen.
+    if (initialMode) saveMode(initialMode)
+    return initialMode ?? readMode()
+  })
+  const setMode = useCallback((next: Mode) => {
+    setModeState(next)
+    saveMode(next)
+  }, [])
 
   const notify = useCallback((n: Omit<Notification, 'id'>) => {
     setNotifications((list) => {
@@ -109,8 +142,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   )
 
   const value = useMemo(
-    () => ({ settings, saveSettings, savingSettings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError, reportError, settingsOpen, setSettingsOpen }),
-    [settings, saveSettings, savingSettings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError, reportError, settingsOpen],
+    () => ({ settings, saveSettings, savingSettings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError, reportError, mode, setMode, settingsOpen, setSettingsOpen }),
+    [settings, saveSettings, savingSettings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError, reportError, mode, setMode, settingsOpen],
   )
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

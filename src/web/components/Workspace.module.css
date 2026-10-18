@@ -1,3 +1,15 @@
+/* One screen (SOQL or REST API); the one not chosen is hidden, not unmounted. */
+.screen {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.screen[hidden] {
+  display: none;
+}
+
 .workspace {
   flex: 1;
   min-width: 0;

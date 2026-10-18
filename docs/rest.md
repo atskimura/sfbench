@@ -306,7 +306,7 @@ sfbench --rest <パス> [--method <メソッド>] [--body '<json>' | --body-file
 
 | 案 | 判断 |
 | --- | --- |
-| 採った案：ボディは CodeMirror に `@codemirror/lang-json` を足して色分けする（取り消し、Tab の字下げ、整形は `JSON.parse` と `JSON.stringify`）。レスポンスは、読み取り専用の CodeMirror に同じ色分けで出し、コピーのボタンを付ける | `devDependencies` に足し、ビルド時に取り込むので、利用者の実行時の依存は増えない。取り込む大きさは数 KB で、JSON を読む画面なので色分けの効果が大きい |
+| 採った案：ボディは CodeMirror に `@codemirror/lang-json` を足して色分けする（取り消し、Tab の字下げ、整形は文字のまま字下げする `rest/json.ts` の `formatJson`。`JSON.parse` と `JSON.stringify` では大きな数値が丸められる）。レスポンスは、読み取り専用の CodeMirror に同じ色分けで出し、コピーのボタンを付ける | `devDependencies` に足し、ビルド時に取り込むので、利用者の実行時の依存は増えない。取り込む大きさは数 KB で、JSON を読む画面なので色分けの効果が大きい |
 | 取り込み済みのパッケージだけで作り、レスポンスは `<pre>` で出す | 依存を足さないが、大きな JSON が読みにくい |
 | JSON を木の形で見せるライブラリ | 取り込む大きさに対して、得るものが小さい |
 | textarea | 最少だが、SOQL のエディタと操作感がそろわず、Tab の扱いを自分で書くことになる |
@@ -327,6 +327,7 @@ sfbench --rest <パス> [--method <メソッド>] [--body '<json>' | --body-file
 - **本番の確認はサーバーが強制しない。** 画面の判定が抜けると、そのまま送られる。
 - **データを変えない要求のキャンセルは、待つのをやめるだけである。** Salesforce とサーバーの処理は続き、API の呼び出しも消費する。
 - **GET でもデータを変えうる要求は、パスでしか見分けられない。** Salesforce に新しい API が増えても一覧は足されず、本番の確認に漏れる。送り直しの禁止は、すべての要求に効かせている。
+- **ボディの「整形」とレスポンスの整形は、JSON を解析して書き直さず、文字のまま字下げする。** `JSON.parse` と `JSON.stringify` を通すと、16桁を超える数値が丸められて見え、送られるからである。
 - **REST API の画面の GET は、ネットワークが切れても `sf api request rest` で送り直さない。** 利用者が Send を押し直す。
 - **`sf api request rest --include` の出力の解析は、JSON の本文を前提にしている。** テキスト、HTML、XML の本文を読み違えないか、記録した出力でテストする。
 - **`sf api request rest` の経路では、JSON でないボディを送れない**（sf CLI が要求のファイルの本文を JSON として扱うため）。`fetch` の経路が使えるときは送れる。
@@ -363,4 +364,3 @@ sfbench --rest <パス> [--method <メソッド>] [--body '<json>' | --body-file
 | 8 | 結果が分からなかった要求を送り直すとき | 本番でなくても確認する |
 | 9 | ⌘↵ で Send するか | データを変えない要求だけ |
 
-区切り4の PR で、次の文書も直す。design.md の「結果の表での編集と削除」（区切り4と一緒に作るとしている）、`--rest` の書式、API の表とデータの保存。ai.md の REST API の AI の時期。screens.md の本番の確認の範囲と、REST API の画面の実行履歴の行と AI の入力欄。

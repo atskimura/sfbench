@@ -13,7 +13,7 @@ const numberFormat = new Intl.NumberFormat()
 
 export function Header() {
   const { selected, apiUsage } = useOrgs()
-  const { settingsOpen, setSettingsOpen } = useApp()
+  const { settingsOpen, setSettingsOpen, mode, setMode } = useApp()
   const usage = selected ? apiUsage[selected] : undefined
 
   return (
@@ -22,6 +22,13 @@ export function Header() {
         <LogoIcon />
         <span>{t.appName}</span>
       </div>
+      <nav className={styles.modes} aria-label={t.modes}>
+        {(['soql', 'rest'] as const).map((m) => (
+          <button key={m} type="button" className={styles.mode} aria-current={mode === m ? 'page' : undefined} onClick={() => setMode(m)}>
+            {m === 'soql' ? t.modeSoql : t.modeRest}
+          </button>
+        ))}
+      </nav>
       <div className={styles.spacer} />
       {usage && (
         <span className={styles.usage}>{t.apiUsage(numberFormat.format(usage.used), numberFormat.format(usage.max))}</span>

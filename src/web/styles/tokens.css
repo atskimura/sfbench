@@ -35,6 +35,20 @@
   --color-syntax-string: #8a4b00;
   --color-syntax-literal: #0a7468;
   --color-selection: #cfe3f6;
+  /* REST API methods and response statuses (docs/rest.md "画面"). */
+  --color-method-get-bg: #e2f0ed;
+  --color-method-get: #0a5f55;
+  --color-method-post-bg: #e8f0fb;
+  --color-method-post: #1f4e8c;
+  --color-method-patch-bg: #fff3dc;
+  --color-method-patch: #7a5200;
+  --color-method-put-bg: #f1ebfa;
+  --color-method-put: #5b3a99;
+  --color-method-delete-bg: #fdecea;
+  --color-method-delete: #9b2c1f;
+  --color-notice-bg: #fff6e0;
+  --color-notice-line: #f0d79a;
+  --color-notice-ink: #5c4300;
   --shadow-popover: 0 12px 32px rgb(15 30 36 / 22%);
 
   --font-sans: system-ui, -apple-system, 'Segoe UI', 'Hiragino Sans', 'Yu Gothic UI', sans-serif;
@@ -104,6 +118,19 @@
     --color-syntax-string: #e3b25a;
     --color-syntax-literal: #5cc4ae;
     --color-selection: #2b4560;
+    --color-method-get-bg: #1d3530;
+    --color-method-get: #7fd8c6;
+    --color-method-post-bg: #1d2b40;
+    --color-method-post: #9cc2f2;
+    --color-method-patch-bg: #3a2f17;
+    --color-method-patch: #f0c674;
+    --color-method-put-bg: #2b2140;
+    --color-method-put: #c7b2ee;
+    --color-method-delete-bg: #3a1f1c;
+    --color-method-delete: #f08a80;
+    --color-notice-bg: #33291a;
+    --color-notice-line: #6b5527;
+    --color-notice-ink: #f0d79a;
 
     color-scheme: dark;
   }

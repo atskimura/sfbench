@@ -83,3 +83,17 @@ export function runFailure(
   if (isShownElsewhere(kind)) return undefined
   return { message: errorMessage(e), details: errorDetails(e), orgAuth: false, rejected: kind === 'rejected' }
 }
+
+/**
+ * Whether a failed REST request may have been processed by Salesforce
+ * (docs/rest.md "状態と遷移"). `changesData` is restMayChangeData's answer.
+ */
+export function isOutcomeUnknown(e: unknown, changesData: boolean): boolean {
+  if (e instanceof ApiRequestError && (e.code === 'SALESFORCE_TIMEOUT' || e.code === 'SALESFORCE_UNREACHABLE')) return true
+  const kind = errorKind(e)
+  // Not sent, or refused before Salesforce ran anything.
+  if (kind === 'aborted' || kind === 'orgAuth' || kind === 'orgNotFound' || kind === 'sfNotFound') return false
+  if (e instanceof ApiRequestError && e.code === 'BAD_REQUEST') return false
+  // A lost connection to sfbench, sf CLI or server errors: sent or not, unknown.
+  return changesData
+}
