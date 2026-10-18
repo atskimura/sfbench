@@ -38,6 +38,10 @@ describe('isProductionBySummary', () => {
 })
 
 describe('orgKindLabel', () => {
+  it('shows a scratch org as Scratch, though its Organization says it is a sandbox', () => {
+    expect(orgKindLabel(org('scratch'), { organizationType: 'Developer Edition', isSandbox: true, namespacePrefix: null })).toBe('Scratch')
+  })
+
   it('prefers the edition for production-like orgs', () => {
     expect(orgKindLabel(org('production', 'Developer Edition'))).toBe('Developer Edition')
     expect(orgKindLabel(org('production'))).toBe('Production')

@@ -34,6 +34,7 @@ export function FieldPanel({ username, objectName }: { username: string; objectN
   useReportOrgError(username, describe.error)
   const d = describe.data
 
+  const meta = d ? `${d.label} · ${t.fieldCount(d.fields.length)} · ${t.loadedAt(timeFormat.format(new Date(d.fetchedAt)))}` : ''
   return (
     <section className={panel.panel} aria-label={objectName}>
       <div className={panel.header}>
@@ -43,9 +44,12 @@ export function FieldPanel({ username, objectName }: { username: string; objectN
           </svg>
         </button>
         <div className={styles.heading}>
-          <span className={styles.objectName}>{objectName}</span>
-          <span className={panel.meta}>
-            {d ? `${d.label} · ${t.fieldCount(d.fields.length)} · ${t.loadedAt(timeFormat.format(new Date(d.fetchedAt)))}` : ''}
+          <span className={`${styles.objectName} ${styles.oneLine}`} title={objectName}>
+            {objectName}
+          </span>
+          {/* One line: a narrow panel cuts it with an ellipsis rather than breaking words; the whole of it is the title. */}
+          <span className={`${panel.meta} ${styles.oneLine}`} title={meta}>
+            {meta}
           </span>
         </div>
         <span className={panel.spacer} />

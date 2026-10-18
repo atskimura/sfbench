@@ -159,6 +159,21 @@ describe('Apex colors', () => {
     ])
   })
 
+  it('colors SOQL that starts on the line after its bracket', () => {
+    const state = apexParser.startState!(2)
+    expect(tokens('for (Account a : [', state).at(-1)).toEqual(['[', 'bracket'])
+    expect(tokens('    SELECT Id FROM Account', state)).toEqual([
+      ['SELECT', 'keyword'],
+      ['Id', null],
+      ['FROM', 'keyword'],
+      ['Account', null],
+    ])
+    // A bracket of a list, not SOQL, leaves the next line as Apex.
+    const list = apexParser.startState!(2)
+    tokens('Integer[] xs = new Integer[', list)
+    expect(tokens('  size', list)).toEqual([['size', null]])
+  })
+
   it('carries a block comment over lines', () => {
     const state = apexParser.startState!(2)
     expect(tokens('/* start', state)).toEqual([

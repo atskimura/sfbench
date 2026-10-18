@@ -5,6 +5,8 @@ It uses the auth you already have in the sf CLI, so there is no connected app to
 
 [日本語の README](README.ja.md)
 
+![The SOQL screen of sfbench, with a query proposed by the AI](help/images/en/soql-ai.webp)
+
 sfbench is the successor to [lwc-soql-builder](https://github.com/lwc-soql-builder/lwc-soql-builder).
 lwc-soql-builder can no longer log in, because Salesforce has blocked the OAuth user-agent flow it relied on.
 
@@ -71,6 +73,7 @@ Without `-o`, sfbench opens the sf CLI's default org (the one set with `sf confi
 
 The tabs at the top switch between SOQL, REST API and Apex.
 Each screen keeps what you typed and its result while another is shown.
+The [help](help/en/README.md) explains each screen.
 
 ### Command-line options
 

@@ -22,8 +22,10 @@ export function isProductionBySummary(org: Org, summary: OrgSummary | undefined)
 
 /** The label shown for the org's kind: the edition when known, otherwise the kind. */
 export function orgKindLabel(org: Org, summary?: OrgSummary): string {
+  // A scratch org reports IsSandbox as true: the org list tells it apart.
+  if (org.kind === 'scratch') return kindLabel(org)
   if (summary) return summary.isSandbox ? 'Sandbox' : summary.organizationType || kindLabel(org)
-  if (org.kind === 'sandbox' || org.kind === 'scratch' || org.kind === 'devhub') return kindLabel(org)
+  if (org.kind === 'sandbox' || org.kind === 'devhub') return kindLabel(org)
   return org.edition ?? kindLabel(org)
 }
 
