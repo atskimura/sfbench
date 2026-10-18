@@ -232,6 +232,31 @@ export type ApexHistoryEntry = { id: string; code: string; sentAt: string; outco
 
 export type ApexHistoryResponse = { entries: ApexHistoryEntry[] }
 
+/** At most this many records go in one save or delete: one sObject Collections call (docs/edit.md "サーバー"). */
+export const MAX_RECORDS_PER_CALL = 200
+
+/** A field value the result table sends: numbers, dates and the rest go as text (docs/edit.md "前提にする事実"). */
+export type FieldValue = string | boolean | null
+
+/** POST /api/orgs/:user/records/update */
+export type RecordsUpdateRequest = {
+  object: string
+  records: { id: string; fields: Record<string, FieldValue> }[]
+  /** Undo the whole call when one record fails. */
+  allOrNone: boolean
+  apiVersion?: string
+}
+
+/** POST /api/orgs/:user/records/delete */
+export type RecordsDeleteRequest = { ids: string[]; allOrNone: boolean; apiVersion?: string }
+
+export type RecordError = { statusCode: string; message: string; fields: string[] }
+
+/** One record's outcome, in the order sent. */
+export type RecordResult = { id: string; success: boolean; errors: RecordError[] }
+
+export type RecordsResponse = { results: RecordResult[] }
+
 /** The methods the REST API screen sends (docs/rest.md "要求"). */
 export const REST_METHODS = ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'] as const
 export type RestMethod = (typeof REST_METHODS)[number]

@@ -197,6 +197,8 @@ Salesforce の呼び出しも AI の API の呼び出しも、これでプロキ
 | `POST /api/orgs/:user/query/next` | 画面用 | 続きのページ（`{ nextRecordsUrl }`） |
 | `POST /api/orgs/:user/rest` | 画面用 | REST API の実行（`{ method, path, headers, body }`）。Salesforce が返したステータスによらず、200 で `{ id, status, headers, body, size, elapsedMs }` を返す（[rest.md](rest.md)） |
 | `GET /api/orgs/:user/rest/history` | 画面用 | REST API の実行履歴 |
+| `POST /api/orgs/:user/records/update` | 画面用 | 結果の表の保存（`{ object, records, allOrNone, apiVersion? }`、200件まで）。1件ずつの成否を返す（[edit.md](edit.md)） |
+| `POST /api/orgs/:user/records/delete` | 画面用 | 結果の表の削除（`{ ids, allOrNone, apiVersion? }`、200件まで） |
 | `POST /api/orgs/:user/apex` | 画面用 | 匿名 Apex の実行（`{ code, apiVersion? }`）。コンパイルエラーと実行時の例外も 200 で返す（[apex.md](apex.md)「応答の形」） |
 | `GET /api/orgs/:user/apex/history` | 画面用 | 匿名 Apex の実行履歴 |
 | `POST /api/orgs/:user/open` | 画面用 | 組織のホームを、ログイン済みの状態でブラウザに開く |
@@ -533,7 +535,7 @@ docs/       設計文書
 
 ## 区切り2のあとに作る機能
 
-- **結果の表での編集と削除**：結果のヘッダーの「Edit」の切り替えをオンにしたときだけ、行の選択列が出る。行を選ぶと「Delete N」、セルをダブルクリックして値を変えると「Save N changes」が出る。編集できるのは FROM のオブジェクト自身の、describe で更新可能な項目だけである。保存と削除は REST API の sObject Collections で行い、本番の組織では確認のダイアログを出す。区切り4（REST API の画面）のあとの PR で作る。本番の確認の判定と `/rest` の経路を、REST API の画面と共有する。
+- **結果の表での編集と削除**：結果の見出しの「編集」をオンにしたときだけ、セルを書き換えて保存し、行を選んで削除できる。編集できるのは FROM のオブジェクト自身の、describe で更新可能な項目だけである。保存と削除は sObject Collections で行う。区切り6で作る。設計は [edit.md](edit.md) にある。
 
 ## 未決事項
 
@@ -551,8 +553,10 @@ docs/       設計文書
 | 2 | SOQL の画面 | 旧版と同じことができる。公開の準備（ライセンス表示、README、公開の手順）まで済ませるが、公開はしない |
 | 3 | AI で組む機能 | |
 | 4 | REST API の画面 | |
-| 5 | Apex の画面 | 0.1.0 として公開する |
+| 5 | Apex の画面 | |
+| 6 | 結果の表での編集と削除 | |
+| 7 | REST API と Apex の AI | 0.1.0 として公開する |
 
-公開は、区切り5まで作り終えてから一度だけ行う。
+公開は、区切り7まで作り終えてから一度だけ行う。
 lwc-soql-builder はすでに長く動いていないので、区切り2の時点で急いで公開するより、公開の作業を一度にまとめる方を選んだ。
 公開後に lwc-soql-builder のリポジトリとサイトで sfbench を案内し、リポジトリをアーカイブする。
