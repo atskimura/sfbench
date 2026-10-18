@@ -4,9 +4,9 @@
 // The usual transport is fetch with the access token from the sf CLI. The
 // fallback transport is `sf api request rest`, which is slow (about 3 seconds
 // per call) but needs no token.
-import type { ApiUsage } from '../shared/api.ts'
+import { isServicesPath, type ApiUsage } from '../shared/api.ts'
 import { log } from './log.ts'
-import { apiRequest, type RawResponse } from './sf/apiRequest.ts'
+import { apiRequest, isInvalidSession, type RawResponse } from './sf/apiRequest.ts'
 import { getAccessToken } from './sf/commands.ts'
 import { OrgAuthError, SfCliError, SfNotFoundError, SfTimeoutError, isAuthErrorMessage } from './sf/errors.ts'
 
@@ -137,25 +137,37 @@ export class OrgClient {
 
   /** Sends a request. Throws SalesforceError for HTTP errors and OrgAuthError when the org needs a new login. */
   async request(req: SalesforceRequest): Promise<SalesforceResponse> {
-    assertSalesforcePath(req.path, this.instanceUrl)
-    const raw = await this.send(req)
-    this.recordApiUsage(raw.headers['sforce-limit-info'])
+    const raw = await this.requestRaw(req)
     const body = parseBody(raw.body)
     if (raw.status >= 400) throw new SalesforceError(raw.status, body)
     return { status: raw.status, headers: raw.headers, body }
   }
 
-  private async send(req: SalesforceRequest): Promise<RawResponse> {
-    if (this.forceCli) return this.sendWithCli(req)
+  /**
+   * Sends a request and returns what Salesforce answered, whatever its status
+   * (the REST API screen shows a 4xx as a response, docs/rest.md). Throws
+   * OrgAuthError only when Salesforce says the session is invalid even with a
+   * new token. With `maxBodyBytes`, a longer body is cut off while it is read.
+   */
+  async requestRaw(req: SalesforceRequest, options: { maxBodyBytes?: number } = {}): Promise<RawResponse> {
+    // What was checked is what is sent, on either transport.
+    const checked = { ...req, path: salesforcePath(req.path, this.instanceUrl) }
+    const raw = await this.send(checked, options.maxBodyBytes)
+    this.recordApiUsage(raw.headers['sforce-limit-info'])
+    return raw
+  }
+
+  private async send(req: SalesforceRequest, maxBodyBytes: number | undefined): Promise<RawResponse> {
+    if (this.forceCli) return this.sendWithCli(req, maxBodyBytes)
     const readOnly = !mayChangeData(req)
     // After switching to sf, fetch is tried again after a while, but only with
     // a read-only request: a request that changes data must not be the one
     // that discovers fetch still fails, because it could not be sent again.
     if (this.transport === 'cli' && (!readOnly || Date.now() - this.switchedToCliAt < RETRY_FETCH_AFTER_MS)) {
-      return this.sendWithCli(req)
+      return this.sendWithCli(req, maxBodyBytes)
     }
     try {
-      const res = await this.sendWithFetch(req)
+      const res = await this.sendWithFetch(req, maxBodyBytes)
       this.transport = 'fetch'
       return res
     } catch (e) {
@@ -166,7 +178,7 @@ export class OrgClient {
       if (e.mayHaveReachedSalesforce && !readOnly) throw new SalesforceUnreachableError()
       // Switch only if sf succeeds: when the network is down, sf fails too.
       log.warn(`${this.username}: ${e.message}; trying sf api request rest`)
-      const res = await this.sendWithCli(req)
+      const res = await this.sendWithCli(req, maxBodyBytes)
       if (this.transport !== 'cli') log.info(`${this.username}: switched to sf api request rest`)
       this.transport = 'cli'
       this.switchedToCliAt = Date.now()
@@ -174,15 +186,18 @@ export class OrgClient {
     }
   }
 
-  private async sendWithFetch(req: SalesforceRequest): Promise<RawResponse> {
+  private async sendWithFetch(req: SalesforceRequest, maxBodyBytes: number | undefined): Promise<RawResponse> {
     let token = await this.getTokenForFetch()
-    let res = await this.fetchOnce(req, token)
-    if (res.status === 401) {
+    let res = await this.fetchOnce(req, token, maxBodyBytes)
+    // Only Salesforce saying the session is invalid sends the request again: any
+    // other 401 (such as one from the user's Apex REST, which may have changed
+    // data first) is the answer (docs/rest.md "Salesforce が返した 4xx と 5xx").
+    if (isInvalidSession(res)) {
       // The access token expired. sf refreshes it; if the refresh token is no
       // longer valid, sf returns the same stale token and the retry fails too.
       token = await this.getTokenForFetch(token)
-      res = await this.fetchOnce(req, token)
-      if (res.status === 401) {
+      res = await this.fetchOnce(req, token, maxBodyBytes)
+      if (isInvalidSession(res)) {
         this.token = undefined
         throw new OrgAuthError(this.username, 'Salesforce rejected the session (401).')
       }
@@ -200,21 +215,14 @@ export class OrgClient {
     }
   }
 
-  private sendWithCli(req: SalesforceRequest): Promise<RawResponse> {
-    const headers: Record<string, string> = {
-      Accept: 'application/json',
-      ...(req.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-      ...req.headers,
-    }
-    return apiRequest(
-      this.username,
-      { method: req.method, path: req.path, headers, body: req.body },
-      this.tmpDir,
-      this.timeoutMs(),
-    ).catch((e: unknown) => {
+  private async sendWithCli(req: SalesforceRequest, maxBodyBytes: number | undefined): Promise<RawResponse> {
+    try {
+      const res = await apiRequest(this.username, { method: req.method, path: req.path, headers: requestHeaders(req), body: req.body }, this.tmpDir, this.timeoutMs())
+      return maxBodyBytes !== undefined ? cutBody(res, maxBodyBytes) : res
+    } catch (e) {
       // The same answer as fetch's timeout: Salesforce may have processed the request.
       throw e instanceof SfTimeoutError ? new SalesforceTimeoutError() : e
-    })
+    }
   }
 
   /**
@@ -250,23 +258,19 @@ export class OrgClient {
     return pending
   }
 
-  private async fetchOnce(req: SalesforceRequest, token: string): Promise<RawResponse> {
+  private async fetchOnce(req: SalesforceRequest, token: string, maxBodyBytes: number | undefined): Promise<RawResponse> {
     try {
       const res = await fetch(new URL(req.path, this.instanceUrl), {
         method: req.method,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-          ...(req.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-          ...req.headers,
-        },
+        // The token goes last, so that no header of the request can replace it.
+        headers: { ...requestHeaders(req), authorization: `Bearer ${token}` },
         body: req.body,
         redirect: 'manual',
         signal: AbortSignal.timeout(this.timeoutMs()),
       })
       const headers: Record<string, string> = {}
       res.headers.forEach((value, key) => (headers[key] = value))
-      return { status: res.status, headers, body: await res.text() }
+      return { status: res.status, headers, ...(await readBody(res, maxBodyBytes)) }
     } catch (e) {
       if ((e as Error).name === 'TimeoutError') throw new SalesforceTimeoutError()
       throw new FetchFailure(`fetch failed (${(e as Error).message})`, true)
@@ -279,6 +283,57 @@ export class OrgClient {
   }
 }
 
+/**
+ * The headers to send: the defaults, then the request's own, all with names in
+ * lower case, so that `content-type` from the request replaces the default
+ * rather than adding a second value to it (docs/rest.md "要求").
+ */
+function requestHeaders(req: SalesforceRequest): Record<string, string> {
+  const headers: Record<string, string> = { accept: 'application/json' }
+  if (req.body !== undefined) headers['content-type'] = 'application/json'
+  for (const [name, value] of Object.entries(req.headers ?? {})) headers[name.toLowerCase()] = value
+  return headers
+}
+
+/**
+ * Reads the body, stopping once it is longer than `maxBodyBytes`. With a
+ * limit (the REST API screen), a body that stops arriving still returns the
+ * status, so that a processed request is not taken for one of unknown outcome.
+ */
+async function readBody(res: Response, maxBodyBytes: number | undefined): Promise<Pick<RawResponse, 'body' | 'size' | 'truncated' | 'incomplete'>> {
+  if (maxBodyBytes === undefined || !res.body) {
+    const body = await res.text()
+    return { body, size: Buffer.byteLength(body) }
+  }
+  const chunks: Uint8Array[] = []
+  let size = 0
+  const reader = res.body.getReader()
+  for (;;) {
+    let next: Awaited<ReturnType<typeof reader.read>>
+    try {
+      next = await reader.read()
+    } catch {
+      // Salesforce answered (the status is known) but the body stopped
+      // arriving, such as when time ran out: the request was processed.
+      return { body: '', size, incomplete: true }
+    }
+    const { done, value } = next
+    if (done) break
+    size += value.byteLength
+    if (size > maxBodyBytes) {
+      await reader.cancel()
+      return { body: '', size, truncated: true }
+    }
+    chunks.push(value)
+  }
+  return { body: Buffer.concat(chunks).toString('utf8'), size }
+}
+
+function cutBody(res: RawResponse, maxBodyBytes: number): RawResponse {
+  const size = Buffer.byteLength(res.body)
+  return size > maxBodyBytes ? { ...res, body: '', size, truncated: true } : { ...res, size }
+}
+
 function parseBody(text: string): unknown {
   if (!text) return undefined
   try {
@@ -289,19 +344,21 @@ function parseBody(text: string): unknown {
 }
 
 /**
- * Only paths under /services/ on the org's own instance may be requested, so
- * that the server can never be used to send the token anywhere else.
+ * The path to send, as checked: only paths under /services/ on the org's own
+ * instance may be requested, so that the server can never be used to send the
+ * token anywhere else. An absolute URL of the instance becomes its path.
  */
-export function assertSalesforcePath(path: string, instanceUrl: string): void {
+export function salesforcePath(path: string, instanceUrl: string): string {
   let url: URL
   try {
     url = new URL(path, instanceUrl)
   } catch {
     throw new InvalidPathError(path)
   }
-  if (url.origin !== new URL(instanceUrl).origin || !url.pathname.startsWith('/services/')) {
+  if (url.origin !== new URL(instanceUrl).origin || !isServicesPath(url.pathname)) {
     throw new InvalidPathError(path)
   }
+  return url.pathname + url.search
 }
 
 export class InvalidPathError extends Error {

@@ -13,6 +13,12 @@ export type RawResponse = {
   /** Header names in lower case. */
   headers: Record<string, string>
   body: string
+  /** The size of the body in bytes, when it was measured. */
+  size?: number
+  /** The body was longer than asked for, and is empty. */
+  truncated?: boolean
+  /** The status and headers came, but the body stopped arriving; the body is empty. */
+  incomplete?: boolean
 }
 
 export type ApiRequest = {
@@ -21,6 +27,71 @@ export type ApiRequest = {
   path: string
   headers: Record<string, string>
   body?: string
+}
+
+/** Salesforce says the session (the access token) is invalid: a 401 with INVALID_SESSION_ID. */
+export function isInvalidSession(res: Pick<RawResponse, 'status' | 'body'>): boolean {
+  if (res.status !== 401) return false
+  // XML when the request asked for it (Accept: application/xml).
+  if (/<errorCode>\s*INVALID_SESSION_ID\s*<\/errorCode>/.test(res.body)) return true
+  try {
+    const body = JSON.parse(res.body) as unknown
+    return Array.isArray(body) && body.some((e) => (e as { errorCode?: unknown })?.errorCode === 'INVALID_SESSION_ID')
+  } catch {
+    return false
+  }
+}
+
+/**
+ * A body that `sf api request rest` cannot send as it is: sf reads the request
+ * file as JSON and sends JSON.stringify of it, so only JSON goes through, and a
+ * number with more digits than a double holds would arrive rounded.
+ */
+export class NotJsonBodyError extends Error {
+  constructor(reason: 'notJson' | 'longNumber') {
+    super(
+      reason === 'notJson'
+        ? 'Only a JSON body can be sent while sfbench uses sf api request rest. Try again once Salesforce can be reached directly.'
+        : 'A number in the body would change (it has more digits than a double holds, or is out of its range) while sfbench uses sf api request rest, so the request was not sent. Write it as text, or try again once Salesforce can be reached directly.',
+    )
+    this.name = 'NotJsonBodyError'
+  }
+}
+
+/** A JSON number as its significant digits and exponent, so that 1.50 and 1.5e0 compare equal. */
+function decimal(text: string): string {
+  const m = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(text)
+  if (!m) return text
+  const fraction = m[3] ?? ''
+  let digits = (m[2] + fraction).replace(/^0+/, '')
+  let exponent = Number(m[4] ?? 0) - fraction.length
+  while (digits.endsWith('0')) {
+    digits = digits.slice(0, -1)
+    exponent++
+  }
+  return digits ? `${m[1]}${digits}e${exponent}` : '0'
+}
+
+/** Whether sf would send the number as written: it parses it into a double and writes that back. */
+function survivesSf(source: string, value: number): boolean {
+  return Number.isFinite(value) && decimal(source) === decimal(JSON.stringify(value))
+}
+
+/** The body as sf will send it, or an error when sf would change it. */
+function bodyForSf(body: string): unknown {
+  let long = false
+  let parsed: unknown
+  try {
+    // The reviver's third argument (the source text) tells the number as written.
+    parsed = JSON.parse(body, function (this: unknown, _key: string, value: unknown, context?: { source?: string }) {
+      if (typeof value === 'number' && context?.source && !survivesSf(context.source, value)) long = true
+      return value
+    } as (this: unknown, key: string, value: unknown) => unknown)
+  } catch {
+    throw new NotJsonBodyError('notJson')
+  }
+  if (long) throw new NotJsonBodyError('longNumber')
+  return parsed
 }
 
 const HEADER_LINE = /^([!#$%&'*+.^_`|~0-9A-Za-z-]+):[ \t]?(.*)$/
@@ -59,11 +130,14 @@ export async function apiRequest(
   // The request goes in a file so that user input never appears on the command line.
   const fileName = `req-${randomBytes(8).toString('hex')}.json`
   const filePath = join(tmpDir, fileName)
+  // sf sends JSON.stringify(raw), so the body goes in parsed: a string here
+  // would arrive quoted. Without a body, raw is left out and nothing is sent.
+  const raw = request.body !== undefined ? bodyForSf(request.body) : undefined
   const fileBody = {
     url: request.path,
     method: request.method,
     header: Object.entries(request.headers).map(([key, value]) => ({ key, value })),
-    body: { mode: 'raw', raw: request.body ?? '' },
+    body: { mode: 'raw', raw },
   }
   writeFileSync(filePath, JSON.stringify(fileBody), { mode: 0o600 })
   try {
@@ -74,7 +148,8 @@ export async function apiRequest(
     })
     const response = parseIncludedResponse(stdout)
     if (response) {
-      if (response.status === 401) throw new OrgAuthError(username, 'Salesforce rejected the session (401).')
+      // sf refreshes the token itself, so an invalid session here needs a new login.
+      if (isInvalidSession(response)) throw new OrgAuthError(username, 'Salesforce rejected the session (401).')
       return response
     }
     const message = lastErrorLine(stderr) ?? 'sf api request rest returned no response'

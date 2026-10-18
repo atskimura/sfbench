@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { InvalidPathError, assertSalesforcePath } from './salesforce.ts'
+import { InvalidPathError, salesforcePath } from './salesforce.ts'
 
-describe('assertSalesforcePath', () => {
+describe('salesforcePath', () => {
   const instance = 'https://acme.my.salesforce.com'
 
   it('accepts paths under /services/ on the instance', () => {
-    expect(() => assertSalesforcePath('/services/data/v62.0/query?q=SELECT+Id+FROM+Account', instance)).not.toThrow()
-    expect(() => assertSalesforcePath('/services/data/', instance)).not.toThrow()
+    expect(() => salesforcePath('/services/data/v62.0/query?q=SELECT+Id+FROM+Account', instance)).not.toThrow()
+    expect(() => salesforcePath('/services/data/', instance)).not.toThrow()
   })
 
   it.each([
@@ -16,6 +16,6 @@ describe('assertSalesforcePath', () => {
     ['a traversal out of /services/', '/services/../secur/frontdoor.jsp'],
     ['the same host over http', 'http://acme.my.salesforce.com/services/data/'],
   ])('rejects %s', (_label, path) => {
-    expect(() => assertSalesforcePath(path, instance)).toThrow(InvalidPathError)
+    expect(() => salesforcePath(path, instance)).toThrow(InvalidPathError)
   })
 })

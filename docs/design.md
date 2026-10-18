@@ -90,7 +90,7 @@ Windows では `sf` の実体が `sf.cmd` で、Node はシェルを通さない
 - `--skip-connection-status` を付けた `sf org list` は、`instanceUrl`、`isSandbox`、`isScratch`、`isDevHub` を含む。多くの組織では `orgEdition`（`Developer Edition`、`Enterprise Edition` など）も含むが、空の組織もある。組織が約90ある環境では、出力まで約9秒かかった。
 - `sf config get target-org --json` は、既定の組織が未設定だと `result[0]` に `value` を含まない。
 - `SF_TARGET_ORG` は `api request rest` と `show-access-token` に効く。
-- `api request rest --file` の JSON は `{ "url", "method", "header": [{ "key", "value" }], "body": { "mode": "raw", "raw" } }` の形で書く。ヘッダーを `{ "名前": "値" }` の形で書くとエラーになる。
+- `api request rest --file` の JSON は `{ "url", "method", "header": [{ "key", "value" }], "body": { "mode": "raw", "raw" } }` の形で書く。ヘッダーを `{ "名前": "値" }` の形で書くとエラーになる。`raw` は sf CLI が `JSON.stringify` して送るので、ボディは JSON として解析した値を入れる（文字列を入れると、引用符で囲まれた文字列として届く）。ボディのない要求では `raw` を入れない。
 - `api request rest` は、HTTP のエラー（400 など）でも終了コード 1 で、標準出力にステータス行とボディを出す。
 - リフレッシュトークンが失効した組織では、`api request rest` は `name` が `Error`、`message` が「Unable to refresh session due to: ... expired access/refresh token」のエラーを返す。`show-access-token` はエラーにならず、保存済みの古いトークンを返す。
 
@@ -193,7 +193,8 @@ Salesforce の呼び出しも AI の API の呼び出しも、これでプロキ
 | `GET /api/orgs/:user/sobjects/:name` | 画面用 | describe |
 | `POST /api/orgs/:user/query` | 画面用 | SOQL の実行（`{ soql, tooling, queryAll }`） |
 | `POST /api/orgs/:user/query/next` | 画面用 | 続きのページ（`{ nextRecordsUrl }`） |
-| `POST /api/orgs/:user/rest` | 画面用 | REST API の実行（`{ method, path, body }`） |
+| `POST /api/orgs/:user/rest` | 画面用 | REST API の実行（`{ method, path, headers, body }`）。Salesforce が返したステータスによらず、200 で `{ id, status, headers, body, size, elapsedMs }` を返す（[rest.md](rest.md)） |
+| `GET /api/orgs/:user/rest/history` | 画面用 | REST API の実行履歴 |
 | `POST /api/orgs/:user/apex` | 画面用 | 匿名 Apex の実行（`{ code }`） |
 | `POST /api/orgs/:user/open` | 画面用 | 組織のホームを、ログイン済みの状態でブラウザに開く |
 | `GET /api/orgs/:user/history` | 画面用 | 最近のクエリ |
@@ -291,7 +292,7 @@ Vite の開発サーバーは `localhost:5173` に固定し、使用中なら起
 | `-o, --target-org <alias>` | 開く組織。省略時は sf CLI の既定の組織（`target-org`） |
 | `--query "<SOQL>"` | SOQL を入力した状態で開く |
 | `--run` | `--query` の SOQL を実行した状態で開く |
-| `--rest <method> <path> [--body <json>]` | REST API の入力欄を埋めた状態で開く。送信はしない |
+| `--rest <path> [--method <method>] [--body <json> \| --body-file <file>]` | REST API の入力欄を埋めた状態で開く。送信はしない。メソッドの既定は GET。組織が決まらないときはエラーで終える |
 | `--apex "<code>"` | Apex の入力欄を埋めた状態で開く。実行はしない |
 | `--json` | 開いた URL などを JSON で出力する |
 | `--no-open` | ブラウザを開かず、URL だけを出力する（WSL や SSH 先で使う） |
@@ -311,7 +312,7 @@ CLI の入口は、`-o` の値か既定の組織（エイリアスかユーザ�
 既定の組織もない場合、`--run` を付けていればコマンドはエラーで終了する。
 付けていなければ、組織の一覧を開いた状態で画面を開く。
 
-`--rest` と `--apex` の詳しい書式は、区切り4と区切り5で決める。
+`--rest` の詳しい規則は [rest.md](rest.md)「`--rest` の起動時の指定」にある。`--apex` の書式は、区切り5で決める。
 
 ブラウザは、macOS では `open`、Linux では `xdg-open`、Windows では `%SystemRoot%\System32\rundll32.exe url.dll,FileProtocolHandler` で開く。
 いずれもシェルを通さずに、絶対パスか PATH から起動する。
@@ -396,6 +397,7 @@ sfbench の状態はサーバー側の `~/.sfbench/` に置く。
 | `server.log` | サーバーのログ |
 | `settings.json` | 設定。AI の API キーも含む。画面から編集し、利用者が手で書く必要はない |
 | `history/<ユーザー名>.json` | 組織ごとの最近のクエリ |
+| `rest-history/<ユーザー名>.json` | 組織ごとの REST API の実行履歴（[rest.md](rest.md)「実行履歴」） |
 | `tmp/` | `sf api request rest` に渡す一時ファイル。子プロセスの作業ディレクトリでもある |
 
 `~/.sfbench/` はディレクトリを 700、ファイルを 600 の権限で作る。

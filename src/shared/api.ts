@@ -179,7 +179,64 @@ export type LaunchOptions = {
   org?: string
   query?: string
   run?: boolean
+  /** A REST API request to put in the REST API screen, never sent by itself (docs/rest.md "`--rest` の起動時の指定"). */
+  rest?: { method: RestMethod; path: string; body?: string }
 }
+
+/** The methods the REST API screen sends (docs/rest.md "要求"). */
+export const REST_METHODS = ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'] as const
+export type RestMethod = (typeof REST_METHODS)[number]
+
+/** Whether a request with this method carries a body: the server checks it, the screen disables the body for the others. */
+export function methodTakesBody(method: RestMethod): boolean {
+  return method === 'POST' || method === 'PATCH' || method === 'PUT'
+}
+
+/** Whether a path is under /services/, the only paths sfbench sends to Salesforce (the origin is checked by the server). */
+export function isServicesPath(path: string): boolean {
+  return path.startsWith('/services/')
+}
+
+/** POST /api/orgs/:user/rest */
+export type RestRequest = { method: RestMethod; path: string; headers?: Record<string, string>; body?: string }
+
+/** What Salesforce answered, whatever its status (docs/rest.md "応答"). */
+export type RestResponse = {
+  /** The record in the REST history, or undefined when it could not be written. */
+  id: string | undefined
+  status: number
+  /** Header names in lower case, without set-cookie. */
+  headers: Record<string, string>
+  /** The body as Salesforce sent it; empty when omitted. */
+  body: string
+  /** binary: not text. tooLarge: over 20 MB. incomplete: the answer came, but its body stopped arriving (time ran out). */
+  bodyOmitted?: 'binary' | 'tooLarge' | 'incomplete'
+  /** The size of the body in bytes, as received. */
+  size: number
+  elapsedMs: number
+}
+
+export type RestOutcome =
+  | { state: 'pending' }
+  | { state: 'done'; status: number; elapsedMs: number }
+  /** Salesforce may or may not have processed it. */
+  | { state: 'unknown'; reason: 'timeout' | 'unreachable' | 'error' | 'stopped' }
+
+/** One request in the REST history (docs/rest.md "実行履歴"). */
+export type RestHistoryEntry = {
+  id: string
+  method: RestMethod
+  path: string
+  headers?: Record<string, string>
+  body?: string
+  /** The body was not kept, being longer than the history keeps. */
+  bodyOmitted?: boolean
+  /** ISO 8601 */
+  sentAt: string
+  outcome: RestOutcome
+}
+
+export type RestHistoryResponse = { entries: RestHistoryEntry[] }
 
 export type SessionRequest = { code: string }
 

@@ -1,6 +1,7 @@
 // Settings and query history, stored under ~/.sfbench. See docs/design.md ("データの保存").
 import { join } from 'node:path'
-import { AI_PROVIDERS, isValidTimeout, type AiKeyProvider, type AiProvider, type AiSettingsView, type HistoryEntry, type Settings, squashSoql } from '../shared/api.ts'
+import { AI_PROVIDERS, isValidTimeout, type AiKeyProvider, type AiProvider, type AiSettingsView, type HistoryEntry, type Settings, squashSoql, REST_METHODS, type RestHistoryEntry, type RestMethod, type RestOutcome } from '../shared/api.ts'
+import { randomUUID } from 'node:crypto'
 import { readJson, writeFileAtomic } from './fsutil.ts'
 
 /** The AI settings as saved, with the key (docs/ai.md "保存する形"). Never sent to the web UI. */
@@ -153,4 +154,77 @@ export function addHistory(dir: string, username: string, entry: HistoryEntry): 
   const entries = [added, ...previous.filter((e) => !sameQuery(e))].slice(0, MAX_HISTORY)
   writeFileAtomic(historyFile(dir, username), JSON.stringify(entries, null, 2))
   return entries
+}
+
+/** At most this much of a request body is kept in the REST history (docs/rest.md "残すもの"). */
+export const MAX_REST_HISTORY_BODY = 32 * 1024
+
+/** A REST history record as stored: with the server that sent it. */
+type StoredRestEntry = RestHistoryEntry & { bootId?: string }
+
+function loadRestEntries(dir: string, username: string): StoredRestEntry[] {
+  const stored = readJson(historyFile(dir, username))
+  // A record of another shape (a damaged or hand-edited file) is dropped.
+  return Array.isArray(stored) ? stored.filter(isRestEntry) : []
+}
+
+function isRestEntry(e: unknown): e is StoredRestEntry {
+  if (!e || typeof e !== 'object') return false
+  const r = e as Record<string, unknown>
+  const outcome = r.outcome as Record<string, unknown> | undefined
+  return (
+    typeof r.id === 'string' &&
+    typeof r.method === 'string' &&
+    (REST_METHODS as readonly string[]).includes(r.method) &&
+    typeof r.path === 'string' &&
+    typeof r.sentAt === 'string' &&
+    !!outcome &&
+    ['pending', 'done', 'unknown'].includes(outcome.state as string)
+  )
+}
+
+/**
+ * The REST history, newest first. A request still pending from a server that
+ * has stopped (another bootId) shows as unknown, not as waiting for ever.
+ */
+export function loadRestHistory(dir: string, username: string, bootId: string): RestHistoryEntry[] {
+  return loadRestEntries(dir, username).map(({ bootId: entryBoot, ...entry }) =>
+    entry.outcome.state === 'pending' && entryBoot !== bootId ? { ...entry, outcome: { state: 'unknown', reason: 'stopped' } } : entry,
+  )
+}
+
+/**
+ * Records a request just before it is sent, as pending. Returns its id. The
+ * same request twice is two records: the history tells what was sent.
+ */
+export function addRestPending(
+  dir: string,
+  username: string,
+  request: { method: RestMethod; path: string; headers: Record<string, string>; body?: string },
+  bootId: string,
+): string {
+  const id = randomUUID()
+  const keepBody = request.body !== undefined && Buffer.byteLength(request.body) <= MAX_REST_HISTORY_BODY
+  const entry = {
+    id,
+    method: request.method,
+    path: request.path,
+    ...(Object.keys(request.headers).length ? { headers: request.headers } : {}),
+    ...(keepBody ? { body: request.body } : request.body !== undefined ? { bodyOmitted: true } : {}),
+    sentAt: new Date().toISOString(),
+    outcome: { state: 'pending' as const },
+    bootId,
+  }
+  const entries = [entry, ...loadRestEntries(dir, username)].slice(0, MAX_HISTORY)
+  // Not indented: the file is rewritten twice for each request, bodies and all.
+  writeFileAtomic(historyFile(dir, username), JSON.stringify(entries))
+  return id
+}
+
+/** Writes how a request ended; `undefined` removes the record (Salesforce never processed it). A missing record is not added again. */
+export function finishRest(dir: string, username: string, id: string, outcome: RestOutcome | undefined): void {
+  const entries = loadRestEntries(dir, username)
+  if (!entries.some((e) => e.id === id)) return
+  const next = outcome ? entries.map((e) => (e.id === id ? { ...e, outcome } : e)) : entries.filter((e) => e.id !== id)
+  writeFileAtomic(historyFile(dir, username), JSON.stringify(next))
 }
