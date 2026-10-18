@@ -13,6 +13,7 @@ import { useApex } from '../state/ApexContext.tsx'
 import { useApp } from '../state/AppContext.tsx'
 import { useOrgs } from '../state/OrgContext.tsx'
 import { PanelsProvider, usePanels } from '../state/PanelsContext.tsx'
+import { ApexAiBar, ApexProposalCard, FixApexWithAi } from './ApexAi.tsx'
 import { ApexEditor, LogView } from './ApexCode.tsx'
 import { ApiVersionSelect } from './ApiVersionSelect.tsx'
 import { CollapseButton } from './CollapseButton.tsx'
@@ -109,6 +110,8 @@ function Code() {
         <ApiVersionSelect username={apex.username} value={apex.apiVersion} onChange={apex.setApiVersion} />
         <RunButton />
       </div>
+      <ApexAiBar />
+      <ApexProposalCard />
       {hint && (
         <p className={styles.hint} role="status">
           {t.apexModEnterHint}
@@ -233,6 +236,12 @@ function Shown({ result }: { result: ApexResult }) {
             </details>
           )}
           {response.result === 'runtimeError' && <p className={panel.meta}>{t.apexSideEffects}</p>}
+          <FixApexWithAi
+            code={result.run.code}
+            problem={(response.result === 'compileError' ? response.compileProblem : response.exceptionMessage) ?? ''}
+            {...(response.line !== undefined ? { line: response.line } : {})}
+            {...(response.column !== undefined ? { column: response.column } : {})}
+          />
         </div>
       )}
       {response.logsOmitted ? <p className={panel.empty}>{t.apexLogTooLarge}</p> : <Log logs={response.logs} ranAt={result.run.ranAt} />}

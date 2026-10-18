@@ -27,6 +27,7 @@ vi.mock('./apiClient.ts', async (importOriginal) => {
       restHistory: vi.fn(),
       apex: vi.fn(),
       apexHistory: vi.fn(),
+      aiAgent: vi.fn(),
     },
   }
 })
@@ -334,5 +335,54 @@ describe('--apex', () => {
   it('opens the Apex screen first', async () => {
     render(<App launch={{ org: 'demo', apex: { code } }} />)
     expect(await screen.findByRole('textbox', { name: t.apexEditorLabel })).toBeTruthy()
+  })
+})
+
+// docs/ai-agent.md "画面": the Apex screen's AI.
+describe('Apex AI', () => {
+  const ready = { provider: 'anthropic' as const, model: 'claude-x', hasApiKey: true, keyProvider: 'anthropic' as const }
+  const codeRegion = () => screen.getByRole('region', { name: t.apexEditor })
+
+  beforeEach(() => {
+    mocked.settings.mockResolvedValue({ omitNamespace: true, requestTimeoutSeconds: 120, ai: ready })
+  })
+
+  it('asks the AI with the code now, and puts its proposal in the editor without running it', async () => {
+    mocked.aiAgent.mockResolvedValue({ output: { code: "System.debug('two');", explanation: '2 と出します。' } })
+    await openApex()
+    const view = write("System.debug('one');")
+    await userEvent.type(within(codeRegion()).getByRole('textbox', { name: t.aiRequestLabel }), '2 と出す{Enter}')
+    const card = await within(codeRegion()).findByRole('region', { name: t.aiProposal })
+    expect(within(card).queryByRole('button', { name: t.aiReplaceRun })).toBeNull()
+    expect(mocked.aiAgent.mock.calls[0][1]).toMatchObject({ task: 'generateApex', input: { request: '2 と出す', code: "System.debug('one');" } })
+    await userEvent.click(within(card).getByRole('button', { name: t.aiReplace }))
+    expect(view.state.doc.toString()).toBe("System.debug('two');")
+    expect(mocked.apex).not.toHaveBeenCalled()
+  })
+
+  it('fixes a compile error with the code as it was run', async () => {
+    mocked.apex.mockResolvedValue(answer({ result: 'compileError', compileProblem: "Unexpected token '('.", line: 2, column: 13 }))
+    mocked.aiAgent.mockResolvedValue({ output: { code: 'x;', explanation: 'ok' } })
+    await openApex()
+    write('Integer x = 1\nSystem.debug(x)')
+    await userEvent.click(runButton())
+    await within(result()).findByText("Unexpected token '('.")
+    // Changed after running: the fix is for what was run.
+    write('something else')
+    await userEvent.click(within(result()).getByRole('button', { name: t.aiFix }))
+    await within(codeRegion()).findByRole('region', { name: t.aiProposal })
+    expect(mocked.aiAgent.mock.calls[0][1]).toMatchObject({
+      task: 'fixApex',
+      input: { code: 'Integer x = 1\nSystem.debug(x)', problem: "Unexpected token '('.", line: 2, column: 13 },
+    })
+  })
+
+  it('offers no fix for a successful run', async () => {
+    mocked.apex.mockResolvedValue(answer())
+    await openApex()
+    write(code)
+    await userEvent.click(runButton())
+    await within(result()).findByText(t.apexSuccess)
+    expect(within(result()).queryByRole('button', { name: t.aiFix })).toBeNull()
   })
 })

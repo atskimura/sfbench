@@ -17,6 +17,17 @@
   height: 300px;
 }
 
+/* Room for the AI input, as the other screens. */
+.top:has([data-ai-bar]) {
+  height: 380px;
+}
+
+/* Taller while the AI's proposal shows, so that the code stays usable. */
+.top:has([data-ai-proposal]) {
+  height: auto;
+  min-height: 380px;
+}
+
 .top[hidden] {
   display: none;
 }
@@ -36,6 +47,8 @@
 .history {
   flex: 0 0 260px;
   min-width: 0;
+  /* Its list scrolls inside: its length never makes the row taller. */
+  contain: size;
 }
 
 .closedCode {
@@ -176,4 +189,9 @@
   gap: var(--space-1);
   font-size: var(--font-size-small);
   cursor: pointer;
+}
+
+/* The editor (the code area's last child) keeps room while the proposal shows. */
+.top:has([data-ai-proposal]) .code > :last-child {
+  min-height: 160px;
 }
