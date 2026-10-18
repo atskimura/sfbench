@@ -1,7 +1,7 @@
 // The CLI entry point's work: find or start the background server, then open
 // a new browser tab. See docs/design.md ("起動").
 import { spawn } from 'node:child_process'
-import { closeSync, openSync, readFileSync } from 'node:fs'
+import { closeSync, existsSync, openSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { openBrowser } from './browser.ts'
@@ -167,7 +167,8 @@ async function ensureServer(paths: Paths): Promise<ServerInfo> {
     if (info?.pid === server.pid && (await health(info)) !== undefined) return info
   }
   const said = server.stderr()
-  const files = [paths.serverLog, ...(server.stderrFile ? [server.stderrFile] : [])].join(' and ')
+  // The server removes its stderr file once it listens: named only while it is there.
+  const files = [paths.serverLog, ...(server.stderrFile && existsSync(server.stderrFile) ? [server.stderrFile] : [])].join(' and ')
   throw new UserError(`The sfbench server did not start${said ? `:\n${said}` : '.'}\nSee ${files}.`)
 }
 

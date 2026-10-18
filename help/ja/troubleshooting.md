@@ -56,7 +56,7 @@ sfbench のサーバーが止まったか、起動し直されました。
 送り直す前に、Salesforce の画面か実行履歴で確かめてください。
 同じ要求やコードを送り直そうとすると、sfbench は確認のダイアログを出します。
 
-## 「sfbench needs Node.js 22.21.0 or later」と出る
+## 「sfbench needs Node.js ... but this is Node.js ...」と出る
 
 その場所で使われる Node.js が古いためです。
 asdf や nvm などで、プロジェクトのフォルダごとに古い Node.js を指定していると起きます。
@@ -73,7 +73,7 @@ Claude Code のシェルのサンドボックスを有効にしていると（`/
 `~/.claude/settings.json` に次を足して、sfbench だけをサンドボックスの外で動かしてください。
 
 ```json
-"sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench", "npx -y -p node@24 -p sfbench -- sfbench *"] }
+"sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench", "npx -y -p node@24 -p sfbench -- sfbench *", "npx -y -p node@24 -p sfbench -- sfbench"] }
 ```
 
 ## AI が使えない

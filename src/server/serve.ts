@@ -55,9 +55,18 @@ function cleanTmp(dir: string): void {
   const now = Date.now()
   for (const name of readdirSync(dir)) {
     const file = join(dir, name)
-    const mtime = statSync(file, { throwIfNoEntry: false })?.mtimeMs
-    if (mtime !== undefined && now - mtime > TMP_MAX_AGE_MS) rmSync(file, { recursive: true, force: true })
+    try {
+      const mtime = statSync(file, { throwIfNoEntry: false })?.mtimeMs
+      if (mtime !== undefined && now - mtime > TMP_MAX_AGE_MS) rmSync(file, { recursive: true, force: true })
+    } catch {
+      // In use (Windows refuses to remove a file a running server keeps open): left for the next time.
+    }
   }
+}
+
+/** Whether a path is one of the files the CLI keeps a server's stderr in: only such a file is removed. */
+export function isStderrFile(file: string, tmpDir: string): boolean {
+  return dirname(file) === tmpDir && /^server-stderr-[\w-]+\.log$/.test(basename(file))
 }
 
 /**
@@ -68,7 +77,7 @@ function cleanTmp(dir: string): void {
  */
 function removeStderrFile(paths: Paths): void {
   const file = process.env.SFBENCH_STDERR_FILE
-  if (!file || dirname(file) !== paths.tmpDir || !/^server-stderr-[\w-]+\.log$/.test(basename(file))) return
+  if (!file || !isStderrFile(file, paths.tmpDir)) return
   try {
     rmSync(file, { force: true })
   } catch {

@@ -113,7 +113,7 @@ Claude Code のシェルのサンドボックスを有効にしている場合�
 `~/.claude/settings.json` に次を足し、sfbench だけをサンドボックスの外で動かしてください。
 
 ```json
-"sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench", "npx -y -p node@24 -p sfbench -- sfbench *"] }
+"sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench", "npx -y -p node@24 -p sfbench -- sfbench *", "npx -y -p node@24 -p sfbench -- sfbench"] }
 ```
 
 スキルを入れた Claude Code に「sfbench で成約済みの商談を一覧して」と頼むと、エージェントは SOQL を組み立てて次のように起動します。
