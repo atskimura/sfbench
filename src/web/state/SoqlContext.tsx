@@ -95,6 +95,8 @@ export type QueryResult =
       /** The FROM object, for display and the CSV file name. */
       object: string | undefined
       tooling: boolean
+      /** The API version it ran on, undefined for the latest: editing reads the describe of this one (docs/edit.md). */
+      apiVersion: string | undefined
       elapsedMs: number
       executedAt: Date
     }
@@ -131,7 +133,7 @@ export function SoqlProvider({
   initialApiVersion: string | undefined
   children: ReactNode
 }) {
-  const { settings, notify } = useApp()
+  const { settings, notify, guardDiscard } = useApp()
   const { summaries, handleOrgError, markAuthError, reportApiUsage } = useOrgs()
   const summary = summaries[username]
   const editor = useRef<EditorHandle | null>(null)
@@ -248,6 +250,7 @@ export function SoqlProvider({
           // Parsed now, not from the 300 ms debounced selection (docs/web.md).
           object: parseSoql(soql)?.sObject ?? fromObjectOf(soql),
           tooling: useTooling,
+          apiVersion: useVersion,
           elapsedMs: performance.now() - started,
           executedAt: new Date(),
         })
@@ -268,10 +271,13 @@ export function SoqlProvider({
     },
     [startRun, username, tooling, queryAll, apiVersion, reportApiUsage, handleOrgError, markAuthError, refreshHistory],
   )
+  // A new result replaces the table: changes not saved in it are asked about first (docs/edit.md).
   const run = useCallback(() => {
-    const soql = editor.current?.getText() ?? ''
-    void runSoql(soql, { prompt: promptForRun(mark, soql, tooling) })
-  }, [runSoql, mark, tooling])
+    guardDiscard(() => {
+      const soql = editor.current?.getText() ?? ''
+      void runSoql(soql, { prompt: promptForRun(mark, soql, tooling) })
+    })
+  }, [guardDiscard, runSoql, mark, tooling])
 
   const setApiVersion = useCallback(
     (version: string | undefined) => {
@@ -294,9 +300,11 @@ export function SoqlProvider({
       setApiVersion(proposal.apiVersion)
       setMark(markFor(proposal.soql, proposal.tooling, proposal.prompt))
       // The values go to the run directly: the mark and the toggles reach it only after a render.
-      if (andRun) void runSoql(proposal.soql, { tooling: proposal.tooling, apiVersion: proposal.apiVersion, prompt: proposal.prompt, whileRunning: 'replace' })
+      if (andRun) {
+        guardDiscard(() => void runSoql(proposal.soql, { tooling: proposal.tooling, apiVersion: proposal.apiVersion, prompt: proposal.prompt, whileRunning: 'replace' }))
+      }
     },
-    [setText, setTooling, setApiVersion, runSoql],
+    [setText, setTooling, setApiVersion, guardDiscard, runSoql],
   )
 
   // The workspace is remade for each org (docs/web.md "非同期の流れ"): on

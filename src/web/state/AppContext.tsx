@@ -1,8 +1,9 @@
 // App-wide state: whether the server is reachable, a fatal problem, and notifications.
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Settings, SettingsUpdate } from '../../shared/api.ts'
 import { api } from '../apiClient.ts'
 import { errorDetails, errorKind, errorMessage } from '../errors.ts'
+import { t } from '../i18n/i18n.ts'
 import { useTask } from './useTask.ts'
 
 export type Notification = {
@@ -42,6 +43,21 @@ type AppState = {
   /** The settings dialog, opened from the header or from the AI input's notice. */
   settingsOpen: boolean
   setSettingsOpen: (open: boolean) => void
+  /**
+   * How many rows of the result table have changes not saved, and whether a
+   * save or delete is being sent (docs/edit.md "保存していない変更を捨てる前の確認").
+   */
+  setUnsavedEdits: (count: number, sending?: boolean) => void
+  /**
+   * Runs `action` at once, or after asking whether to throw away the changes
+   * not saved. While a save or delete is being sent, does not run it at all:
+   * the rows would be sent while the table that shows their outcome goes.
+   */
+  guardDiscard: (action: () => void) => void
+  /** The question guardDiscard is asking, if any. */
+  discarding: { count: number } | undefined
+  confirmDiscard: () => void
+  cancelDiscard: () => void
 }
 
 const AppContext = createContext<AppState | undefined>(undefined)
@@ -95,6 +111,43 @@ export function AppProvider({ initialMode, children }: { initialMode?: Mode; chi
   }, [])
   const dismiss = useCallback((id: number) => setNotifications((list) => list.filter((n) => n.id !== id)), [])
 
+  // Kept in a ref too: guardDiscard reads it when called, not when last drawn.
+  // Whether closing the tab asks: changes not saved, or a save or delete still being sent.
+  const [unsavedEdits, setUnsavedState] = useState(false)
+  const unsaved = useRef({ count: 0, sending: false })
+  const setUnsavedEdits = useCallback((count: number, sending = false) => {
+    unsaved.current = { count, sending }
+    setUnsavedState(count > 0 || sending)
+  }, [])
+  const [pendingDiscard, setPendingState] = useState<{ count: number; action: () => void }>()
+  const pending = useRef(pendingDiscard)
+  const setPendingDiscard = useCallback((next: { count: number; action: () => void } | undefined) => {
+    pending.current = next
+    setPendingState(next)
+  }, [])
+  const guardDiscard = useCallback(
+    (action: () => void) => {
+      if (unsaved.current.sending) notify({ message: t.editsSending })
+      else if (unsaved.current.count > 0) setPendingDiscard({ count: unsaved.current.count, action })
+      else action()
+    },
+    [setPendingDiscard, notify],
+  )
+  const confirmDiscard = useCallback(() => {
+    const action = pending.current?.action
+    setPendingDiscard(undefined)
+    action?.()
+  }, [setPendingDiscard])
+  const cancelDiscard = useCallback(() => setPendingDiscard(undefined), [setPendingDiscard])
+  // Closing or reloading the tab asks too, with the browser's own question.
+  useEffect(() => {
+    if (!unsavedEdits) return
+    const ask = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', ask)
+    return () => window.removeEventListener('beforeunload', ask)
+  }, [unsavedEdits])
+
+
   const handleCommonError = useCallback(
     (e: unknown) => {
       const kind = errorKind(e)
@@ -142,9 +195,30 @@ export function AppProvider({ initialMode, children }: { initialMode?: Mode; chi
     [start, reportError],
   )
 
+  const discarding = useMemo(() => (pendingDiscard ? { count: pendingDiscard.count } : undefined), [pendingDiscard])
   const value = useMemo(
-    () => ({ settings, saveSettings, savingSettings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError, reportError, mode, setMode, settingsOpen, setSettingsOpen }),
-    [settings, saveSettings, savingSettings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError, reportError, mode, setMode, settingsOpen],
+    () => ({
+      settings,
+      saveSettings,
+      savingSettings,
+      sessionLost,
+      sfNotFound,
+      notifications,
+      notify,
+      dismiss,
+      handleCommonError,
+      reportError,
+      mode,
+      setMode,
+      settingsOpen,
+      setSettingsOpen,
+      setUnsavedEdits,
+      guardDiscard,
+      discarding,
+      confirmDiscard,
+      cancelDiscard,
+    }),
+    [settings, saveSettings, savingSettings, sessionLost, sfNotFound, notifications, notify, dismiss, handleCommonError, reportError, mode, setMode, settingsOpen, setUnsavedEdits, guardDiscard, discarding, confirmDiscard, cancelDiscard],
   )
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

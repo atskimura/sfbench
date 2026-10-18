@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { Org } from '../../shared/api.ts'
 import { t } from '../i18n/i18n.ts'
 import { isProductionByList, orgKindLabel } from '../orgs/production.ts'
+import { useApp } from '../state/AppContext.tsx'
 import { useOrgs, type OrgStatus } from '../state/OrgContext.tsx'
 import { CommandText } from './CommandText.tsx'
 import { CopyCommand } from './CopyCommand.tsx'
@@ -65,6 +66,9 @@ function dotClass(status: OrgStatus | undefined): string {
 
 function OrgPopover({ id }: { id: string }) {
   const { orgs, loading, loadError, selected, selectOrg, status, notice, connectionCheck, recheckConnections } = useOrgs()
+  const { guardDiscard } = useApp()
+  // Another org remakes the workspace: changes not saved in the result table are asked about first (docs/edit.md).
+  const choose = (username: string) => (username === selected ? selectOrg(username) : guardDiscard(() => selectOrg(username)))
   const [filter, setFilter] = useState('')
   const inputId = useId()
   // Deleted or expired orgs are hidden; orgs that need a new login are folded
@@ -116,7 +120,7 @@ function OrgPopover({ id }: { id: string }) {
               org={org}
               current={org.username === selected}
               status={effectiveStatus(org, status[org.username])}
-              onSelect={() => selectOrg(org.username)}
+              onSelect={() => choose(org.username)}
             />
           ))}
         </ul>
@@ -130,7 +134,7 @@ function OrgPopover({ id }: { id: string }) {
                   org={org}
                   current={false}
                   status={effectiveStatus(org, status[org.username])}
-                  onSelect={() => selectOrg(org.username)}
+                  onSelect={() => choose(org.username)}
                 />
               ))}
             </ul>

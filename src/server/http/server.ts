@@ -26,6 +26,7 @@ import {
   type RestOutcome,
   type RestResponse,
   type SessionResponse,
+  type RecordsResponse,
   type SettingsUpdate,
   type VersionsResponse,
 } from '../../shared/api.ts'
@@ -42,6 +43,7 @@ import {
   salesforcePath,
 } from '../salesforce.ts'
 import { checkRestRequest, MAX_REST_RESPONSE_BYTES, restLaunch, restResponseBody, RestRequestError } from '../rest.ts'
+import { checkDelete, checkUpdate, recordResults, RecordsRequestError, updateBody } from '../records.ts'
 import { NotJsonBodyError, type RawResponse } from '../sf/apiRequest.ts'
 import { ApexFileError, ApexRunError, runApex, type ApexRun } from '../sf/apexRun.ts'
 import { openOrg, reloginCommand } from '../sf/commands.ts'
@@ -381,6 +383,16 @@ export class App {
       return
     }
 
+    if (rest === 'records/update' && method === 'POST') {
+      await this.updateRecords(req, res, client)
+      return
+    }
+
+    if (rest === 'records/delete' && method === 'POST') {
+      await this.deleteRecords(req, res, client)
+      return
+    }
+
     if (rest === 'rest/history' && method === 'GET') {
       sendJson(res, 200, { entries: loadRestHistory(this.options.paths.restHistoryDir, username, this.bootId) } satisfies RestHistoryResponse)
       return
@@ -448,6 +460,35 @@ export class App {
     // No query string, body or header values in the log: they may hold record data.
     log.info(`rest ${request.method} ${pathname} ${raw.status} ${elapsedMs}ms`)
     sendJson(res, 200, { ...({ id, status: raw.status, ...restResponseBody(raw), elapsedMs } satisfies RestResponse), apiUsage: client.apiUsage })
+  }
+
+  /**
+   * Saves records from the result table, at most one sObject Collections call
+   * (docs/edit.md "サーバー"). Never sent twice: PATCH changes data.
+   */
+  private async updateRecords(req: IncomingMessage, res: ServerResponse, client: OrgClient): Promise<void> {
+    const input = await readJsonObject(req)
+    const request = checkUpdate(input)
+    const version = await client.version(versionOf(input.apiVersion))
+    const started = performance.now()
+    const answer = await client.request({ method: 'PATCH', path: `/services/data/v${version}/composite/sobjects`, body: updateBody(request) })
+    const results = recordResults(request.records.map((r) => r.id), answer.body)
+    // Counts only: the values and Salesforce's messages can hold record data.
+    log.info(`records update ${request.object} ${results.length} ${results.filter((r) => !r.success).length} ${Math.round(performance.now() - started)}ms`)
+    sendJson(res, 200, { ...({ results } satisfies RecordsResponse), apiUsage: client.apiUsage })
+  }
+
+  /** Deletes records from the result table, at most one sObject Collections call. */
+  private async deleteRecords(req: IncomingMessage, res: ServerResponse, client: OrgClient): Promise<void> {
+    const input = await readJsonObject(req)
+    const request = checkDelete(input)
+    const version = await client.version(versionOf(input.apiVersion))
+    const started = performance.now()
+    const query = `ids=${request.ids.join(',')}&allOrNone=${request.allOrNone}`
+    const answer = await client.request({ method: 'DELETE', path: `/services/data/v${version}/composite/sobjects?${query}` })
+    const results = recordResults(request.ids, answer.body)
+    log.info(`records delete ${results.length} ${results.filter((r) => !r.success).length} ${Math.round(performance.now() - started)}ms`)
+    sendJson(res, 200, { ...({ results } satisfies RecordsResponse), apiUsage: client.apiUsage })
   }
 
   /**
@@ -665,7 +706,7 @@ export function errorResponse(e: unknown): { status: number; body: ApiError } {
   }
   if (e instanceof SalesforceUnreachableError) return { status: 502, body: errorBody('SALESFORCE_UNREACHABLE', e.message) }
   if (e instanceof SalesforceTimeoutError) return { status: 504, body: errorBody('SALESFORCE_TIMEOUT', e.message) }
-  if (e instanceof InvalidPathError || e instanceof RestRequestError || e instanceof NotJsonBodyError || e instanceof UnsupportedVersionError) return { status: 400, body: errorBody('BAD_REQUEST', e.message) }
+  if (e instanceof InvalidPathError || e instanceof RestRequestError || e instanceof RecordsRequestError || e instanceof NotJsonBodyError || e instanceof UnsupportedVersionError) return { status: 400, body: errorBody('BAD_REQUEST', e.message) }
   if (e instanceof SfNotFoundError) return { status: 503, body: errorBody('SF_CLI_NOT_FOUND', e.message) }
   if (e instanceof AiError) {
     const status = { AI_NOT_CONFIGURED: 400, AI_ERROR: 502, AI_BAD_OUTPUT: 502, AI_TIMEOUT: 504 }[e.code]
