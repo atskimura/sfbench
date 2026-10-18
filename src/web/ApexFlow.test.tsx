@@ -385,4 +385,19 @@ describe('Apex AI', () => {
     await within(result()).findByText(t.apexSuccess)
     expect(within(result()).queryByRole('button', { name: t.aiFix })).toBeNull()
   })
+
+  it('sends the last result as how it ended and its USER_DEBUG lines, only when chosen', async () => {
+    mocked.apex.mockResolvedValue(answer())
+    mocked.aiAgent.mockResolvedValue({ output: { code: 'x;', explanation: 'ok' } })
+    await openApex()
+    write(code)
+    await userEvent.click(runButton())
+    await within(result()).findByText(t.apexSuccess)
+    await userEvent.click(within(codeRegion()).getByRole('button', { name: new RegExp(t.aiSendPrevious) }))
+    await userEvent.type(within(codeRegion()).getByRole('textbox', { name: t.aiRequestLabel }), '続き{Enter}')
+    await within(codeRegion()).findByRole('region', { name: t.aiProposal })
+    expect(mocked.aiAgent.mock.calls[0][1].input).toMatchObject({
+      previous: { outcome: 'Ran successfully.', debug: '16:52:14.24 (31275249)|USER_DEBUG|[2]|DEBUG|rows 2' },
+    })
+  })
 })

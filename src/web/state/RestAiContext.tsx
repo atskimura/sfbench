@@ -4,6 +4,7 @@
 // proposal is put in. Inside the workspace, which is remade for each org.
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import type { AgentRestRequest, RestProposalOutput } from '../../shared/api.ts'
+import { cutRunText } from '../ai/cut.ts'
 import { api } from '../apiClient.ts'
 import { uiLanguage } from '../i18n/i18n.ts'
 import type { RestSnapshot } from '../rest/request.ts'
@@ -22,6 +23,15 @@ type RestAiValue = AiSession<RestProposal, AgentStep> & {
   /** Whether the request now is sent: unticking holds for this workspace. */
   sendCurrent: boolean
   setSendCurrent: (on: boolean) => void
+  /** Whether there is a response to send. */
+  hasPrevious: boolean
+  /** Whether the last response is sent: off unless chosen, as it can hold record values (docs/ai-agent.md "前の結果"). */
+  sendPrevious: boolean
+  setSendPrevious: (on: boolean) => void
+  /** From the result's button: sends the last result, and draws the eyes up to the AI input (or stops sending it). */
+  takeResult: (on: boolean) => void
+  /** Counts takeResult(true), for the AI input to take the focus and flash. */
+  attention: number
   generate: () => void
   /** Asks the AI to fix a request that Salesforce answered with an error, as it was sent. */
   fix: (sent: RestSnapshot, status: number, responseBody: string) => void
@@ -30,9 +40,6 @@ type RestAiValue = AiSession<RestProposal, AgentStep> & {
 }
 
 const RestAiContext = createContext<RestAiValue | undefined>(undefined)
-
-/** The most of a response body sent to fix a request: Salesforce's error bodies are far smaller. */
-const MAX_ERROR_BODY = 16_000
 
 const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
@@ -45,6 +52,19 @@ export function RestAiProvider({ username, children }: { username: string; child
   const session = useAiSession<RestProposal, AgentStep>(username)
   // Unsent once the user says so, until the workspace goes (as the SOQL editor's pill).
   const [sendCurrent, setSendCurrent] = useState(true)
+  const [sendPrevious, setSendPrevious] = useState(false)
+  const [attention, setAttention] = useState(0)
+  const takeResult = useCallback((on: boolean) => {
+    setSendPrevious(on)
+    if (on) setAttention((n) => n + 1)
+  }, [])
+  const last = rest.result.state === 'response' ? rest.result.response : undefined
+  // A new result is not the one chosen: it is not sent unless chosen again.
+  const [chosenFor, setChosenFor] = useState(last)
+  if (chosenFor !== last) {
+    setChosenFor(last)
+    setSendPrevious(false)
+  }
   const hasCurrent = rest.path.trim() !== ''
   const { availability, request, start, proposal, applied } = session
   const { getBody, setMethod, setPath, setBody } = rest
@@ -54,20 +74,21 @@ export function RestAiProvider({ username, children }: { username: string; child
     if (!text || availability !== 'ready') return
     // The values when it was pressed: the body reads only these.
     const current = sendCurrent && hasCurrent ? agentRequest({ method: rest.method, path: rest.path, body: getBody() }) : undefined
-    const input = { request: text, language: uiLanguage, timeZone: timeZone(), ...(current ? { current } : {}) }
+    const previous = sendPrevious && last ? { status: last.status, body: cutRunText(last.body) } : undefined
+    // Sent once: the record values in it do not go along with the requests after this one.
+    if (previous && !session.running) setSendPrevious(false)
+    const input = { request: text, language: uiLanguage, timeZone: timeZone(), ...(current ? { current } : {}), ...(previous ? { previous } : {}) }
     start(async (signal, progress) => {
       progress('think')
       const { output } = await api.aiAgent(username, { task: 'generateRest', input }, signal)
       return { ...output, fixing: false }
     }, getBody)
-  }, [request, availability, sendCurrent, hasCurrent, rest.method, rest.path, getBody, username, start])
+  }, [request, availability, sendCurrent, hasCurrent, sendPrevious, last, session.running, rest.method, rest.path, getBody, username, start])
 
   const fix = useCallback(
     (sent: RestSnapshot, status: number, responseBody: string) => {
       if (availability !== 'ready') return
-      // The start of the body is what tells the error; a whole HTML error page would not fit what the server takes.
-      const body = responseBody.length > MAX_ERROR_BODY ? `${responseBody.slice(0, MAX_ERROR_BODY)}\n(cut)` : responseBody
-      const input = { sent: agentRequest(sent), status, responseBody: body, language: uiLanguage, timeZone: timeZone() }
+      const input = { sent: agentRequest(sent), status, responseBody: cutRunText(responseBody), language: uiLanguage, timeZone: timeZone() }
       start(async (signal, progress) => {
         progress('think')
         const { output } = await api.aiAgent(username, { task: 'fixRest', input }, signal)
@@ -86,8 +107,8 @@ export function RestAiProvider({ username, children }: { username: string; child
   }, [proposal, setMethod, setPath, setBody, applied])
 
   const value = useMemo<RestAiValue>(
-    () => ({ ...session, hasCurrent, sendCurrent, setSendCurrent, generate, fix, apply }),
-    [session, hasCurrent, sendCurrent, generate, fix, apply],
+    () => ({ ...session, hasCurrent, sendCurrent, setSendCurrent, hasPrevious: last !== undefined, sendPrevious, setSendPrevious, takeResult, attention, generate, fix, apply }),
+    [session, hasCurrent, sendCurrent, last, sendPrevious, takeResult, attention, generate, fix, apply],
   )
   return <RestAiContext.Provider value={value}>{children}</RestAiContext.Provider>
 }

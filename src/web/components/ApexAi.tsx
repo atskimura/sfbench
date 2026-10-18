@@ -3,6 +3,7 @@
 import { t } from '../i18n/i18n.ts'
 import { useApex } from '../state/ApexContext.tsx'
 import { useApexAi } from '../state/ApexAiContext.tsx'
+import { usePanels } from '../state/PanelsContext.tsx'
 import { AiInput, DiffText, ProposalFrame, Send, SendFixed } from './AiBar.tsx'
 import panel from './Panel.module.css'
 
@@ -13,11 +14,13 @@ export function ApexAiBar() {
       session={ai}
       stepText={ai.step && t.aiThinking}
       onGenerate={ai.generate}
-      placeholder={t.aiApexPlaceholder}
+      placeholder={ai.sendPrevious ? t.aiPreviousPlaceholder : t.aiApexPlaceholder}
+      attention={ai.attention}
       sends={
         <>
           <SendFixed text={t.aiSendMetadata} />
           {ai.hasCode && <Send text={t.aiSendCurrentCode} checked={ai.sendCode} onChange={ai.setSendCode} />}
+          {ai.hasPrevious && <Send text={t.aiSendPrevious} title={t.aiSendPreviousHint} checked={ai.sendPrevious} onChange={ai.setSendPrevious} />}
         </>
       }
     />
@@ -43,6 +46,27 @@ export function ApexProposalCard() {
       {/* Against the code when the proposal arrived; the card says when the code has changed since. */}
       <DiffText before={p.before} after={p.code} stale={apex.getCode() !== p.before} />
     </ProposalFrame>
+  )
+}
+
+/** "Use this result with AI" on a result: opens the code area, and the AI input takes the eyes. */
+export function UseApexResultWithAi() {
+  const ai = useApexAi()
+  const { setOpen } = usePanels()
+  if (ai.availability !== 'ready' || !ai.hasPrevious) return null
+  return (
+    <button
+      type="button"
+      className={panel.button}
+      aria-pressed={ai.sendPrevious}
+      title={t.aiSendPreviousHint}
+      onClick={() => {
+        if (!ai.sendPrevious) setOpen('apexEditor', true)
+        ai.takeResult(!ai.sendPrevious)
+      }}
+    >
+      {ai.sendPrevious ? t.aiUsingResult : t.aiUseResult}
+    </button>
   )
 }
 

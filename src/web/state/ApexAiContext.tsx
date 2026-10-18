@@ -3,7 +3,9 @@
 // every screen's AI shares is useAiSession; this holds what is sent and how a
 // proposal is put in. Inside the workspace, which is remade for each org.
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
-import type { ApexProposalOutput } from '../../shared/api.ts'
+import type { AgentPreviousApex, ApexProposalOutput, ApexResponse } from '../../shared/api.ts'
+import { userDebugOnly } from '../apex/log.ts'
+import { cutRunText } from '../ai/cut.ts'
 import { api } from '../apiClient.ts'
 import { uiLanguage } from '../i18n/i18n.ts'
 import { useApex } from './ApexContext.tsx'
@@ -16,6 +18,15 @@ type ApexAiValue = AiSession<ApexProposalOutput, AgentStep> & {
   /** Whether the code now is sent: unticking holds for this workspace. */
   sendCode: boolean
   setSendCode: (on: boolean) => void
+  /** Whether there is a result to send. */
+  hasPrevious: boolean
+  /** Whether the last result is sent: off unless chosen, as it can hold record values (docs/ai-agent.md "前の結果"). */
+  sendPrevious: boolean
+  setSendPrevious: (on: boolean) => void
+  /** From the result's button: sends the last result, and draws the eyes up to the AI input (or stops sending it). */
+  takeResult: (on: boolean) => void
+  /** Counts takeResult(true), for the AI input to take the focus and flash. */
+  attention: number
   generate: () => void
   /** Asks the AI to fix code that did not compile or threw, as it was run. */
   fix: (failed: { code: string; problem: string; line?: number; column?: number }) => void
@@ -25,6 +36,13 @@ type ApexAiValue = AiSession<ApexProposalOutput, AgentStep> & {
 
 const ApexAiContext = createContext<ApexAiValue | undefined>(undefined)
 
+/** The last run as sent to the AI: how it ended, and what System.debug wrote (the rest of the log is long and says little). */
+function previousOf(r: ApexResponse): AgentPreviousApex {
+  const outcome =
+    r.result === 'success' ? 'Ran successfully.' : r.result === 'compileError' ? `Compile error: ${r.compileProblem ?? ''}` : `Exception: ${r.exceptionMessage ?? ''}`
+  return { outcome: cutRunText(outcome), debug: cutRunText(userDebugOnly(r.logs)) }
+}
+
 const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
 export function ApexAiProvider({ username, children }: { username: string; children: ReactNode }) {
@@ -32,6 +50,19 @@ export function ApexAiProvider({ username, children }: { username: string; child
   const session = useAiSession<ApexProposalOutput, AgentStep>(username)
   // Unsent once the user says so, until the workspace goes (as the SOQL editor's pill).
   const [sendCode, setSendCode] = useState(true)
+  const [sendPrevious, setSendPrevious] = useState(false)
+  const [attention, setAttention] = useState(0)
+  const takeResult = useCallback((on: boolean) => {
+    setSendPrevious(on)
+    if (on) setAttention((n) => n + 1)
+  }, [])
+  const last = apex.result.state === 'response' ? apex.result.response : undefined
+  // A new result is not the one chosen: it is not sent unless chosen again.
+  const [chosenFor, setChosenFor] = useState(last)
+  if (chosenFor !== last) {
+    setChosenFor(last)
+    setSendPrevious(false)
+  }
   const hasCode = !apex.empty
   const { availability, request, start, proposal, applied } = session
   const { getCode, setCode } = apex
@@ -41,12 +72,15 @@ export function ApexAiProvider({ username, children }: { username: string; child
     if (!text || availability !== 'ready') return
     // The values when it was pressed: the body reads only these.
     const code = sendCode && hasCode ? getCode() : undefined
-    const input = { request: text, language: uiLanguage, timeZone: timeZone(), ...(code !== undefined ? { code } : {}) }
+    const previous = sendPrevious && last ? previousOf(last) : undefined
+    // Sent once: the record values in it do not go along with the requests after this one.
+    if (previous && !session.running) setSendPrevious(false)
+    const input = { request: text, language: uiLanguage, timeZone: timeZone(), ...(code !== undefined ? { code } : {}), ...(previous ? { previous } : {}) }
     start(async (signal, progress) => {
       progress('think')
       return (await api.aiAgent(username, { task: 'generateApex', input }, signal)).output
     }, getCode)
-  }, [request, availability, sendCode, hasCode, getCode, username, start])
+  }, [request, availability, sendCode, hasCode, sendPrevious, last, session.running, getCode, username, start])
 
   const fix = useCallback(
     (failed: { code: string; problem: string; line?: number; column?: number }) => {
@@ -67,8 +101,8 @@ export function ApexAiProvider({ username, children }: { username: string; child
   }, [proposal, setCode, applied])
 
   const value = useMemo<ApexAiValue>(
-    () => ({ ...session, hasCode, sendCode, setSendCode, generate, fix, apply }),
-    [session, hasCode, sendCode, generate, fix, apply],
+    () => ({ ...session, hasCode, sendCode, setSendCode, hasPrevious: last !== undefined, sendPrevious, setSendPrevious, takeResult, attention, generate, fix, apply }),
+    [session, hasCode, sendCode, last, sendPrevious, takeResult, attention, generate, fix, apply],
   )
   return <ApexAiContext.Provider value={value}>{children}</ApexAiContext.Provider>
 }
