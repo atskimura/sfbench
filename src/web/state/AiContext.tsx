@@ -5,9 +5,11 @@
 // request and drops the proposal. Kept apart from the SOQL state so that the
 // AI's steps do not redraw the editor.
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { MAX_AI_SOQL_TEXT } from '../../shared/api.ts'
 import type { AiStep, Proposal } from '../ai/aiState.ts'
+import { cutRunText } from '../ai/cut.ts'
 import { api } from '../apiClient.ts'
-import { uiLanguage } from '../i18n/i18n.ts'
+import { t, uiLanguage } from '../i18n/i18n.ts'
 import { fromObjectOf } from '../soql/context.ts'
 import { usePanels } from './PanelsContext.tsx'
 import { useSoql, type QueryResult } from './SoqlContext.tsx'
@@ -61,6 +63,7 @@ export function AiProvider({ username, children }: { username: string; children:
       ...(panelObject ? { openObject: panelObject } : {}),
     }
     start(async (signal, progress) => {
+      if (editor.length > MAX_AI_SOQL_TEXT) throw new Error(t.aiEditorTooLong)
       progress('think')
       const { output } = await api.aiAgent(username, { task: 'generateSoql', input, ...(apiVersion ? { apiVersion } : {}) }, signal)
       return { ...output, tooling, apiVersion, prompt: text }
@@ -75,8 +78,10 @@ export function AiProvider({ username, children }: { username: string; children:
       // The query as it was run, on its API and version, not what the editor holds now.
       const { soql: query, tooling, apiVersion, prompt } = rejected
       const object = fromObjectOf(query)
-      const input = { soql: query, error, tooling, language: uiLanguage, timeZone: browserTimeZone(), ...(object ? { object } : {}) }
+      // Salesforce's error, as the REST API and Apex screens send theirs (src/web/ai/cut.ts).
+      const input = { soql: query, error: cutRunText(error), tooling, language: uiLanguage, timeZone: browserTimeZone(), ...(object ? { object } : {}) }
       start(async (signal, progress) => {
+        if (query.length > MAX_AI_SOQL_TEXT) throw new Error(t.aiQueryTooLong)
         progress('think')
         const { output } = await api.aiAgent(username, { task: 'fixSoql', input, ...(apiVersion ? { apiVersion } : {}) }, signal)
         // The fixed query keeps the request of the query it fixes, if that one had one.

@@ -32,6 +32,8 @@ export const en = {
   settingsOmitNamespaceNote: 'Write Invoice__c instead of acme__Invoice__c in orgs with a namespace. Applies to all orgs.',
   settingsAi: 'AI',
   aiOff: 'AI is off.',
+  aiEditorTooLong: 'The editor text is too long to send to the AI. Turn off "Editor text" and try again.',
+  aiQueryTooLong: 'The query is too long to send to the AI.',
   aiSetUp: 'Set up AI',
   aiSetUpNote: 'Choose an AI and enter its model and API key in the settings.',
   aiPlaceholder: 'Describe the query, e.g. opportunities won this month, largest first',

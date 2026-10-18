@@ -317,6 +317,13 @@ describe('AI', () => {
     expect((await card()).closest('[hidden]')).toBeNull()
   })
 
+  it('says the editor text is too long to send, in the screen\'s words, and sends nothing', async () => {
+    replies('SELECT Name FROM Account')
+    await ask('名前', `SELECT Id FROM Account WHERE Name IN ('${'x'.repeat(50_000)}')`)
+    expect((await screen.findByRole('alert')).textContent).toContain(t.aiEditorTooLong)
+    expect(mocked.aiAgent).not.toHaveBeenCalled()
+  })
+
   it('shows the API error under the input and drops the proposal', async () => {
     mocked.aiAgent.mockResolvedValueOnce(answer('SELECT Name FROM Account') as never).mockRejectedValueOnce(new ApiRequestError(502, 'AI_ERROR', 'invalid x-api-key'))
     await ask('名前')

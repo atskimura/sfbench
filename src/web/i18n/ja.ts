@@ -32,6 +32,8 @@ export const ja: Messages = {
   settingsOmitNamespaceNote: '名前空間のある組織で acme__Invoice__c の代わりに Invoice__c と書けます。全組織に効きます。',
   settingsAi: 'AI',
   aiOff: 'AI は使えません。',
+  aiEditorTooLong: 'エディタの内容が長すぎて AI に送れません。「エディタの内容」の札を外してから、もう一度試してください。',
+  aiQueryTooLong: 'クエリが長すぎて AI に送れません。',
   aiSetUp: 'AI を設定',
   aiSetUpNote: '設定で AI を選び、モデルと API キーを入れてください。',
   aiPlaceholder: 'やりたいことを書く（例: 今月成約した商談を金額の大きい順に）',

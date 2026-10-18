@@ -1,13 +1,10 @@
 // What the AI is asked to do with tools (docs/ai-agent.md "答えの形", "タスク"): the
 // instructions, the shape of the answer (the submit tool), and the check of
 // what comes back.
-import { isServicesPath, REST_METHODS, type AgentOutput, type AgentRestRequest, type AgentTask, type AgentTaskRequest, type UiLanguage } from '../../shared/api.ts'
+import { isServicesPath, MAX_AI_SOQL_TEXT, REST_METHODS, type AgentOutput, type AgentRestRequest, type AgentTask, type AgentTaskRequest, type UiLanguage } from '../../shared/api.ts'
 import { AiError } from './errors.ts'
 
 const LANGUAGE_NAMES: Record<UiLanguage, string> = { en: 'English', ja: 'Japanese' }
-
-/** The most characters of a query, an editor text or an error sent to the AI: far beyond a real query (Salesforce takes 100,000). */
-export const MAX_SOQL_TEXT = 50_000
 
 const REST_SCHEMA = {
   type: 'object',
@@ -252,7 +249,7 @@ export function invalidAgentRequest(body: Record<string, unknown>): string | und
   const isName = (v: unknown) => v === undefined || (typeof v === 'string' && v.length <= 255)
   // Text sent to the AI with every turn of the exchange: kept to what a query is.
   const tooLong = (v: unknown, what: string) =>
-    typeof v === 'string' && v.length > MAX_SOQL_TEXT ? `The ${what} is too long to send to the AI (at most ${MAX_SOQL_TEXT.toLocaleString('en')} characters).` : undefined
+    typeof v === 'string' && v.length > MAX_AI_SOQL_TEXT ? `The ${what} is too long to send to the AI (at most ${MAX_AI_SOQL_TEXT.toLocaleString('en')} characters).` : undefined
   switch (body.task) {
     case 'generateSoql':
       if (typeof input.request !== 'string' || !input.request.trim()) return 'input.request is required'

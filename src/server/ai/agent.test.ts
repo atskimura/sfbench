@@ -1,9 +1,9 @@
 // docs/ai-agent.md "サーバー": the AI reading metadata through tools and answering through submit.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentTaskRequest } from '../../shared/api.ts'
-import { cutToBudget, MAX_TOOL_CALLS, runAgent, todayIn } from './agent.ts'
+import { MAX_TOOL_CALLS, runAgent, todayIn } from './agent.ts'
 import { agentPrompt, invalidAgentRequest } from './agentTasks.ts'
-import { describeText, findObjectsText, runTool, type MetadataSource } from './tools.ts'
+import { cutToBudget, describeText, findObjectsText, MAX_READ_BYTES, newReadState, runTool, type MetadataSource } from './tools.ts'
 import type { AiError } from './errors.ts'
 
 const anthropic = { provider: 'anthropic' as const, model: 'claude-x', apiKey: 'sk-ant', keyProvider: 'anthropic' as const }
@@ -41,6 +41,9 @@ const use = (id: string, name: string, input: unknown) => ({ type: 'tool_use', i
 const sentBody = (fetch: ReturnType<typeof vi.fn>, call: number) => JSON.parse((fetch.mock.calls[call] as unknown as [string, RequestInit])[1].body as string)
 
 afterEach(() => vi.unstubAllGlobals())
+
+/** One tool call, as the first of a request. */
+const tool = (src: MetadataSource, name: string, input: unknown, budget = Infinity) => runTool(src, name, input, budget, newReadState())
 
 describe('runAgent', () => {
   it('runs the tools the AI calls and returns the answer it submits', async () => {
@@ -161,18 +164,18 @@ describe('tools', () => {
     })
     expect(text.split('\n')).toEqual([
       'Object Opportunity (商談)',
+      'Child relationships:',
+      'OpportunityLineItems -> OpportunityLineItem',
       'Fields:',
       'StageName picklist フェーズ [Prospecting]',
       'AccountId reference(Account) relationship Account 取引先 ID',
       'CreatedDate datetime readonly 作成日',
-      'Child relationships:',
-      'OpportunityLineItems -> OpportunityLineItem',
     ])
   })
 
   it('takes only a describe for an object, never another cached answer such as the object list', async () => {
     const odd = { ...source, describe: async () => ({ sobjects: [] }) as never }
-    expect(await runTool(odd, 'describeObject', { name: 'global' })).toContain('no object named global')
+    expect(await tool(odd, 'describeObject', { name: 'global' })).toContain('no object named global')
   })
 
   it('cuts a result at the budget, on a line, and says so', () => {
@@ -185,10 +188,10 @@ describe('tools', () => {
   })
 
   it('answers a call of the wrong shape with what is wrong, so that the AI can try again', async () => {
-    expect(await runTool(source, 'describeObject', { name: 'Account; DROP' })).toBe('name must be an object API name.')
-    expect(await runTool(source, 'describeObject', { name: 'Nope__c' })).toContain('no object named Nope__c')
-    expect(await runTool(source, 'findObjects', { keywords: 'x' })).toBe('keywords must be a list of strings.')
-    expect(await runTool(source, 'deleteEverything', {})).toBe('There is no tool named deleteEverything.')
+    expect(await tool(source, 'describeObject', { name: 'Account; DROP' })).toBe('name must be an object API name.')
+    expect(await tool(source, 'describeObject', { name: 'Nope__c' })).toContain('no object named Nope__c')
+    expect(await tool(source, 'findObjects', { keywords: 'x' })).toBe('keywords must be a list of strings.')
+    expect(await tool(source, 'deleteEverything', {})).toBe('There is no tool named deleteEverything.')
   })
 })
 
@@ -295,20 +298,20 @@ describe('SOQL', () => {
 
   it('reads an object named with or without the namespace, in any case, under the spelling of the list', async () => {
     describeInvoice.mockClear()
-    const text = await runTool(soqlSource, 'describeObject', { name: 'INVOICE__C' })
+    const text = await tool(soqlSource, 'describeObject', { name: 'INVOICE__C' })
     expect(describeInvoice).toHaveBeenCalledWith('acme__Invoice__c')
     expect(text.split('\n')).toEqual([
       'Object Invoice__c (Invoice)',
+      'Child relationships:',
+      'Lines__r -> Line__c',
       'Fields:',
       'Status__c picklist Status [Unpaid]',
       'Account__c reference(Account) relationship Account__r Account',
-      'Child relationships:',
-      'Lines__r -> Line__c',
     ])
     // Without the omitted namespace, only the full name is the object.
     const full = { ...soqlSource, omitNamespace: undefined }
-    expect(await runTool(full, 'describeObject', { name: 'Invoice__c' })).toContain('no object named Invoice__c')
-    expect(await runTool(full, 'describeObject', { name: 'acme__Invoice__c' })).toContain('Object acme__Invoice__c')
+    expect(await tool(full, 'describeObject', { name: 'Invoice__c' })).toContain('no object named Invoice__c')
+    expect(await tool(full, 'describeObject', { name: 'acme__Invoice__c' })).toContain('Object acme__Invoice__c')
   })
 
   it('writes a query with the open object as a hint, the editor as data, and the SOQL rules', async () => {
@@ -358,13 +361,13 @@ describe('SOQL', () => {
       })),
     }
     const bigSource: MetadataSource = { objects: async () => [{ name: 'Big__c', label: 'Big' }], describe: async () => big }
-    const full = await runTool(bigSource, 'describeObject', { name: 'Big__c' })
+    const full = await tool(bigSource, 'describeObject', { name: 'Big__c' })
     expect(full).toContain('F199__c picklist A long label for field number 199 [One value, Another value]')
-    const smaller = await runTool(bigSource, 'describeObject', { name: 'Big__c' }, new TextEncoder().encode(full).length - 1)
+    const smaller = await tool(bigSource, 'describeObject', { name: 'Big__c' }, new TextEncoder().encode(full).length - 1)
     expect(smaller).toContain('Picklist values are left out')
     expect(smaller).toContain('F199__c picklist A long label for field number 199')
     expect(smaller).not.toContain('One value')
-    const smallest = await runTool(bigSource, 'describeObject', { name: 'Big__c' }, 4000)
+    const smallest = await tool(bigSource, 'describeObject', { name: 'Big__c' }, 4000)
     expect(smallest).toContain('Labels and picklist values are left out')
     expect(smallest).toContain('F199__c picklist')
   })
@@ -378,7 +381,7 @@ describe('SOQL', () => {
     await runAgent(anthropic, soqlRequest, soqlSource, '66.0', never)
     const results = sentBody(fetch, 2).messages.filter((m: { role: string }) => m.role === 'user').slice(1).map((m: { content: { content: string }[] }) => m.content[0].content)
     expect(results[0]).toContain('Object Invoice__c')
-    expect(results[1]).toBe('The fields of acme__invoice__c are already above in this conversation: use them.')
+    expect(results[1]).toBe('The fields of Invoice__c are already above in this conversation: use them.')
   })
 
   it('gives the FROM object of a fix within half the budget, as read', async () => {
@@ -393,6 +396,70 @@ describe('SOQL', () => {
     const long = 'x'.repeat(50_001)
     expect(invalidAgentRequest({ ...soqlRequest, input: { ...soqlRequest.input, editor: long } })).toContain('Turn off the editor text')
     expect(invalidAgentRequest({ task: 'fixSoql', input: { language: 'en', timeZone: 'UTC', soql: long, error: 'e', tooling: false } })).toContain('query is too long')
+  })
+
+  describe('a large object', () => {
+    const bytes = (text: string) => new TextEncoder().encode(text).length
+    // About 90 KB in full: the child relationships, then 400 picklist fields with labels.
+    const big = {
+      name: 'Big__c',
+      label: 'Big',
+      fields: Array.from({ length: 400 }, (_, i) => ({
+        name: `Field_${i}__c`,
+        label: `A rather long label for the field number ${i}`,
+        type: 'picklist',
+        picklistValues: Array.from({ length: 6 }, (_, j) => ({ value: `Value ${j}`, active: true })),
+      })),
+      childRelationships: Array.from({ length: 30 }, (_, i) => ({ childSObject: `Child${i}__c`, relationshipName: `Children${i}__r` })),
+    }
+    const small = { name: 'Small__c', label: 'Small', fields: [{ name: 'Name', label: 'Name', type: 'string' }] }
+    const objects = [
+      { name: 'Big__c', label: 'Big' },
+      { name: 'Small__c', label: 'Small' },
+      { name: 'Gone__c', label: 'Gone' },
+    ]
+    const bigSource: MetadataSource = { objects: async () => objects, describe: async (n) => (n === 'Big__c' ? big : n === 'Small__c' ? small : undefined), soql: true }
+
+    it('takes at most one read of the budget, naming every child relationship and field', async () => {
+      const text = await tool(bigSource, 'describeObject', { name: 'Big__c', fields: [] })
+      expect(bytes(text)).toBeLessThanOrEqual(MAX_READ_BYTES)
+      expect(text).toContain('Picklist values are left out')
+      expect(text).toContain('Children29__r -> Child29__c')
+      expect(text).toContain('Field_399__c picklist')
+    })
+
+    it('reads chosen fields in full, as the note says, and names the ones it does not have', async () => {
+      const text = await tool(bigSource, 'describeObject', { name: 'Big__c', fields: ['field_7__c', 'Nope__c'] })
+      expect(text).toContain('Field_7__c picklist A rather long label for the field number 7 [Value 0, Value 1')
+      expect(text).not.toContain('Field_8__c')
+      expect(text).not.toContain('Child relationships')
+      expect(text).toContain('(No field named Nope__c.)')
+    })
+
+    it('leaves room for the next object after a large one, and reads a shortened object again', async () => {
+      const fetch = anthropicReplies(
+        [use('a', 'describeObject', { name: 'Big__c', fields: [] })],
+        [use('b', 'describeObject', { name: 'Small__c', fields: [] })],
+        [use('c', 'describeObject', { name: 'Big__c', fields: [] })],
+        [use('d', 'describeObject', { name: 'Small__c', fields: [] })],
+        [use('e', 'submit', { soql: 'SELECT Id FROM Big__c', explanation: 'x' })],
+      )
+      await runAgent(anthropic, soqlRequest, bigSource, '66.0', never)
+      const results = sentBody(fetch, 4)
+        .messages.filter((m: { role: string; content: unknown }) => m.role === 'user' && Array.isArray(m.content))
+        .map((m: { content: { content: string }[] }) => m.content[0].content)
+      expect(results[1]).toBe('Object Small__c (Small)\nFields:\nName string Name')
+      // Shortened, so not taken as read in full; read in full, so not sent again.
+      expect(results[2]).toContain('Object Big__c')
+      expect(results[3]).toBe('The fields of Small__c are already above in this conversation: use them.')
+    })
+
+    it('does not take an object it could not read as read', async () => {
+      const state = newReadState()
+      expect(await runTool(bigSource, 'describeObject', { name: 'Gone__c', fields: [] }, Infinity, state)).toContain('no object named Gone__c')
+      expect(await runTool(bigSource, 'describeObject', { name: 'gone__c', fields: [] }, Infinity, state)).toContain('no object named gone__c')
+      expect(state.complete.size).toBe(0)
+    })
   })
 
   it('checks SOQL requests', () => {
