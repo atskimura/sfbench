@@ -18,6 +18,7 @@ export function ApexAiBar() {
         <>
           <SendFixed text={t.aiSendMetadata} />
           {ai.hasCode && <Send text={t.aiSendCurrentCode} checked={ai.sendCode} onChange={ai.setSendCode} />}
+          {ai.hasPrevious && <Send text={t.aiSendPrevious} title={t.aiSendPreviousHint} checked={ai.sendPrevious} onChange={ai.setSendPrevious} />}
         </>
       }
     />

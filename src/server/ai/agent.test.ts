@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentTaskRequest } from '../../shared/api.ts'
 import { cutToBudget, MAX_TOOL_CALLS, runAgent, todayIn } from './agent.ts'
-import { invalidAgentRequest } from './agentTasks.ts'
+import { agentPrompt, invalidAgentRequest } from './agentTasks.ts'
 import { describeText, findObjectsText, runTool, type MetadataSource } from './tools.ts'
 
 const anthropic = { provider: 'anthropic' as const, model: 'claude-x', apiKey: 'sk-ant', keyProvider: 'anthropic' as const }
@@ -193,6 +193,15 @@ describe('agent requests', () => {
     expect(invalidAgentRequest({ ...request, input: { ...request.input, timeZone: 'Mars/Base' } })).toContain('timeZone')
     expect(invalidAgentRequest({ ...request, task: 'deploy' })).toContain('task')
     expect(invalidAgentRequest({ task: 'fixApex', input: { language: 'ja', timeZone: 'Asia/Tokyo', code: 'x' } })).toContain('problem')
+  })
+
+  it('takes the previous result only in its shape, and puts it to the AI as data', () => {
+    const withPrevious = { ...request, input: { ...request.input, previous: { status: 200, body: '{"id":"001x"}' } } }
+    expect(invalidAgentRequest(withPrevious as unknown as Record<string, unknown>)).toBeUndefined()
+    expect(invalidAgentRequest({ ...request, input: { ...request.input, previous: { status: '200', body: '' } } })).toContain('previous')
+    const prompt = agentPrompt(withPrevious as AgentTaskRequest, '66.0', '2026-10-18')
+    expect(prompt.user).toContain('<data name="previous">\nHTTP 200\n\n{"id":"001x"}\n</data>')
+    expect(prompt.system).toContain('<data name="previous">')
   })
 
   it('takes today in the user time zone', () => {

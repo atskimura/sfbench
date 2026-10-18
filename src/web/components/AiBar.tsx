@@ -140,9 +140,9 @@ export function SendFixed({ text, title }: { text: string; title?: string }) {
  * One thing the AI may be sent: a pill pressed while it is sent. Not a
  * checkbox, so that it does not read as one of the editor's toggles below.
  */
-export function Send({ text, checked, onChange }: { text: string; checked: boolean; onChange: (on: boolean) => void }) {
+export function Send({ text, title, checked, onChange }: { text: string; title?: string; checked: boolean; onChange: (on: boolean) => void }) {
   return (
-    <button type="button" className={styles.send} aria-pressed={checked} onClick={() => onChange(!checked)}>
+    <button type="button" className={styles.send} aria-pressed={checked} title={title} onClick={() => onChange(!checked)}>
       <SendMark shown={checked} />
       {text}
     </button>

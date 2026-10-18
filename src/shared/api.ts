@@ -174,14 +174,22 @@ export type AiOutput<T extends AiTask> = T extends 'chooseObjects' ? ChooseObjec
 /** A REST API request as the AI writes it or is given it (docs/ai-agent.md "答えの形"). */
 export type AgentRestRequest = { method: RestMethod; path: string; body: string }
 
+/**
+ * The result of the run before, sent only when the user chooses to (docs/ai-agent.md
+ * "前の結果"): it can hold record values. The screen cuts it to 16,000 characters.
+ */
+export type AgentPreviousRest = { status: number; body: string }
+/** `outcome`: success, or the compile problem or the exception; `debug`: the USER_DEBUG lines of the log. */
+export type AgentPreviousApex = { outcome: string; debug: string }
+
 /** What every agent task is given besides its own input: how to write the explanation and dates. */
 type AgentContext = { language: UiLanguage; /** IANA time zone of the browser, such as Asia/Tokyo. */ timeZone: string }
 
 /** What the AI is asked to do with tools (docs/ai-agent.md), with what it is given. */
 export type AgentTaskRequest =
-  | { task: 'generateRest'; input: AgentContext & { request: string; current?: AgentRestRequest } }
+  | { task: 'generateRest'; input: AgentContext & { request: string; current?: AgentRestRequest; previous?: AgentPreviousRest } }
   | { task: 'fixRest'; input: AgentContext & { sent: AgentRestRequest; status: number; responseBody: string } }
-  | { task: 'generateApex'; input: AgentContext & { request: string; code?: string } }
+  | { task: 'generateApex'; input: AgentContext & { request: string; code?: string; previous?: AgentPreviousApex } }
   | { task: 'fixApex'; input: AgentContext & { code: string; problem: string; line?: number; column?: number } }
 
 export type AgentTask = AgentTaskRequest['task']

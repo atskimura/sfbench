@@ -53,6 +53,8 @@ export const en = {
   aiSendMetadata: "The org's metadata (read by the AI as it needs)",
   aiSendCurrentRequest: 'The request now',
   aiSendCurrentCode: 'The code now',
+  aiSendPrevious: 'The last result',
+  aiSendPreviousHint: 'Sends the result of the last run. It can hold record values.',
   aiSendError: 'The error',
   aiRestPlaceholder: 'Write what to do (e.g. create an account, see the API usage)',
   aiApexPlaceholder: "Write what to do (e.g. change all Hot accounts' rating to Warm)",

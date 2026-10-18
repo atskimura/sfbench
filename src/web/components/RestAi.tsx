@@ -20,6 +20,7 @@ export function RestAiBar() {
         <>
           <SendFixed text={t.aiSendMetadata} />
           {ai.hasCurrent && <Send text={t.aiSendCurrentRequest} checked={ai.sendCurrent} onChange={ai.setSendCurrent} />}
+          {ai.hasPrevious && <Send text={t.aiSendPrevious} title={t.aiSendPreviousHint} checked={ai.sendPrevious} onChange={ai.setSendPrevious} />}
         </>
       }
     />

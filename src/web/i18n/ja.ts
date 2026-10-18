@@ -49,6 +49,8 @@ export const ja: Messages = {
   aiSendMetadata: '組織のメタデータ（必要なときに AI が読む）',
   aiSendCurrentRequest: 'いまの要求',
   aiSendCurrentCode: 'いまのコード',
+  aiSendPrevious: '前の結果',
+  aiSendPreviousHint: '直前の実行の結果を送ります。レコードの値が入ることがあります。',
   aiSendError: 'エラー文',
   aiRestPlaceholder: 'やりたいことを書く（例: 取引先を1件作る、API の使用状況を見る）',
   aiApexPlaceholder: 'やりたいことを書く（例: 評価が Hot の取引先を Warm に一括で変える）',

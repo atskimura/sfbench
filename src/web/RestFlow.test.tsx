@@ -385,4 +385,26 @@ describe('REST API AI', () => {
     await within(response()).findByText('200')
     expect(within(response()).queryByRole('button', { name: t.aiFix })).toBeNull()
   })
+
+  it('sends the last response only when its pill is pressed, as it can hold record values', async () => {
+    mocked.rest.mockResolvedValue(answer(200, { records: [{ Id: '001x' }] }))
+    mocked.aiAgent.mockResolvedValue({ output: proposal })
+    await openRest()
+    expect(within(requestRegion()).queryByRole('button', { name: new RegExp(t.aiSendPrevious) })).toBeNull()
+    await fill('GET', path)
+    await userEvent.click(screen.getByRole('button', { name: t.restSend }))
+    await within(response()).findByText('200')
+    const pill = within(requestRegion()).getByRole('button', { name: new RegExp(t.aiSendPrevious) })
+    expect(pill.getAttribute('aria-pressed')).toBe('false')
+    const ask = async () => {
+      await userEvent.type(within(requestRegion()).getByRole('textbox', { name: t.aiRequestLabel }), 'x{Enter}')
+      await within(requestRegion()).findByRole('region', { name: t.aiProposal })
+      await userEvent.click(within(requestRegion()).getByRole('button', { name: t.aiDiscard }))
+    }
+    await ask()
+    expect(mocked.aiAgent.mock.calls[0][1].input).not.toHaveProperty('previous')
+    await userEvent.click(pill)
+    await ask()
+    expect(mocked.aiAgent.mock.calls[1][1].input).toMatchObject({ previous: { status: 200, body: JSON.stringify({ records: [{ Id: '001x' }] }) } })
+  })
 })
