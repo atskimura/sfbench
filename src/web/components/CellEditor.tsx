@@ -37,7 +37,8 @@ export function CellEditor({ field, value, label, onCommit, onCancel }: Props) {
   const end = (keep: boolean) => {
     if (ended.current) return
     ended.current = true
-    if (keep && touched.current && control.current) onCommit(fieldValue(control.current.value))
+    const input = control.current
+    if (keep && touched.current && input) onCommit(kind === 'checkbox' && input instanceof HTMLInputElement ? input.checked : fieldValue(input.value))
     else onCancel()
   }
   const latest = useRef(end)
@@ -80,6 +81,15 @@ export function CellEditor({ field, value, label, onCommit, onCancel }: Props) {
     onBlur: () => end(true),
   }
 
+  if (kind === 'checkbox') {
+    // Space or a click flips it; Enter or leaving keeps it, as for the other types.
+    const { defaultValue: _, ...rest } = common
+    return (
+      <span className={styles.checkboxEditor}>
+        <input ref={(el) => void (control.current = el)} type="checkbox" defaultChecked={value === true} {...rest} />
+      </span>
+    )
+  }
   if (kind === 'picklist') {
     const values = (field.picklistValues ?? []).filter((v) => v.active).map((v) => v.value)
     // A value no longer active stays choosable, so that opening the list changes nothing.

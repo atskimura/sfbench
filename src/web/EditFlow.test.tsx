@@ -109,8 +109,12 @@ describe('editing the result table', () => {
     mocked.recordsUpdate.mockResolvedValue({ results: [ok(ids[0])], apiUsage: undefined })
     await startEditing()
     await typeInto(0, 2, 'Name', 'Acme One')
-    // A checkbox field flips at once.
+    // A checkbox field opens like the others: the double click changes nothing by itself.
     fireEvent.doubleClick(cellOf(0, 3))
+    const box = await screen.findByRole('checkbox', { name: t.editCell('IsActive__c') })
+    expect(screen.getByRole('button', { name: t.saveChanges(1) })).toBeTruthy()
+    await userEvent.click(box)
+    fireEvent.keyDown(box, { key: 'Enter' })
     await userEvent.click(screen.getByRole('button', { name: t.saveChanges(1) }))
     await screen.findByText(t.savedRows(1, 0))
     expect(mocked.recordsUpdate).toHaveBeenCalledWith(

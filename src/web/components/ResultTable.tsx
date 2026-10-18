@@ -137,17 +137,12 @@ export function ResultTable({ records, loaded = records.length, rows, columns, i
     virtualizer.scrollToIndex(nextPosition)
   }
 
-  /** Opens a cell's input; a checkbox field flips at once instead. */
+  /** Opens a cell's input, for every type alike: opening never changes the value. */
   const startEdit = (cell: CellRef) => {
     if (!edit || edit.disabled) return
     const field = edit.fieldOf(cell.column)
     const record = records[cell.row]
     if (!field || !record || !isEditableValue(cellValue(record, cell.column))) return
-    if (field.type === 'boolean') {
-      const now = edit.changed(idOf(record), cell.column)?.value ?? cellValue(record, cell.column)
-      edit.onSet(cell.row, cell.column, now !== true)
-      return
-    }
     edit.onEdit(cell)
   }
   const shownSelected = edit ? edit.shownIds.filter((id) => edit.isSelected(id)).length : 0
