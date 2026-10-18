@@ -94,7 +94,20 @@ A REST API request or Apex, which may change data, is only filled in: you send o
 
 ### From an AI agent
 
-Ask an AI agent such as Claude Code to "list the won opportunities in sfbench", and it can write the SOQL and start sfbench like this:
+AI agents do not know sfbench yet.
+Asked to "use sfbench" with no hint, Claude Code looked for an `sfbench` command, did not find it, and ran the query with the sf CLI instead.
+For Claude Code, install the skill that teaches it sfbench, as a plugin from this repository:
+
+```
+claude plugin install sfbench --marketplace atskimura/sfbench
+```
+
+Inside Claude Code, `/plugin install sfbench --marketplace atskimura/sfbench` does the same.
+Your instructions file (`CLAUDE.md`) stays as it is.
+You can also put the skill's file in place yourself: [plugins/sfbench/skills/sfbench/SKILL.md](plugins/sfbench/skills/sfbench/SKILL.md) in English, or [plugins/sfbench/ja/sfbench/SKILL.md](plugins/sfbench/ja/sfbench/SKILL.md) in Japanese.
+Copy the `sfbench` folder to where the agent reads skills (`~/.claude/skills/` for Claude Code, `~/.agents/skills/` for Codex; untested with Codex).
+
+With the skill, ask Claude Code to "list the won opportunities in sfbench", and it writes the SOQL and starts sfbench like this:
 
 ```
 npx -y sfbench -o my-org --query "SELECT Id, Name, Amount FROM Opportunity WHERE IsWon = true" --run

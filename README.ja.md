@@ -94,7 +94,21 @@ npx sfbench
 
 ### AI のエージェントから使う
 
-Claude Code などの AI のエージェントに「sfbench で成約済みの商談を一覧して」と頼むと、エージェントは SOQL を組み立てて次のように起動できます。
+AI のエージェントは、sfbench をまだ知りません。
+何も教えずに「sfbench で〜」と頼むと、Claude Code は `sfbench` コマンドを探して見つけられず、sf CLI で直接クエリを実行しました。
+Claude Code には、sfbench の使い方を教えるスキルを、このリポジトリからプラグインとして入れられます。
+
+```
+claude plugin install sfbench --marketplace atskimura/sfbench
+```
+
+Claude Code の中では `/plugin install sfbench --marketplace atskimura/sfbench` でも入れられます。
+指示ファイル（`CLAUDE.md`）を書き換える必要はありません。
+スキルのファイルを自分で置くこともできます。
+日本語版は [plugins/sfbench/ja/sfbench/SKILL.md](plugins/sfbench/ja/sfbench/SKILL.md)、英語版は [plugins/sfbench/skills/sfbench/SKILL.md](plugins/sfbench/skills/sfbench/SKILL.md) です。
+`sfbench` フォルダごと、エージェントがスキルを読む場所（Claude Code なら `~/.claude/skills/`、Codex なら `~/.agents/skills/`）に置きます（Codex では試していません）。
+
+スキルを入れた Claude Code に「sfbench で成約済みの商談を一覧して」と頼むと、エージェントは SOQL を組み立てて次のように起動します。
 
 ```
 npx -y sfbench -o my-org --query "SELECT Id, Name, Amount FROM Opportunity WHERE IsWon = true" --run

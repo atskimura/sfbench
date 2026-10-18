@@ -1,0 +1,12 @@
+{
+  "name": "sfbench",
+  "owner": { "name": "atskimura" },
+  "description": "The sfbench skill for Claude Code.",
+  "plugins": [
+    {
+      "name": "sfbench",
+      "source": "./plugins/sfbench",
+      "description": "Teaches the agent to open Salesforce SOQL, REST API requests and anonymous Apex in sfbench, in the user's browser."
+    }
+  ]
+}

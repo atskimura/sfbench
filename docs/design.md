@@ -521,6 +521,7 @@ src/
   shared/   サーバーと画面で共有する型
 docs/       設計文書
 help/       利用者向けのヘルプ（日本語と英語、スクリーンショット）
+plugins/    AI のエージェントに sfbench の使い方を教えるスキル（Claude Code のプラグイン。.claude-plugin/marketplace.json から配る）
 ```
 
 ## 旧版から変わるロジック
