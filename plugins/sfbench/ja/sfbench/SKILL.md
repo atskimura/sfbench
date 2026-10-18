@@ -41,3 +41,8 @@ npx -y sfbench -o <alias> --apex-file <file.apex>
 - `--json` を付けると、開いた URL を JSON で出す。`--no-open` を付けると、ブラウザを開かずに URL だけを出す。
 - `npx -y sfbench stop` で、裏で動いているサーバーを止める。
 - sf CLI が入っていないときや、組織にログインし直す必要があるときは、sfbench がそう出すので、利用者に伝える。
+- sfbench はコマンドのサンドボックスの中では動かない。`~/.sfbench/` に書き込み、ローカルのサーバーを動かし続けるからである。シェルがサンドボックスの中で「The sfbench server did not start」と出て止まったら、回避を試みずに、sfbench をサンドボックスの外で動かすよう利用者に伝える。Claude Code では `~/.claude/settings.json` に次を足す。
+
+  ```json
+  "sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench"] }
+  ```

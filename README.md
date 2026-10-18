@@ -107,6 +107,13 @@ Your instructions file (`CLAUDE.md`) stays as it is.
 You can also put the skill's file in place yourself: [plugins/sfbench/skills/sfbench/SKILL.md](plugins/sfbench/skills/sfbench/SKILL.md) in English, or [plugins/sfbench/ja/sfbench/SKILL.md](plugins/sfbench/ja/sfbench/SKILL.md) in Japanese.
 Copy the `sfbench` folder to where the agent reads skills (`~/.claude/skills/` for Claude Code, `~/.agents/skills/` for Codex; untested with Codex).
 
+If Claude Code runs commands in its sandbox (as in auto mode by default), sfbench cannot start inside it: it writes `~/.sfbench/` and keeps a local server running.
+Let sfbench alone run outside the sandbox by adding this to `~/.claude/settings.json`:
+
+```json
+"sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench"] }
+```
+
 With the skill, ask Claude Code to "list the won opportunities in sfbench", and it writes the SOQL and starts sfbench like this:
 
 ```

@@ -108,6 +108,14 @@ Claude Code の中では `/plugin install sfbench --marketplace atskimura/sfbenc
 日本語版は [plugins/sfbench/ja/sfbench/SKILL.md](plugins/sfbench/ja/sfbench/SKILL.md)、英語版は [plugins/sfbench/skills/sfbench/SKILL.md](plugins/sfbench/skills/sfbench/SKILL.md) です。
 `sfbench` フォルダごと、エージェントがスキルを読む場所（Claude Code なら `~/.claude/skills/`、Codex なら `~/.agents/skills/`）に置きます（Codex では試していません）。
 
+Claude Code でシェルのサンドボックスを使っている場合（auto mode の既定など）、sfbench はサンドボックスの中では起動できません。
+`~/.sfbench/` に書き込み、ローカルのサーバーを動かし続けるからです。
+`~/.claude/settings.json` に次を足し、sfbench だけをサンドボックスの外で動かしてください。
+
+```json
+"sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench"] }
+```
+
 スキルを入れた Claude Code に「sfbench で成約済みの商談を一覧して」と頼むと、エージェントは SOQL を組み立てて次のように起動します。
 
 ```

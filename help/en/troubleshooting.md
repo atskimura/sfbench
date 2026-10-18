@@ -56,6 +56,16 @@ When the answer did not arrive (a timeout or a broken connection), Salesforce ma
 Check in Salesforce or in the history before you send it again.
 If you send the same request or code again, sfbench asks first.
 
+## "The sfbench server did not start" when an AI agent opens sfbench
+
+The agent's shell runs in a sandbox.
+sfbench writes `~/.sfbench/` and keeps a local server running, so it cannot start inside a sandbox.
+In Claude Code, add this to `~/.claude/settings.json` so that sfbench alone runs outside the sandbox:
+
+```json
+"sandbox": { "excludedCommands": ["npx -y sfbench *", "npx -y sfbench"] }
+```
+
 ## The AI does not work
 
 - Click Test connection to see the provider's error message. A wrong API key, a wrong model ID or no credit left are common causes.
