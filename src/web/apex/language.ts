@@ -14,11 +14,12 @@ const SOQL_KEYWORDS = words(
   'select from where and or not in like limit offset order by asc desc nulls first last group having with security_enforced user_mode system_mode for update view reference includes excludes find returning all rows typeof when then else end using scope tracking viewstat',
 )
 
-type State = { inComment: boolean; inSoql: boolean }
+/** `bracketOpen`: a `[` ended its line, so SOQL may start on the next one. */
+type State = { inComment: boolean; inSoql: boolean; bracketOpen: boolean }
 
 export const apexParser: StreamParser<State> = {
   name: 'apex',
-  startState: () => ({ inComment: false, inSoql: false }),
+  startState: () => ({ inComment: false, inSoql: false, bracketOpen: false }),
   token(stream, state) {
     if (state.inComment) {
       if (stream.skipTo('*/')) {
@@ -31,6 +32,11 @@ export const apexParser: StreamParser<State> = {
       return 'comment'
     }
     if (stream.eatSpace()) return null
+    // A `[` at the end of the line before: SOQL if the first word here is SELECT or FIND.
+    if (state.bracketOpen) {
+      state.bracketOpen = false
+      if (stream.match(/^(select|find)\b/i, false)) state.inSoql = true
+    }
     if (stream.match('//')) {
       stream.skipToEnd()
       return 'comment'
@@ -57,6 +63,9 @@ export const apexParser: StreamParser<State> = {
       if (stream.match(/^:\s*[A-Za-z_]\w*/)) return 'variableName'
     } else if (stream.match(/^\[(?=\s*(select|find)\b)/i)) {
       state.inSoql = true
+      return 'bracket'
+    } else if (stream.match(/^\[\s*$/)) {
+      state.bracketOpen = true
       return 'bracket'
     }
     if (stream.match(/^@[A-Za-z_]\w*/)) return 'meta'
