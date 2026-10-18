@@ -42,7 +42,7 @@ export function AiInput({ session, stepText, onGenerate, placeholder, sends, att
   useEffect(() => {
     if (attention === 0) return
     input.current?.focus()
-    input.current?.scrollIntoView({ block: 'nearest' })
+    input.current?.scrollIntoView?.({ block: 'nearest' })
     // A flash of the accent; a steady outline for those who ask for less motion.
     const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     const lit = { boxShadow: 'inset 0 0 0 2px var(--color-accent)', backgroundColor: 'var(--color-accent-soft)' }
