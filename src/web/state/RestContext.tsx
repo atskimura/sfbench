@@ -51,6 +51,19 @@ type RestValue = State & {
 
 const RestContext = createContext<RestValue | undefined>(undefined)
 
+/** A request whose outcome is not known, put in the history at once (docs/rest.md "確認するかどうか"). */
+function localUnknown(request: RestSnapshot): RestHistoryEntry {
+  return {
+    id: `local-${Date.now()}`,
+    method: request.method,
+    path: request.path,
+    headers: request.headers,
+    ...(request.body !== undefined ? { body: request.body } : {}),
+    sentAt: new Date().toISOString(),
+    outcome: { state: 'unknown', reason: 'error' },
+  }
+}
+
 export function RestProvider({ username, seed, children }: { username: string; seed: Seed | undefined; children: ReactNode }) {
   const { handleCommonError } = useApp()
   const { isProduction, handleOrgError, markAuthError, reportApiUsage } = useOrgs()
@@ -58,26 +71,50 @@ export function RestProvider({ username, seed, children }: { username: string; s
   const [first] = useState(() =>
     claimRestDraft(username, seed?.rest && { method: seed.rest.method, path: seed.rest.path, headers: [], body: seed.rest.body ?? '' }, emptyDraft),
   )
+  // The draft as it is now: the one source the fields render from and the
+  // storage saves. The body is the editor's text, followed on each change.
+  const latest = useRef<RestDraft>(first)
   const [fields, setFields] = useState<Omit<RestDraft, 'body'>>({ method: first.method, path: first.path, headers: first.headers })
   const body = useRef<EditorHandle | null>(null)
-  const bodyText = useRef(first.body)
   const [state, dispatch] = useReducer(reducer, Boolean(seed?.rest), initialState)
   const [history, setHistory] = useState<RestHistoryEntry[]>([])
   // The progress is whether the request being sent may change data.
   const { start: startSend, cancel: cancelSend, running: sending, progress: sendingChangesData } = useTask<boolean>()
   const { start: startHistory, running: historyLoading } = useTask()
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
-  useEffect(() => () => clearTimeout(saveTimer.current), [])
 
-  const save = useCallback((next: Omit<RestDraft, 'body'>) => saveRestDraft(username, { ...next, body: bodyText.current }), [username])
-  const update = useCallback(
-    (patch: Partial<Omit<RestDraft, 'body'>>) =>
-      setFields((current) => {
-        const next = { ...current, ...patch }
-        save(next)
-        return next
-      }),
-    [save],
+  /** Saves the draft as it is now, at once. */
+  const persist = useCallback(() => {
+    clearTimeout(saveTimer.current)
+    saveTimer.current = undefined
+    saveRestDraft(username, latest.current)
+  }, [username])
+  /** Saves once typing stops: a large body is not written on every key. */
+  const persistSoon = useCallback(() => {
+    clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(persist, 300)
+  }, [persist])
+  // A save still waiting is done when the page goes or the workspace is remade.
+  useEffect(() => {
+    const flush = () => {
+      if (saveTimer.current !== undefined) persist()
+    }
+    window.addEventListener('pagehide', flush)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      flush()
+    }
+  }, [persist])
+
+  /** Changes the draft: what renders and what is saved both come from `latest`. */
+  const change = useCallback(
+    (next: RestDraft, save: 'now' | 'soon') => {
+      latest.current = next
+      setFields({ method: next.method, path: next.path, headers: next.headers })
+      if (save === 'now') persist()
+      else persistSoon()
+    },
+    [persist, persistSoon],
   )
 
   const refreshHistory = useCallback(async () => {
@@ -92,13 +129,10 @@ export function RestProvider({ username, seed, children }: { username: string; s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // The confirmation and the launch notice go once a request is really being sent.
-  useEffect(() => {
-    if (sending) dispatch({ type: 'sending' })
-  }, [sending])
-
   const sendNow = useCallback(
     async (request: RestSnapshot) => {
+      // Never called while sending (send does nothing then), so this send starts.
+      dispatch({ type: 'sending' })
       const changesData = restMayChangeData(request.method, request.path)
       const outcome = await startSend((signal, progress) => {
         progress(changesData)
@@ -117,6 +151,9 @@ export function RestProvider({ username, seed, children }: { username: string; s
       if (isOutcomeUnknown(e, changesData)) {
         // A lost session still shows its band; the result says the outcome is unknown.
         handleCommonError(e)
+        // Asked about before it is sent again even before the history is loaded
+        // again, or if it cannot be: the server's copy replaces this one.
+        setHistory((entries) => [localUnknown(request), ...entries])
         dispatch({ type: 'result', result: { state: 'unknown', request, message: t.restUnknown } })
         return
       }
@@ -132,17 +169,15 @@ export function RestProvider({ username, seed, children }: { username: string; s
     [startSend, username, refreshHistory, reportApiUsage, handleCommonError, handleOrgError, markAuthError],
   )
 
-  const { result } = state
   const send = useCallback(() => {
     // As the Send button, which cannot be pressed meanwhile: Cmd+Enter while sending does nothing.
     if (sending) return
-    const request = snapshotOf({ ...fields, body: body.current?.getText() ?? bodyText.current })
+    const request = snapshotOf(latest.current)
     if (!request.path) return
-    const lastUnknown = result.state === 'unknown' ? result.request : undefined
-    const reasons = needsConfirm(request, { isProduction, history, lastUnknown })
+    const reasons = needsConfirm(request, { isProduction, history })
     if (reasons.length > 0) dispatch({ type: 'confirm', request, reasons })
     else void sendNow(request)
-  }, [sending, fields, result, isProduction, history, sendNow])
+  }, [sending, isProduction, history, sendNow])
 
   const { confirming } = state
   const confirmSend = useCallback(() => {
@@ -158,13 +193,11 @@ export function RestProvider({ username, seed, children }: { username: string; s
   const loadEntry = useCallback(
     (entry: RestHistoryEntry) => {
       const draft = draftOf(entry)
-      bodyText.current = draft.body
+      change(draft, 'now')
+      // Its change comes back through onBodyChange with the same text.
       body.current?.setText(draft.body)
-      const { body: _, ...rest } = draft
-      setFields(rest)
-      saveRestDraft(username, draft)
     },
-    [username],
+    [change],
   )
 
   const value = useMemo<RestValue>(
@@ -172,19 +205,18 @@ export function RestProvider({ username, seed, children }: { username: string; s
       ...state,
       ...fields,
       initialBody: first.body,
-      setMethod: (method) => update({ method }),
-      setPath: (path) => update({ path }),
-      setHeaders: (headers) => update({ headers }),
+      setMethod: (method) => change({ ...latest.current, method }, 'soon'),
+      setPath: (path) => change({ ...latest.current, path }, 'soon'),
+      setHeaders: (headers) => change({ ...latest.current, headers }, 'soon'),
       registerBody: (handle) => {
         body.current = handle
       },
       onBodyChange: (text) => {
-        bodyText.current = text
-        // Saved once typing stops: a large body is not written on every key.
-        clearTimeout(saveTimer.current)
-        saveTimer.current = setTimeout(() => save(fields), 300)
+        if (text === latest.current.body) return
+        latest.current = { ...latest.current, body: text }
+        persistSoon()
       },
-      getBody: () => body.current?.getText() ?? bodyText.current,
+      getBody: () => latest.current.body,
       setBody: (text) => body.current?.setText(text),
       history,
       historyLoading,
@@ -199,7 +231,7 @@ export function RestProvider({ username, seed, children }: { username: string; s
       closeNotice: () => dispatch({ type: 'noticeClosed' }),
       restLeftOutFor: seed?.restLeftOutFor,
     }),
-    [state, fields, first.body, update, save, history, historyLoading, refreshHistory, loadEntry, sending, sendingChangesData, send, confirmSend, cancel, seed?.restLeftOutFor],
+    [state, fields, first.body, change, persistSoon, history, historyLoading, refreshHistory, loadEntry, sending, sendingChangesData, send, confirmSend, cancel, seed?.restLeftOutFor],
   )
   return <RestContext.Provider value={value}>{children}</RestContext.Provider>
 }

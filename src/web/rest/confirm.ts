@@ -25,17 +25,10 @@ export type ConfirmReason =
  */
 export function needsConfirm(
   request: RestSnapshot,
-  context: {
-    isProduction: boolean
-    history: readonly RestHistoryEntry[]
-    /** The request the screen last showed as of unknown outcome: before the history is loaded again, or if it cannot be. */
-    lastUnknown: RestSnapshot | undefined
-  },
+  context: { isProduction: boolean; history: readonly RestHistoryEntry[] },
 ): ConfirmReason[] {
   const reasons: ConfirmReason[] = []
-  const unknown =
-    (context.lastUnknown !== undefined && sameRequest(context.lastUnknown, request)) ||
-    context.history.some((e) => (e.outcome.state === 'pending' || e.outcome.state === 'unknown') && sameRecorded(e, request))
+  const unknown = context.history.some((e) => (e.outcome.state === 'pending' || e.outcome.state === 'unknown') && sameRecorded(e, request))
   if (unknown) reasons.push('unknownOutcome')
   if (context.isProduction && restMayChangeData(request.method, request.path)) reasons.push('production')
   return reasons

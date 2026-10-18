@@ -45,25 +45,24 @@ describe('needsConfirm', () => {
   const post = { method: 'POST' as const, path, headers: {}, body: '{"Name":"A"}' }
 
   it('asks in production only for a request that may change data', () => {
-    expect(needsConfirm(post, { isProduction: true, history: [], lastUnknown: undefined })).toEqual(['production'])
-    expect(needsConfirm({ method: 'GET', path, headers: {} }, { isProduction: true, history: [], lastUnknown: undefined })).toEqual([])
-    expect(needsConfirm(post, { isProduction: false, history: [], lastUnknown: undefined })).toEqual([])
+    expect(needsConfirm(post, { isProduction: true, history: [] })).toEqual(['production'])
+    expect(needsConfirm({ method: 'GET', path, headers: {} }, { isProduction: true, history: [] })).toEqual([])
+    expect(needsConfirm(post, { isProduction: false, history: [] })).toEqual([])
   })
 
   it('asks before sending again a request whose outcome is not known, in any org', () => {
-    expect(needsConfirm(post, { isProduction: false, history: [entry({ state: 'unknown', reason: 'timeout' }, post.body)], lastUnknown: undefined })).toEqual(['unknownOutcome'])
-    expect(needsConfirm(post, { isProduction: false, history: [entry({ state: 'pending' }, post.body)], lastUnknown: undefined })).toEqual(['unknownOutcome'])
+    expect(needsConfirm(post, { isProduction: false, history: [entry({ state: 'unknown', reason: 'timeout' }, post.body)] })).toEqual(['unknownOutcome'])
+    expect(needsConfirm(post, { isProduction: false, history: [entry({ state: 'pending' }, post.body)] })).toEqual(['unknownOutcome'])
   })
 
-  it('asks for a record whose body was too long to keep, and for the unknown result on screen before the history comes', () => {
+  it('asks for a record whose body was too long to keep', () => {
     const omitted = { ...entry({ state: 'unknown', reason: 'timeout' }), bodyOmitted: true }
-    expect(needsConfirm(post, { isProduction: false, history: [omitted], lastUnknown: undefined })).toEqual(['unknownOutcome'])
-    expect(needsConfirm(post, { isProduction: false, history: [], lastUnknown: post })).toEqual(['unknownOutcome'])
+    expect(needsConfirm(post, { isProduction: false, history: [omitted] })).toEqual(['unknownOutcome'])
   })
 
   it('does not ask for a request that ended, or for another body', () => {
-    expect(needsConfirm(post, { isProduction: false, history: [entry({ state: 'done', status: 201, elapsedMs: 1 }, post.body)], lastUnknown: undefined })).toEqual([])
-    expect(needsConfirm(post, { isProduction: false, history: [entry({ state: 'unknown', reason: 'timeout' }, '{"Name":"B"}')], lastUnknown: undefined })).toEqual([])
+    expect(needsConfirm(post, { isProduction: false, history: [entry({ state: 'done', status: 201, elapsedMs: 1 }, post.body)] })).toEqual([])
+    expect(needsConfirm(post, { isProduction: false, history: [entry({ state: 'unknown', reason: 'timeout' }, '{"Name":"B"}')] })).toEqual([])
   })
 })
 

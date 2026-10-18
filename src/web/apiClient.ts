@@ -57,9 +57,14 @@ export class ApiRequestError extends Error {
     this.body = body
   }
 
+  /** sfbench refused the session at its door (the server restarted): nothing went further. */
+  get isSessionRefused(): boolean {
+    return this.status === 401 && this.code === 'UNAUTHORIZED'
+  }
+
   /** The session is no longer valid (the server restarted or stopped). */
   get isSessionLost(): boolean {
-    return (this.status === 401 && this.code === 'UNAUTHORIZED') || this.code === 'NETWORK_ERROR'
+    return this.isSessionRefused || this.code === 'NETWORK_ERROR'
   }
 }
 

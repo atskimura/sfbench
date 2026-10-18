@@ -48,7 +48,7 @@ function History() {
         <ReloadButton label={t.reloadRestHistory} busy={rest.historyLoading} onClick={rest.refreshHistory} />
       </div>
       <div className={panel.body}>
-        {rest.history.length === 0 && <p className={panel.empty}>{t.restHistoryEmpty}</p>}
+        {rest.history.length === 0 && <p className={panel.empty}>{rest.historyLoading ? t.loading : t.restHistoryEmpty}</p>}
         <ul className={styles.list}>
           {rest.history.map((entry) => (
             <li key={entry.id}>

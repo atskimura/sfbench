@@ -263,6 +263,17 @@ describe('REST API screen', () => {
     expect(response().textContent).toContain(t.restNotSent)
   })
 
+  it('saves the history entry put back, not the fields before it, for a reload', async () => {
+    const entry: RestHistoryEntry = { id: 'r1', method: 'POST', path, body: '{"Name":"A"}', sentAt: now, outcome: { state: 'done', status: 201, elapsedMs: 1 } }
+    mocked.restHistory.mockResolvedValue({ entries: [entry] })
+    await openRest()
+    await fill('DELETE', path + '/001')
+    await userEvent.click(await within(screen.getByRole('region', { name: t.restHistory })).findByRole('button', { name: /sobjects\/Account/ }))
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    const saved = JSON.parse(sessionStorage.getItem('sfbench.restDraft') ?? 'null') as { draft: { method: string; path: string; body: string } }
+    expect(saved.draft).toMatchObject({ method: 'POST', path, body: '{"Name":"A"}' })
+  })
+
   it('puts a history entry back into the fields without sending it', async () => {
     const entry: RestHistoryEntry = { id: 'r1', method: 'GET', path: path + '/describe', sentAt: now, outcome: { state: 'done', status: 200, elapsedMs: 1 } }
     mocked.restHistory.mockResolvedValue({ entries: [entry] })
