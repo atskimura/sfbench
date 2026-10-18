@@ -18,6 +18,12 @@
   font-size: var(--font-size-heading);
 }
 
+.oneLine {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .tabs {
   display: flex;
   border-bottom: 1px solid var(--color-line);
