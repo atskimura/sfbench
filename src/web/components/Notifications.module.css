@@ -39,7 +39,7 @@
   background: none;
   color: var(--color-muted);
   cursor: pointer;
-  font-size: 16px;
+  font-size: var(--font-size-title);
   line-height: 1;
 }
 

@@ -15,7 +15,7 @@
   align-items: center;
   gap: var(--space-2);
   font-weight: 600;
-  font-size: 15px;
+  font-size: var(--font-size-brand);
 }
 
 .spacer {
@@ -34,7 +34,7 @@
   align-items: center;
   justify-content: center;
   width: 32px;
-  height: 32px;
+  height: var(--control-height-xlarge);
   border: 0;
   border-radius: var(--radius);
   background: transparent;

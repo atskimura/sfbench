@@ -12,7 +12,7 @@ import type { QueryResult } from '../state/SoqlContext.tsx'
 import { useTask } from '../state/useTask.ts'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import panel from './Panel.module.css'
-import styles from './ResultPanel.module.css'
+import styles from './CsvExport.module.css'
 
 /** Ask before loading more than this many remaining records. */
 const CONFIRM_ABOVE = 10_000

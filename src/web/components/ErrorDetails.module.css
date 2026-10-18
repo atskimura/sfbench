@@ -7,7 +7,7 @@
   background: var(--color-code-bg);
   color: var(--color-ink);
   font-family: var(--font-mono);
-  font-size: var(--font-size-code-small);
+  font-size: var(--font-size-xsmall);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

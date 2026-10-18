@@ -5,6 +5,7 @@ import { aiDraftValid, aiInput, type AiDraft } from '../ai/draft.ts'
 import { api } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
 import { useTask } from '../state/useTask.ts'
+import dialog from './Dialog.module.css'
 import styles from './SettingsDialog.module.css'
 
 const MODEL_DOCS: Record<AiKeyProvider, string> = {
@@ -40,7 +41,7 @@ export function AiSettings({ saved, draft, onChange }: { saved: AiSettingsView |
   }
 
   return (
-    <section className={styles.section} aria-describedby={ids.notes}>
+    <section className={dialog.section} aria-describedby={ids.notes}>
       <h3 className={styles.sectionTitle}>{t.settingsAi}</h3>
       <div className={styles.choices} role="radiogroup" aria-label={t.settingsAi}>
         {AI_PROVIDERS.map((provider) => (
@@ -81,14 +82,14 @@ export function AiSettings({ saved, draft, onChange }: { saved: AiSettingsView |
               onChange={(e) => change({ apiKey: e.target.value, clearKey: false })}
             />
             {savedKeyUsable && (
-              <button type="button" className={styles.button} onClick={() => change({ clearKey: true, apiKey: '' })}>
+              <button type="button" className={dialog.button} onClick={() => change({ clearKey: true, apiKey: '' })}>
                 {t.aiKeyClear}
               </button>
             )}
           </div>
           {savedKeyElsewhere && <span className={styles.error}>{t.aiKeyOtherProvider}</span>}
           <div className={styles.row}>
-            <button type="button" className={styles.button} disabled={!canTest || testing} onClick={() => void runTest()}>
+            <button type="button" className={dialog.button} disabled={!canTest || testing} onClick={() => void runTest()}>
               {testing ? t.aiTesting : t.aiTest}
             </button>
             <span role="status" className={result?.state === 'error' ? styles.error : styles.note}>
