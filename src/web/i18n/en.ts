@@ -28,7 +28,7 @@ export const en = {
   settingsOmitNamespace: "Omit the org's namespace prefix",
   settingsOmitNamespaceNote: 'Write Invoice__c instead of acme__Invoice__c in orgs with a namespace. Applies to all orgs.',
   settingsAi: 'AI',
-  aiNoObjects: 'The AI could not choose the objects to query. Open an object on the left and try again.',
+  aiNoObjects: 'The AI could not choose the objects for the request. Name the object (such as "opportunities") in the request and try again.',
   aiOff: 'AI is off.',
   aiTooLong: 'The request and the editor text are too long to send with the fields. Shorten the request or do not send the editor text.',
   aiSetUp: 'Set up AI',
@@ -37,9 +37,9 @@ export const en = {
   aiRequestLabel: 'Request to the AI',
   aiGenerate: 'Generate',
   aiSends: 'Sends:',
-  aiObjectChip: (object: string) => `${object} fields`,
   aiEditorChip: 'Editor text',
-  aiObjectsChosenByAi: 'Objects: chosen by the AI from the list',
+  aiObjectsChosenByAi: (open: string | undefined) =>
+    open ? `The AI chooses the objects (with ${open}, the one open, as a hint)` : 'The AI chooses the objects from the org',
   aiStep: { chooseObjects: 'Choosing the objects…', loadFields: 'Loading the fields…', generate: 'Writing the SOQL…', fix: 'Fixing the SOQL…' } as Record<
     'chooseObjects' | 'loadFields' | 'generate' | 'fix',
     string

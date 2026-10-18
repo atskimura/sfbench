@@ -3,7 +3,7 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { HistoryEntry, Org, SoqlOutput } from '../shared/api.ts'
+import type { HistoryEntry, Org } from '../shared/api.ts'
 
 vi.mock('./apiClient.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./apiClient.ts')>()
@@ -43,6 +43,10 @@ const org: Org = {
 const now = new Date().toISOString()
 const ready = { provider: 'anthropic' as const, model: 'claude-x', hasApiKey: true, keyProvider: 'anthropic' as const }
 const answer = (soql: string, explanation = 'x') => ({ output: { soql, explanation } })
+/** The AI chooses `objects`, then writes (or fixes) `soql`. */
+const replies = (soql: string, explanation = 'x', objects = ['Account']) =>
+  mocked.aiGenerate.mockImplementation((async (req: { task: string }) =>
+    req.task === 'chooseObjects' ? { output: { objects } } : answer(soql, explanation)) as never)
 const rejected = (message: string) => new ApiRequestError(400, 'SALESFORCE_ERROR', message, { code: 'SALESFORCE_ERROR', message })
 
 /** A promise to settle by hand. */
@@ -127,12 +131,13 @@ describe('AI', () => {
     expect(screen.queryByLabelText(t.aiRequestLabel)).toBeNull()
   })
 
-  it('sends the open object, shows the proposal, and records the request when the proposal runs', async () => {
-    mocked.aiGenerate.mockResolvedValue(answer('SELECT Id, Name FROM Account LIMIT 5', '5件です。'))
+  it('gives the open object as a hint, shows the proposal, and records the request when the proposal runs', async () => {
+    replies('SELECT Id, Name FROM Account LIMIT 5', '5件です。')
     await ask('5件だけ')
     const shown = await card()
     expect(within(shown).getByText('5件です。')).toBeTruthy()
-    const req = mocked.aiGenerate.mock.calls[0][0]
+    expect(mocked.aiGenerate.mock.calls[0][0]).toMatchObject({ task: 'chooseObjects', input: { openObject: 'Account' } })
+    const req = mocked.aiGenerate.mock.calls[1][0]
     expect(req.task).toBe('generateSoql')
     expect(req.input).toMatchObject({ request: '5件だけ', editorText: 'SELECT Id FROM Account' })
     expect((req.input as { objectInfo: string }).objectInfo).toContain('Object Account (Account)')
@@ -143,7 +148,7 @@ describe('AI', () => {
   })
 
   it('keeps the editor text unsent once unticked, even after the query changes', async () => {
-    mocked.aiGenerate.mockResolvedValue(answer('SELECT Name FROM Account'))
+    replies('SELECT Name FROM Account')
     render(<App launch={{ org: 'demo', query: 'SELECT Id FROM Account' }} />)
     await userEvent.click(await screen.findByRole('button', { name: t.aiEditorChip }))
     await userEvent.click(within(await screen.findByRole('region', { name: 'Account' })).getByLabelText(/Industry/))
@@ -151,7 +156,7 @@ describe('AI', () => {
     expect(screen.getByRole('button', { name: t.aiEditorChip }).getAttribute('aria-pressed')).toBe('false')
     await userEvent.type(screen.getByLabelText(t.aiRequestLabel), '名前{Enter}')
     await card()
-    expect(mocked.aiGenerate.mock.calls[0][0].input).toMatchObject({ editorText: '' })
+    expect(mocked.aiGenerate.mock.calls[1][0].input).toMatchObject({ editorText: '' })
   })
 
   it('lets the AI choose the objects when none is open', async () => {
@@ -162,6 +167,21 @@ describe('AI', () => {
     await card()
     expect(mocked.aiGenerate.mock.calls.map((c) => c[0].task)).toEqual(['chooseObjects', 'generateSoql'])
     expect((mocked.aiGenerate.mock.calls[0][0].input as { objects: string }).objects).toBe('Account (Account)')
+    expect(mocked.aiGenerate.mock.calls[0][0].input).not.toHaveProperty('openObject')
+  })
+
+  it('writes the query for another object than the open one when the AI chooses it', async () => {
+    mocked.sobjects.mockResolvedValue({
+      sobjects: [
+        { name: 'Account', label: 'Account', queryable: true },
+        { name: 'Opportunity', label: 'Opportunity', queryable: true },
+      ],
+      fetchedAt: now,
+    })
+    replies('SELECT Name FROM Opportunity', 'x', ['Opportunity'])
+    await ask('成約した商談')
+    await card()
+    expect(mocked.describe.mock.calls.map((c) => c[1])).toContain('Opportunity')
   })
 
   it('shows when the AI could not choose an object', async () => {
@@ -173,23 +193,25 @@ describe('AI', () => {
   })
 
   it('sends the request once when Enter is pressed again while generating', async () => {
-    const pending = deferred<{ output: SoqlOutput }>()
-    mocked.aiGenerate.mockReturnValue(pending.promise)
+    const pending = deferred<{ output: { objects: string[] } }>()
+    mocked.aiGenerate.mockImplementation((async (req: { task: string }) =>
+      req.task === 'chooseObjects' ? pending.promise : answer('SELECT Name FROM Account')) as never)
     await ask('5件だけ')
     await userEvent.type(screen.getByLabelText(t.aiRequestLabel), '{Enter}{Enter}')
     expect(mocked.aiGenerate).toHaveBeenCalledTimes(1)
-    pending.resolve(answer('SELECT Name FROM Account'))
+    pending.resolve({ output: { objects: ['Account'] } })
     expect(await card()).toBeTruthy()
   })
 
   it('drops a request stopped by Cancel, even when its answer arrives later', async () => {
-    const pending = deferred<{ output: SoqlOutput }>()
-    mocked.aiGenerate.mockReturnValue(pending.promise)
+    const pending = deferred<{ output: { objects: string[] } }>()
+    mocked.aiGenerate.mockImplementation((async (req: { task: string }) =>
+      req.task === 'chooseObjects' ? pending.promise : answer('SELECT Name FROM Account')) as never)
     await ask('5件だけ')
-    expect(await screen.findByText(t.aiStep.generate)).toBeTruthy()
+    expect(await screen.findByText(t.aiStep.chooseObjects)).toBeTruthy()
     await userEvent.click(screen.getByRole('button', { name: t.cancel }))
-    expect(screen.queryByText(t.aiStep.generate)).toBeNull()
-    pending.resolve(answer('SELECT Name FROM Account'))
+    expect(screen.queryByText(t.aiStep.chooseObjects)).toBeNull()
+    pending.resolve({ output: { objects: ['Account'] } })
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(screen.queryByRole('region', { name: t.aiProposal })).toBeNull()
     expect(screen.getByRole('button', { name: t.aiGenerate })).toBeTruthy()
@@ -198,19 +220,20 @@ describe('AI', () => {
   it('drops the request of the previous org after switching', async () => {
     const other: Org = { ...org, username: 'admin@other.example.com', alias: 'other' }
     mocked.orgs.mockResolvedValue({ orgs: [org, other], connectionCheck: 'done' })
-    const pending = deferred<{ output: SoqlOutput }>()
-    mocked.aiGenerate.mockReturnValue(pending.promise)
+    const pending = deferred<{ output: { objects: string[] } }>()
+    mocked.aiGenerate.mockImplementation((async (req: { task: string }) =>
+      req.task === 'chooseObjects' ? pending.promise : answer('SELECT Name FROM Account')) as never)
     await ask('5件だけ')
     await userEvent.click(screen.getByRole('button', { name: /demo/ }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /other/ }))
     await waitFor(() => expect(screen.getByRole('button', { name: t.aiGenerate })).toBeTruthy())
-    pending.resolve(answer('SELECT Name FROM Account'))
+    pending.resolve({ output: { objects: ['Account'] } })
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(screen.queryByRole('region', { name: t.aiProposal })).toBeNull()
   })
 
   it('records the request for a run after Replace and after Format, but not after the query changes', async () => {
-    mocked.aiGenerate.mockResolvedValue(answer('SELECT Id, Name FROM Account'))
+    replies('SELECT Id, Name FROM Account')
     await ask('名前も')
     await userEvent.click(within(await card()).getByRole('button', { name: t.aiReplace }))
     await waitFor(() => expect(editorText()).toContain('SELECT Id, Name FROM Account'))
@@ -228,7 +251,7 @@ describe('AI', () => {
 
   it('fixes a query that Salesforce rejected, as it was run', async () => {
     mocked.query.mockRejectedValue(rejected("No such column 'Nmae'"))
-    mocked.aiGenerate.mockResolvedValue(answer('SELECT Name FROM Account', 'Nmae を Name に直しました。'))
+    replies('SELECT Name FROM Account', 'Nmae を Name に直しました。')
     render(<App launch={{ org: 'demo', query: 'SELECT Nmae FROM Account', run: true }} />)
     await userEvent.click(await screen.findByRole('button', { name: t.aiFix }))
     await card()
@@ -242,7 +265,7 @@ describe('AI', () => {
     const entry: HistoryEntry = { soql: 'SELECT Nmae FROM Account', tooling: false, queryAll: false, executedAt: now, prompt: '名前の一覧' }
     mocked.history.mockResolvedValue({ entries: [entry] })
     mocked.query.mockRejectedValueOnce(rejected("No such column 'Nmae'"))
-    mocked.aiGenerate.mockResolvedValue(answer('SELECT Name FROM Account'))
+    replies('SELECT Name FROM Account')
     render(<App launch={{ org: 'demo' }} />)
     await userEvent.click(await screen.findByRole('button', { name: /SELECT Nmae FROM Account/ }))
     await userEvent.click(screen.getByRole('button', { name: /^(Run|実行)/ }))
@@ -254,7 +277,7 @@ describe('AI', () => {
 
   it('records nothing for a fix of a query written by hand', async () => {
     mocked.query.mockRejectedValueOnce(rejected("No such column 'Nmae'"))
-    mocked.aiGenerate.mockResolvedValue(answer('SELECT Name FROM Account'))
+    replies('SELECT Name FROM Account')
     render(<App launch={{ org: 'demo', query: 'SELECT Nmae FROM Account', run: true }} />)
     await userEvent.click(await screen.findByRole('button', { name: t.aiFix }))
     await userEvent.click(within(await card()).getByRole('button', { name: t.aiReplaceRun }))
@@ -265,7 +288,7 @@ describe('AI', () => {
   it('runs the proposal in place of a query that is running', async () => {
     const first = deferred<never>()
     mocked.query.mockReturnValueOnce(first.promise)
-    mocked.aiGenerate.mockResolvedValue(answer('SELECT Id, Name FROM Account'))
+    replies('SELECT Id, Name FROM Account')
     render(<App launch={{ org: 'demo', query: 'SELECT Id FROM Account', run: true }} />)
     await waitFor(() => expect(mocked.query).toHaveBeenCalledTimes(1))
     await userEvent.type(await screen.findByLabelText(t.aiRequestLabel), '名前も{Enter}')
@@ -277,7 +300,7 @@ describe('AI', () => {
 
   it('opens the editor area to show the proposal of Fix with AI', async () => {
     mocked.query.mockRejectedValue(rejected("No such column 'Nmae'"))
-    mocked.aiGenerate.mockResolvedValue(answer('SELECT Name FROM Account'))
+    replies('SELECT Name FROM Account')
     render(<App launch={{ org: 'demo', query: 'SELECT Nmae FROM Account', run: true }} />)
     const fix = await screen.findByRole('button', { name: t.aiFix })
     await userEvent.click(screen.getByRole('button', { name: t.hideEditor }))
@@ -286,9 +309,12 @@ describe('AI', () => {
   })
 
   it('shows the API error under the input and drops the proposal', async () => {
-    mocked.aiGenerate
-      .mockResolvedValueOnce(answer('SELECT Name FROM Account'))
-      .mockRejectedValueOnce(new ApiRequestError(502, 'AI_ERROR', 'invalid x-api-key'))
+    let writes = 0
+    mocked.aiGenerate.mockImplementation((async (req: { task: string }) => {
+      if (req.task === 'chooseObjects') return { output: { objects: ['Account'] } }
+      if (writes++ === 0) return answer('SELECT Name FROM Account')
+      throw new ApiRequestError(502, 'AI_ERROR', 'invalid x-api-key')
+    }) as never)
     await ask('名前')
     await card()
     await userEvent.click(screen.getByRole('button', { name: t.aiGenerate }))

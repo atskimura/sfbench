@@ -68,9 +68,8 @@ export function AiBar() {
       </form>
       <div className={styles.row}>
         <span className={panel.meta}>{t.aiSends}</span>
-        {ai.panelObject && <Send text={t.aiObjectChip(ai.panelObject)} checked={ai.sendObject} onChange={ai.setSendObject} />}
         {ai.hasEditorText && <Send text={t.aiEditorChip} checked={ai.sendEditor} onChange={ai.setSendEditor} />}
-        {!ai.sendObject && <span className={panel.meta}>{t.aiObjectsChosenByAi}</span>}
+        <span className={panel.meta}>{t.aiObjectsChosenByAi(ai.panelObject)}</span>
         {running && step && (
           <span role="status" className={`${panel.meta} ${styles.status}`}>
             {t.aiStep[step]}

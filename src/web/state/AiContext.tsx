@@ -29,11 +29,8 @@ type AiValue = {
   label: string
   request: string
   setRequest: (text: string) => void
-  /** The object open on the left, whose fields can be sent. */
+  /** The object open on the left: a hint for the AI's choice of objects. */
   panelObject: string | undefined
-  /** Whether its fields are sent: unticking holds for that object only, so that another object opened is sent. */
-  sendObject: boolean
-  setSendObject: (on: boolean) => void
   /** Whether the editor has text to send. */
   hasEditorText: boolean
   /** Whether the editor text is sent: unticking holds for this workspace. */
@@ -63,32 +60,35 @@ const MIN_FIELD_BUDGET = 2_000
 
 type Progress = (step: AiStep) => void
 
-/** Generate (docs/ai.md "Generate の流れ"). Reads only its arguments: the values when it was pressed. */
+/**
+ * Generate (docs/ai.md "Generate の流れ"): the AI first chooses the objects,
+ * with the open one as a hint only, so that it does not write the query for
+ * the open object when the request is about another. Reads only its
+ * arguments: the values when it was pressed.
+ */
 async function generateSoql(
-  input: { username: string; request: string; object: string | undefined; editorText: string; tooling: boolean; names: NameContext },
+  input: { username: string; request: string; openObject: string | undefined; editorText: string; tooling: boolean; names: NameContext },
   signal: AbortSignal,
   progress: Progress,
 ): Promise<Proposal> {
-  const { username, request, object, editorText, tooling, names } = input
-  progress(object ? 'loadFields' : 'chooseObjects')
+  const { username, request, openObject, editorText, tooling, names } = input
+  progress('chooseObjects')
   const fieldBudget = budgetLeft(request, editorText)
   if (fieldBudget < MIN_FIELD_BUDGET) throw new Notice(t.aiTooLong)
   const globals = (await describeGlobal(username, tooling)).sobjects
-  const chosen = object ? findByName(globals, object, names.ns) : undefined
-  let objects = chosen ? [chosen.name] : []
-  if (objects.length === 0) {
-    // Also when the open object is not in this API's list (such as after switching to the Tooling API).
-    progress('chooseObjects')
-    // No object open: the AI picks from the org's objects first.
-    const { output } = await api.aiGenerate(
-      { task: 'chooseObjects', input: { request, objects: objectList(globals, names, budgetLeft(request)), tooling, language: uiLanguage } },
-      signal,
-    )
-    // The server has already matched the names with the list and dropped repeats.
-    objects = output.objects.map((o) => findByName(globals, o, names.ns)?.name).filter((o): o is string => Boolean(o))
-    if (objects.length === 0) throw new Notice(t.aiNoObjects)
-    progress('loadFields')
-  }
+  // Only an object in this API's list is a hint (not one open before switching to the Tooling API).
+  const open = openObject ? findByName(globals, openObject, names.ns)?.name : undefined
+  const { output: chosen } = await api.aiGenerate(
+    {
+      task: 'chooseObjects',
+      input: { request, objects: objectList(globals, names, budgetLeft(request)), ...(open ? { openObject: open } : {}), tooling, language: uiLanguage },
+    },
+    signal,
+  )
+  // The server has already matched the names with the list and dropped repeats.
+  const objects = chosen.objects.map((o) => findByName(globals, o, names.ns)?.name).filter((o): o is string => Boolean(o))
+  if (objects.length === 0) throw new Notice(t.aiNoObjects)
+  progress('loadFields')
   const describes: SObjectDescribe[] = await Promise.all(objects.map((o) => describeSObject(username, o, tooling)))
   progress('generate')
   const { output } = await api.aiGenerate(
@@ -136,14 +136,12 @@ export function AiProvider({ username, children }: { username: string; children:
   const { start, cancel: cancelTask, running, progress: step } = useTask<AiStep>()
   const [state, dispatch] = useReducer(reducer, initialState)
   const [request, setRequest] = useState('')
-  // What the user chose not to send (docs/ai.md "AI の入力欄").
-  const [objectOff, setObjectOff] = useState<string>()
+  // Unsent once the user says so, until the workspace goes (docs/ai.md "AI の入力欄").
   const [sendEditor, setSendEditor] = useState(true)
 
   const ai = settings?.ai
   const availability = availabilityOf(settings)
   const label = ai && ai.provider !== 'off' ? `${t.aiProviderName[ai.provider]} · ${ai.model}` : ''
-  const objectChip = soql.panelObject && soql.panelObject !== objectOff ? soql.panelObject : undefined
   const hasEditorText = soql.firstLine.trim() !== ''
   const editorChip = sendEditor && hasEditorText
 
@@ -169,13 +167,13 @@ export function AiProvider({ username, children }: { username: string; children:
     const input = {
       username,
       request: text,
-      object: objectChip,
+      openObject: soql.panelObject,
       editorText: editorChip ? soql.getText() : '',
       tooling: soql.tooling,
       names: soql.names,
     }
     void start((signal, progress) => generateSoql(input, signal, progress), 'ignore').then(finish)
-  }, [request, availability, username, objectChip, editorChip, soql, start, finish])
+  }, [request, availability, username, editorChip, soql, start, finish])
 
   const fix = useCallback(
     (error: string, rejected: Rejected) => {
@@ -211,8 +209,6 @@ export function AiProvider({ username, children }: { username: string; children:
       request,
       setRequest,
       panelObject: soql.panelObject,
-      sendObject: objectChip !== undefined,
-      setSendObject: (on) => setObjectOff(on ? undefined : soql.panelObject),
       hasEditorText,
       sendEditor,
       setSendEditor,
@@ -226,7 +222,7 @@ export function AiProvider({ username, children }: { username: string; children:
       discard: () => dispatch({ type: 'discarded' }),
       apply,
     }),
-    [availability, label, request, objectChip, hasEditorText, sendEditor, soql.panelObject, running, step, proposal, failure, generate, fix, cancel, apply],
+    [availability, label, request, hasEditorText, sendEditor, soql.panelObject, running, step, proposal, failure, generate, fix, cancel, apply],
   )
   return <AiContext.Provider value={value}>{children}</AiContext.Provider>
 }

@@ -57,12 +57,15 @@ export function promptFor(req: AiTaskRequest): Prompt {
         system: [
           `You pick the Salesforce objects that a SOQL query for the user's request needs to read.`,
           `Choose at most ${MAX_OBJECTS} API names from the object list, most important first. Choose only names in the list.`,
+          i.openObject
+            ? 'The user has the object in <data name="open"> open on screen. Choose it if the request is about it; if the request is about other objects, choose those instead and leave it out.'
+            : '',
           i.tooling ? 'The query runs on the Tooling API.' : '',
           DATA_RULE,
         ]
           .filter(Boolean)
           .join('\n'),
-        user: `${data('objects', i.objects)}\n\nRequest: ${i.request}`,
+        user: [data('objects', i.objects), i.openObject ? data('open', i.openObject) : '', `Request: ${i.request}`].filter(Boolean).join('\n\n'),
       }
     }
     case 'generateSoql': {
@@ -191,6 +194,7 @@ export function invalidTaskRequest(body: unknown): string | undefined {
   const names = typeof task === 'string' && Object.hasOwn(strings, task) ? strings[task] : undefined
   if (!names) return 'task must be chooseObjects, generateSoql or fixSoql.'
   for (const name of names) if (typeof input[name] !== 'string') return `input.${name} must be a string.`
+  if (input.openObject !== undefined && typeof input.openObject !== 'string') return 'input.openObject must be a string.'
   if (typeof input.tooling !== 'boolean') return 'input.tooling must be a boolean.'
   if (input.language !== 'en' && input.language !== 'ja') return 'input.language must be en or ja.'
   return undefined

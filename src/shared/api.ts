@@ -129,6 +129,8 @@ export type AiTaskRequest =
         request: string
         /** One object per line: `ApiName (Label)`. */
         objects: string
+        /** The object open on the left (its API name), a hint only: the AI still chooses (docs/ai.md "Generate の流れ"). */
+        openObject?: string
         tooling: boolean
         language: UiLanguage
       }
