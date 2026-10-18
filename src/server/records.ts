@@ -13,6 +13,21 @@ export class RecordsRequestError extends Error {
 const NAME = /^[A-Za-z][A-Za-z0-9_]*$/
 const ID = /^[a-zA-Z0-9]{15}([a-zA-Z0-9]{3})?$/
 
+function checkAllOrNone(value: unknown): boolean {
+  if (typeof value !== 'boolean') throw new RecordsRequestError('allOrNone must be true or false.')
+  return value
+}
+
+/** The same record twice (also as its 15 and 18 character Ids) would leave which value wins to Salesforce. */
+function checkUnique(ids: readonly string[]): void {
+  const seen = new Set<string>()
+  for (const id of ids) {
+    const key = id.slice(0, 15)
+    if (seen.has(key)) throw new RecordsRequestError(`The record ${id} is given twice.`)
+    seen.add(key)
+  }
+}
+
 function checkCount(n: number): void {
   if (n === 0) throw new RecordsRequestError('No records were given.')
   if (n > MAX_RECORDS_PER_CALL) throw new RecordsRequestError(`At most ${MAX_RECORDS_PER_CALL} records can be sent at once.`)
@@ -45,7 +60,8 @@ export function checkUpdate(input: Record<string, unknown>): Pick<RecordsUpdateR
     }
     return { id: checkId(id), fields: fields as Record<string, FieldValue> }
   })
-  return { object, records: checked, allOrNone: allOrNone === true }
+  checkUnique(checked.map((r) => r.id))
+  return { object, records: checked, allOrNone: checkAllOrNone(allOrNone) }
 }
 
 /** Checks a delete from the screen; nothing is sent when it fails. */
@@ -53,7 +69,9 @@ export function checkDelete(input: Record<string, unknown>): Pick<RecordsDeleteR
   const { ids, allOrNone } = input
   if (!Array.isArray(ids)) throw new RecordsRequestError('ids must be a list.')
   checkCount(ids.length)
-  return { ids: ids.map(checkId), allOrNone: allOrNone === true }
+  const checked = ids.map(checkId)
+  checkUnique(checked)
+  return { ids: checked, allOrNone: checkAllOrNone(allOrNone) }
 }
 
 /** The body of the sObject Collections update. */
@@ -83,9 +101,13 @@ function errorsOf(value: unknown): RecordError[] {
  * known, and the screen says so (an internal error is of unknown outcome).
  */
 export function recordResults(ids: readonly string[], body: unknown): RecordResult[] {
-  if (!Array.isArray(body) || body.length !== ids.length) throw new Error('sObject Collections answered in an unexpected form')
+  const unexpected = () => new Error('sObject Collections answered in an unexpected form')
+  if (!Array.isArray(body) || body.length !== ids.length) throw unexpected()
   return ids.map((id, i) => {
-    const answer = (body[i] ?? {}) as Record<string, unknown>
-    return { id, success: answer.success === true, errors: errorsOf(answer.errors) }
+    const answer = body[i] as Record<string, unknown> | null
+    if (!answer || typeof answer !== 'object' || typeof answer.success !== 'boolean') throw unexpected()
+    // A saved row names its record: one out of order is not taken for another.
+    if (answer.success && typeof answer.id === 'string' && answer.id.slice(0, 15) !== id.slice(0, 15)) throw unexpected()
+    return { id, success: answer.success, errors: errorsOf(answer.errors) }
   })
 }

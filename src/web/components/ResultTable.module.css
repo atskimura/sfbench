@@ -65,3 +65,64 @@
   cursor: pointer;
   font: inherit;
 }
+
+/* Editing (docs/edit.md "画面"). */
+.selectCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  overflow: visible;
+}
+
+.changed {
+  background: var(--color-notice-bg);
+  color: var(--color-notice-ink);
+}
+
+.row:not(.header):hover > .changed {
+  background: var(--color-notice-bg);
+}
+
+.rowError {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-danger-strong);
+  color: var(--color-on-danger);
+  font-size: var(--font-size-xsmall);
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+}
+
+.editing {
+  position: relative;
+  padding: 0;
+  overflow: visible;
+}
+
+.editor {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 2px solid var(--color-accent);
+  padding: 0 var(--space-2);
+  background: var(--color-panel);
+  color: var(--color-ink);
+  font: inherit;
+}
+
+/* A text area opens taller than its row, over the rows below. */
+.textareaEditor {
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 2;
+  min-width: 24em;
+  height: 8em;
+  padding: var(--space-1) var(--space-2);
+  resize: both;
+}

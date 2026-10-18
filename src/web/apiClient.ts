@@ -8,6 +8,9 @@ import type {
   ApexHistoryResponse,
   ApexRequest,
   ApexResponse,
+  RecordsDeleteRequest,
+  RecordsResponse,
+  RecordsUpdateRequest,
   ApiError,
   ApiErrorCode,
   ApiUsage,
@@ -154,6 +157,11 @@ export const api = {
       'GET',
       `${org(username)}/sobjects/${encodeURIComponent(name)}${query(flag('tooling', tooling), version(apiVersion), flag('refresh', refresh))}`,
     ),
+  /** Saves up to 200 records from the result table; each record's outcome comes back (docs/edit.md). */
+  recordsUpdate: (username: string, body: RecordsUpdateRequest, signal?: AbortSignal) =>
+    request<WithApiUsage<RecordsResponse>>('POST', `${org(username)}/records/update`, body, signal),
+  recordsDelete: (username: string, body: RecordsDeleteRequest, signal?: AbortSignal) =>
+    request<WithApiUsage<RecordsResponse>>('POST', `${org(username)}/records/delete`, body, signal),
   /** The API versions the org supports, oldest first. */
   versions: (username: string, signal?: AbortSignal) => request<VersionsResponse>('GET', `${org(username)}/versions`, undefined, signal),
   query: (username: string, req: QueryRequest, signal?: AbortSignal) =>

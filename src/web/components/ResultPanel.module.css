@@ -101,3 +101,77 @@
   gap: var(--space-2);
   padding: var(--space-4);
 }
+
+/* Editing (docs/edit.md "画面"). */
+.editOn {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.editBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.danger:not(:disabled) {
+  border-color: var(--color-danger-line);
+  color: var(--color-danger);
+}
+
+.allOrNone {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-small);
+  cursor: pointer;
+}
+
+.editDone,
+.editUnknown,
+.editError {
+  flex-basis: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+}
+
+.editDone > .message,
+.editUnknown > .message,
+.editError > .message {
+  flex: 1;
+  font-family: inherit;
+}
+
+.editDone {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.editUnknown {
+  border: 1px solid var(--color-notice-line);
+  background: var(--color-notice-bg);
+  color: var(--color-notice-ink);
+}
+
+.editError {
+  border: 1px solid var(--color-danger-line);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.messageClose {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: var(--font-size-title);
+  line-height: 1;
+  cursor: pointer;
+}

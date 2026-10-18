@@ -6,7 +6,11 @@ import { isLocatorGone } from '../errors.ts'
 import { t } from '../i18n/i18n.ts'
 import { pagesReducer, type Pages } from '../results/pages.ts'
 import { addColumns, cellText, cellValue, type ChildRecords, type Column, type SObjectRecord } from '../results/columns.ts'
+import { isSameValue } from '../results/editable.ts'
+import { useApp } from '../state/AppContext.tsx'
 import { useOrgs } from '../state/OrgContext.tsx'
+import { useRecordEdits } from '../state/useRecordEdits.ts'
+import type { RowChanges } from '../results/edits.ts'
 import { useResult, type QueryResult } from '../state/SoqlContext.tsx'
 import { useTask } from '../state/useTask.ts'
 import { FixWithAi } from './AiBar.tsx'
@@ -15,7 +19,8 @@ import { ErrorDetails } from './ErrorDetails.tsx'
 import { CsvExport } from './CsvExport.tsx'
 import panel from './Panel.module.css'
 import styles from './ResultPanel.module.css'
-import { ResultTable, type CellRef } from './ResultTable.tsx'
+import { EditBar, EditToggle } from './ResultEdits.tsx'
+import { ResultTable, type CellRef, type TableEdit } from './ResultTable.tsx'
 
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
@@ -63,22 +68,23 @@ function Shown({ result }: { result: QueryResult }) {
 
 type Done = Extract<QueryResult, { state: 'done' }>
 
-type Scan = { filter: string; columns: readonly Column[]; count: number; matches: readonly number[] }
+type Scan = { filter: string; columns: readonly Column[]; revision: number; count: number; matches: readonly number[] }
 /** Per result: the rows already checked, so that a new page checks only its own rows. */
 const scans = new WeakMap<Done, Scan>()
 
 /** Indices of the loaded rows of `result` with a cell containing `filter` (lower case). */
-function matchingRows(result: Done, records: readonly SObjectRecord[], columns: readonly Column[], filter: string): readonly number[] {
+function matchingRows(result: Done, records: readonly SObjectRecord[], columns: readonly Column[], revision: number, filter: string): readonly number[] {
   const loaded = records.length
   let scan = scans.get(result)
-  if (!scan || scan.filter !== filter || scan.columns !== columns || scan.count > loaded) {
-    scan = { filter, columns, count: 0, matches: [] }
+  // Saved values and deleted rows rewrite the loaded rows (revision): everything is checked again.
+  if (!scan || scan.filter !== filter || scan.columns !== columns || scan.revision !== revision || scan.count > loaded) {
+    scan = { filter, columns, revision, count: 0, matches: [] }
   }
   const matches = [...scan.matches]
   for (let i = scan.count; i < loaded; i++) {
     if (columns.some((c) => cellText(cellValue(records[i], c)).toLowerCase().includes(filter))) matches.push(i)
   }
-  scans.set(result, { filter, columns, count: loaded, matches })
+  scans.set(result, { filter, columns, revision, count: loaded, matches })
   return matches
 }
 type OpenChild = { row: number; column: Column; child: ChildRecords }
@@ -95,7 +101,11 @@ function usePages(result: Done) {
     next: r.nextRecordsUrl,
     columns: r.columns,
     failure: undefined,
+    removed: 0,
+    revision: 0,
   }))
+  const patchRows = useCallback((values: ReadonlyMap<string, RowChanges>) => dispatch({ type: 'patched', values }), [])
+  const removeRows = useCallback((ids: ReadonlySet<string>) => dispatch({ type: 'removed', ids }), [])
   const { next, failure } = pages
   // Reported once the reducer has kept it: a failure of a page fetched again is dropped there.
   useEffect(() => {
@@ -122,12 +132,13 @@ function usePages(result: Done) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [result.username, next, failure, running, start, reportApiUsage],
   )
-  return { ...pages, load, loading: running }
+  return { ...pages, load, loading: running, patchRows, removeRows }
 }
 
 function Records({ result }: { result: Done }) {
   const pages = usePages(result)
-  const { orgs } = useOrgs()
+  const { orgs, summaries } = useOrgs()
+  const { settings } = useApp()
   const instanceUrl = orgs?.find((o) => o.username === result.username)?.instanceUrl
   const [filter, setFilter] = useState('')
   const filterId = useId()
@@ -138,18 +149,49 @@ function Records({ result }: { result: Done }) {
   const loaded = records.length
 
   const rows = useMemo(
-    () => (deferredFilter ? matchingRows(result, records, columns, deferredFilter) : undefined),
-    [result, records, columns, deferredFilter],
+    () => (deferredFilter ? matchingRows(result, records, columns, pages.revision, deferredFilter) : undefined),
+    [result, records, columns, pages.revision, deferredFilter],
   )
+  const shownIds = useMemo(
+    () => (rows ? rows.map((i) => records[i]) : records).map((r) => (typeof r.Id === 'string' ? r.Id : '')).filter(Boolean),
+    [rows, records],
+  )
+  // Columns written without the namespace (the namespace header was sent) match fields with it.
+  const ns = (settings?.omitNamespace ?? true) ? summaries[result.username]?.namespacePrefix : undefined
+  const edits = useRecordEdits({ username: result.username, result, records, columns, shownIds, patchRows: pages.patchRows, removeRows: pages.removeRows, ns })
+  const [editingCell, setEditingCell] = useState<CellRef>()
+  const { state: editState, dispatch: editDispatch, fields, sending } = edits
+  const tableEdit = useMemo<TableEdit | undefined>(() => {
+    if (!editState.editing || !fields) return undefined
+    return {
+      fieldOf: (column) => fields.get(column.key),
+      changed: (id, column) => {
+        const row = editState.changes.get(id)
+        return row && Object.hasOwn(row, column.key) ? { value: row[column.key] } : undefined
+      },
+      editing: editingCell,
+      onEdit: setEditingCell,
+      onSet: (row, column, value) => {
+        const record = records[row]
+        const id = typeof record.Id === 'string' ? record.Id : ''
+        if (id) editDispatch({ type: 'set', id, column: column.key, value, same: isSameValue(cellValue(record, column), value) })
+      },
+      isSelected: (id) => editState.selected.has(id),
+      onSelectRows: (ids, on) => editDispatch({ type: 'select', ids, on }),
+      shownIds,
+      errorOf: (id) => editState.errors.get(id),
+      disabled: sending,
+    }
+  }, [editState, fields, editingCell, records, editDispatch, shownIds, sending])
 
   // COUNT() has a totalSize but no records: nothing remains without a next page.
   // totalSize can fall behind when records are added after the query ran.
-  const remaining = pages.next ? Math.max(result.totalSize - loaded, 0) : 0
+  const remaining = pages.next ? Math.max(result.totalSize - pages.removed - loaded, 0) : 0
   const nextCount = remaining > 0 ? Math.min(result.pageSize, remaining) : result.pageSize
   return (
     <>
       <div className={panel.header}>
-        <span className={styles.count}>{t.recordCount(result.totalSize)}</span>
+        <span className={styles.count}>{t.recordCount(result.totalSize - pages.removed)}</span>
         {pages.next && <span className={panel.meta}>{t.loadedCount(loaded)}</span>}
         <span className={panel.meta}>
           {[result.object, t.elapsed((result.elapsedMs / 1000).toFixed(2)), timeFormat.format(result.executedAt)].filter(Boolean).join(' · ')}
@@ -173,7 +215,9 @@ function Records({ result }: { result: Done }) {
           )}
         </span>
         <CsvExport result={result} pages={pages} />
+        <EditToggle edits={edits} />
       </div>
+      {edits.editing && <EditBar edits={edits} />}
       <div className={styles.body}>
         <ResultTable
           records={records}
@@ -187,6 +231,7 @@ function Records({ result }: { result: Done }) {
           // While filtering, later pages load only by the button below (docs/web.md).
           onNearEnd={rows ? undefined : pages.load}
           label={t.results}
+          edit={tableEdit}
         />
         {pages.next && (rows || pages.loading || pages.failure) && (
           <div className={styles.more}>

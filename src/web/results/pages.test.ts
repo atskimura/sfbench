@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { pagesReducer, type Pages } from './pages.ts'
 
 const first = [{ Id: '001', Name: 'Row 1' }]
-const start: Pages = { records: first, next: '/next/1', columns: [], failure: undefined }
+const start: Pages = { records: first, next: '/next/1', columns: [], failure: undefined, removed: 0, revision: 0 }
 const page = (from: string, next: string | undefined) =>
   ({ type: 'page', from, records: [{ Id: '002', Name: 'Row 2' }], next }) as const
 
@@ -36,5 +36,26 @@ describe('later pages', () => {
     const action = page('/next/1', undefined)
     expect(pagesReducer(start, action)).toEqual(pagesReducer(start, action))
     expect(start.records).toBe(first)
+  })
+})
+
+// docs/edit.md "保存と削除": what a save or delete leaves in the loaded rows.
+describe('edits written into the rows', () => {
+  const rows: Pages = { ...start, records: [{ Id: 'a', Name: 'A' }, { Id: 'b', Name: 'B' }, { Id: 'c', Name: 'C' }] }
+
+  it('writes saved values into new row objects, and leaves the other rows as they were', () => {
+    const state = pagesReducer(rows, { type: 'patched', values: new Map([['b', { Name: 'B2', Rating: null }]]) })
+    expect(state.records).toEqual([{ Id: 'a', Name: 'A' }, { Id: 'b', Name: 'B2', Rating: null }, { Id: 'c', Name: 'C' }])
+    expect(state.records[0]).toBe(rows.records[0])
+    expect(rows.records[1]).toEqual({ Id: 'b', Name: 'B' })
+    expect(state.revision).toBe(1)
+  })
+
+  it('drops deleted rows and counts them', () => {
+    const state = pagesReducer(rows, { type: 'removed', ids: new Set(['a', 'c', 'x']) })
+    expect(state.records).toEqual([{ Id: 'b', Name: 'B' }])
+    expect(state.removed).toBe(2)
+    // The next page still continues from where it was.
+    expect(state.next).toBe('/next/1')
   })
 })

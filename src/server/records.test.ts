@@ -26,17 +26,22 @@ describe('checkUpdate', () => {
     for (const input of bad) expect(() => checkUpdate(input)).toThrow(RecordsRequestError)
   })
 
-  it('takes allOrNone only when it is true', () => {
-    expect(checkUpdate({ object: 'Account', records: [{ id, fields: { Name: 'A' } }], allOrNone: 'yes' }).allOrNone).toBe(false)
+  it('takes allOrNone only as true or false, never guessing', () => {
+    expect(() => checkUpdate({ object: 'Account', records: [{ id, fields: { Name: 'A' } }], allOrNone: 'true' })).toThrow(RecordsRequestError)
+  })
+
+  it('refuses the same record twice, also as its 15 and 18 character Ids', () => {
+    expect(() => checkUpdate({ object: 'Account', records: [{ id, fields: { Name: 'A' } }, { id: id.slice(0, 15), fields: { Name: 'B' } }], allOrNone: false })).toThrow(RecordsRequestError)
   })
 })
 
 describe('checkDelete', () => {
   it('takes up to 200 ids of 15 or 18 characters', () => {
-    expect(checkDelete({ ids: [id, id.slice(0, 15)], allOrNone: false })).toEqual({ ids: [id, id.slice(0, 15)], allOrNone: false })
-    expect(() => checkDelete({ ids: [] })).toThrow(RecordsRequestError)
-    expect(() => checkDelete({ ids: Array.from({ length: 201 }, () => id) })).toThrow(RecordsRequestError)
-    expect(() => checkDelete({ ids: [`${id},001`] })).toThrow(RecordsRequestError)
+    expect(checkDelete({ ids: [id, '0012w000005TOPz'], allOrNone: true })).toEqual({ ids: [id, '0012w000005TOPz'], allOrNone: true })
+    expect(() => checkDelete({ ids: [], allOrNone: false })).toThrow(RecordsRequestError)
+    expect(() => checkDelete({ ids: Array.from({ length: 201 }, (_, i) => `${id.slice(0, 12)}${String(i).padStart(3, '0')}`), allOrNone: false })).toThrow(RecordsRequestError)
+    expect(() => checkDelete({ ids: [`${id},001`], allOrNone: false })).toThrow(RecordsRequestError)
+    expect(() => checkDelete({ ids: [id, id], allOrNone: false })).toThrow(RecordsRequestError)
   })
 })
 
@@ -64,5 +69,8 @@ describe('recordResults', () => {
   it('does not guess at an answer of another shape: what Salesforce did is not known', () => {
     expect(() => recordResults([id], { ok: true })).toThrow()
     expect(() => recordResults([id, id], [{ success: true }])).toThrow()
+    expect(() => recordResults([id], [null])).toThrow()
+    expect(() => recordResults([id], [{ errors: [] }])).toThrow()
+    expect(() => recordResults([id], [{ id: '0012w000005TOPzAAO', success: true, errors: [] }])).toThrow()
   })
 })

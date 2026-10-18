@@ -2,7 +2,10 @@
 // visible rows drawn (docs/web.md "描画").
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useEffect, useMemo, useRef, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
+import type { FieldValue } from '../../shared/api.ts'
+import type { FieldDescribe } from '../apiClient.ts'
 import { t } from '../i18n/i18n.ts'
+import { isEditableValue } from '../results/editable.ts'
 import {
   cellText,
   cellValue,
@@ -14,6 +17,7 @@ import {
   type SObjectRecord,
 } from '../results/columns.ts'
 import { isRecordId } from '../results/recordId.ts'
+import { CellEditor } from './CellEditor.tsx'
 import styles from './ResultTable.module.css'
 
 /** The row height, also given to the CSS as --row-height so that both agree. */
@@ -22,6 +26,33 @@ const ROW_HEIGHT = 28
 const NEAR_END_ROWS = 50
 
 export type CellRef = { row: number; column: Column }
+
+/** Editing the rows (docs/edit.md "画面"): a selection column first, changed cells marked, cells that open an input. */
+export type TableEdit = {
+  /** The field of a column that can be edited, else undefined. */
+  fieldOf: (column: Column) => FieldDescribe | undefined
+  /** A row's changed value in a column, if changed. */
+  changed: (id: string, column: Column) => { value: FieldValue } | undefined
+  /** The cell whose input is open. */
+  editing: CellRef | undefined
+  onEdit: (cell: CellRef | undefined) => void
+  /** A cell's new value (the caller tells whether it is the row's own). */
+  onSet: (row: number, column: Column, value: FieldValue) => void
+  isSelected: (id: string) => boolean
+  onSelectRows: (ids: readonly string[], on: boolean) => void
+  /** The ids of the rows shown, for the header's checkbox. */
+  shownIds: readonly string[]
+  /** Salesforce's message for a row whose save or delete failed. */
+  errorOf: (id: string) => string | undefined
+  /** A save or delete is being sent: nothing can be changed. */
+  disabled: boolean
+}
+
+const SELECT_COLUMN = '3.5em'
+
+function idOf(record: SObjectRecord): string {
+  return typeof record.Id === 'string' ? record.Id : ''
+}
 
 type Props = {
   records: readonly SObjectRecord[]
@@ -36,9 +67,10 @@ type Props = {
   onOpenChild?: (row: number, column: Column, child: ChildRecords) => void
   onNearEnd?: () => void
   label: string
+  edit?: TableEdit
 }
 
-export function ResultTable({ records, loaded = records.length, rows, columns, instanceUrl, selected, onSelect, onOpenChild, onNearEnd, label }: Props) {
+export function ResultTable({ records, loaded = records.length, rows, columns, instanceUrl, selected, onSelect, onOpenChild, onNearEnd, label, edit }: Props) {
   const scroll = useRef<HTMLDivElement>(null)
   const count = rows ? rows.length : loaded
 
@@ -56,8 +88,9 @@ export function ResultTable({ records, loaded = records.length, rows, columns, i
     }
     laidOutUpTo.current = loaded
     // ch is the width of "0"; capitals and wide glyphs run wider, hence the margin.
-    return columns.map((c) => `calc(${layout.current.get(c.key)!.width * 1.2}ch + 2 * var(--space-3))`).join(' ')
-  }, [columns, records, loaded])
+    const widths = columns.map((c) => `calc(${layout.current.get(c.key)!.width * 1.2}ch + 2 * var(--space-3))`)
+    return (edit ? [SELECT_COLUMN, ...widths] : widths).join(' ')
+  }, [columns, records, loaded, edit])
 
   // The virtualizer's functions change on every render; this component does not memoize them.
   // oxlint-disable-next-line react/incompatible-library
@@ -78,6 +111,14 @@ export function ResultTable({ records, loaded = records.length, rows, columns, i
 
   // Arrow keys move the selected cell (whose full text the panel shows below the table).
   const onKeyDown = (e: KeyboardEvent) => {
+    // Keys typed in a cell's input are its own.
+    if (e.target !== e.currentTarget) return
+    // Enter opens the selected cell's input, as a double click does.
+    if (e.key === 'Enter' && edit && selected) {
+      e.preventDefault()
+      startEdit(selected)
+      return
+    }
     if (!onSelect || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) || count === 0) return
     e.preventDefault()
     const position = selected ? (rows ? rows.indexOf(selected.row) : selected.row) : -1
@@ -94,6 +135,21 @@ export function ResultTable({ records, loaded = records.length, rows, columns, i
     virtualizer.scrollToIndex(nextPosition)
   }
 
+  /** Opens a cell's input; a checkbox field flips at once instead. */
+  const startEdit = (cell: CellRef) => {
+    if (!edit || edit.disabled) return
+    const field = edit.fieldOf(cell.column)
+    const record = records[cell.row]
+    if (!field || !isEditableValue(cellValue(record, cell.column))) return
+    if (field.type === 'boolean') {
+      const now = edit.changed(idOf(record), cell.column)?.value ?? cellValue(record, cell.column)
+      edit.onSet(cell.row, cell.column, now !== true)
+      return
+    }
+    edit.onEdit(cell)
+  }
+  const shownSelected = edit ? edit.shownIds.filter((id) => edit.isSelected(id)).length : 0
+
   const before = items.length > 0 ? items[0].start - ROW_HEIGHT : 0
   const after = items.length > 0 ? virtualizer.getTotalSize() - items[items.length - 1].end + ROW_HEIGHT : 0
 
@@ -107,6 +163,20 @@ export function ResultTable({ records, loaded = records.length, rows, columns, i
     >
       <div className={styles.grid} role="table" aria-label={label} aria-rowcount={count + 1} style={{ gridTemplateColumns: template }}>
         <div className={`${styles.row} ${styles.header}`} role="row" aria-rowindex={1}>
+          {edit && (
+            <div role="columnheader" className={`${styles.cell} ${styles.selectCell}`}>
+              <input
+                type="checkbox"
+                aria-label={t.selectAllRows}
+                disabled={edit.disabled || edit.shownIds.length === 0}
+                checked={edit.shownIds.length > 0 && shownSelected === edit.shownIds.length}
+                ref={(el) => {
+                  if (el) el.indeterminate = shownSelected > 0 && shownSelected < edit.shownIds.length
+                }}
+                onChange={(e) => edit.onSelectRows(edit.shownIds, e.target.checked)}
+              />
+            </div>
+          )}
           {columns.map((c) => (
             <div key={c.key} role="columnheader" className={`${styles.cell} ${layout.current.get(c.key)?.number ? styles.number : ''}`} title={c.key}>
               {c.key}
@@ -117,19 +187,67 @@ export function ResultTable({ records, loaded = records.length, rows, columns, i
         {items.map((item) => {
           const index = rows ? rows[item.index] : item.index
           const record = records[index]
+          const id = idOf(record)
+          const error = edit?.errorOf(id)
           return (
             <div key={index} className={styles.row} role="row" aria-rowindex={item.index + 2}>
-              {columns.map((column) => (
-                <Cell
-                  key={column.key}
-                  value={cellValue(record, column)}
-                  number={layout.current.get(column.key)?.number ?? false}
-                  instanceUrl={instanceUrl}
-                  selected={selected?.row === index && selected.column.key === column.key}
-                  onSelect={onSelect && (() => onSelect({ row: index, column }))}
-                  onOpenChild={onOpenChild && ((child) => onOpenChild(index, column, child))}
-                />
-              ))}
+              {edit && (
+                <div role="cell" className={`${styles.cell} ${styles.selectCell}`}>
+                  <input
+                    type="checkbox"
+                    aria-label={t.selectRow}
+                    disabled={edit.disabled || !id}
+                    checked={edit.isSelected(id)}
+                    onChange={(e) => edit.onSelectRows([id], e.target.checked)}
+                  />
+                  {error && (
+                    <span className={styles.rowError} role="img" aria-label={t.rowError} title={error}>
+                      !
+                    </span>
+                  )}
+                </div>
+              )}
+              {columns.map((column) => {
+                const field = edit?.fieldOf(column)
+                const changed = edit && field ? edit.changed(id, column) : undefined
+                const value = changed ? changed.value : cellValue(record, column)
+                const isSelected = selected?.row === index && selected.column.key === column.key
+                if (edit && field && edit.editing?.row === index && edit.editing.column.key === column.key) {
+                  return (
+                    <div key={column.key} role="cell" className={`${styles.cell} ${styles.editing}`}>
+                      <CellEditor
+                        field={field}
+                        value={value}
+                        label={t.editCell(column.key)}
+                        onCommit={(next) => {
+                          edit.onSet(index, column, next)
+                          edit.onEdit(undefined)
+                          scroll.current?.focus()
+                        }}
+                        onCancel={() => {
+                          edit.onEdit(undefined)
+                          scroll.current?.focus()
+                        }}
+                      />
+                    </div>
+                  )
+                }
+                const rounded = field !== undefined && !isEditableValue(cellValue(record, column))
+                return (
+                  <Cell
+                    key={column.key}
+                    value={value}
+                    number={layout.current.get(column.key)?.number ?? false}
+                    instanceUrl={instanceUrl}
+                    selected={isSelected}
+                    changed={changed !== undefined}
+                    title={rounded ? t.editRounded : undefined}
+                    onSelect={onSelect && (() => onSelect({ row: index, column }))}
+                    onDoubleClick={field ? () => startEdit({ row: index, column }) : undefined}
+                    onOpenChild={onOpenChild && ((child) => onOpenChild(index, column, child))}
+                  />
+                )
+              })}
             </div>
           )
         })}
@@ -144,18 +262,25 @@ function Cell({
   number,
   instanceUrl,
   selected,
+  changed = false,
+  title,
   onSelect,
+  onDoubleClick,
   onOpenChild,
 }: {
   value: unknown
   number: boolean
   instanceUrl: string | undefined
   selected: boolean
+  /** Changed and not saved yet. */
+  changed?: boolean
+  title?: string
   onSelect?: () => void
+  onDoubleClick?: () => void
   onOpenChild?: (child: ChildRecords) => void
 }) {
   const text = cellText(value)
-  const className = `${styles.cell} ${number ? styles.number : ''} ${selected ? styles.selected : ''}`
+  const className = `${styles.cell} ${number ? styles.number : ''} ${selected ? styles.selected : ''} ${changed ? styles.changed : ''}`
   let content: ReactNode = text
   if (isChildRecords(value) && onOpenChild) {
     content = (
@@ -171,7 +296,7 @@ function Cell({
     )
   }
   return (
-    <div role="cell" className={className} onClick={onSelect}>
+    <div role="cell" className={className} title={title} onClick={onSelect} onDoubleClick={onDoubleClick}>
       {content}
     </div>
   )

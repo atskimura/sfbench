@@ -1,7 +1,7 @@
 // docs/web.md "エラーの扱い": where each error is shown.
 import { describe, expect, it } from 'vitest'
 import { ApiRequestError } from './apiClient.ts'
-import { errorKind, errorMessage, isLocatorGone, runFailure } from './errors.ts'
+import { errorKind, errorMessage, isLocatorGone, isOutcomeUnknown, runFailure } from './errors.ts'
 import { t } from './i18n/i18n.ts'
 
 const api = (status: number, code: ApiRequestError['code'], extra: object = {}) =>
@@ -52,5 +52,15 @@ describe('errors', () => {
 
   it('shows the message of an error that is not from the API', () => {
     expect(errorMessage(new TypeError('x is undefined'))).toBe('x is undefined')
+  })
+})
+
+describe('isOutcomeUnknown', () => {
+  it('takes a call Salesforce refused with a 400 as not processed, and other failures of a change as unknown', () => {
+    expect(isOutcomeUnknown(api(400, 'SALESFORCE_ERROR', { status: 400 }), true)).toBe(false)
+    expect(isOutcomeUnknown(api(502, 'SALESFORCE_ERROR', { status: 503 }), true)).toBe(true)
+    expect(isOutcomeUnknown(api(504, 'SALESFORCE_TIMEOUT'), false)).toBe(true)
+    expect(isOutcomeUnknown(api(500, 'INTERNAL_ERROR'), true)).toBe(true)
+    expect(isOutcomeUnknown(api(500, 'NOT_RUN'), true)).toBe(false)
   })
 })

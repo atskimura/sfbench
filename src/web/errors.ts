@@ -94,6 +94,8 @@ export function isOutcomeUnknown(e: unknown, changesData: boolean): boolean {
   const kind = errorKind(e)
   // Not sent, or refused before Salesforce ran anything.
   if (kind === 'aborted' || kind === 'orgAuth' || kind === 'orgNotFound' || kind === 'sfNotFound') return false
+  // Salesforce refused the whole call with a 400: it processed nothing (docs/edit.md "保存と削除").
+  if (kind === 'rejected') return false
   if (e instanceof ApiRequestError && (e.code === 'BAD_REQUEST' || e.code === 'NOT_RUN')) return false
   // sfbench refused the session at its door: nothing went to Salesforce.
   if (e instanceof ApiRequestError && e.isSessionRefused) return false
