@@ -3,6 +3,7 @@ import { useId, useState } from 'react'
 import { AI_PROVIDERS, type AiKeyProvider, type AiSettingsView } from '../../shared/api.ts'
 import { aiDraftValid, aiInput, type AiDraft } from '../ai/draft.ts'
 import { api } from '../apiClient.ts'
+import { errorMessage } from '../errors.ts'
 import { t } from '../i18n/i18n.ts'
 import { useTask } from '../state/useTask.ts'
 import dialog from './Dialog.module.css'
@@ -37,7 +38,7 @@ export function AiSettings({ saved, draft, onChange }: { saved: AiSettingsView |
     const input = aiInput(draft)
     const outcome = await start((signal) => api.aiTest({ ai: input }, signal), 'replace')
     if (outcome.kind === 'done') setResult({ state: 'ok', ms: outcome.value.elapsedMs })
-    if (outcome.kind === 'error') setResult({ state: 'error', message: (outcome.error as Error).message })
+    if (outcome.kind === 'error') setResult({ state: 'error', message: errorMessage(outcome.error) })
   }
 
   return (

@@ -6,8 +6,8 @@ import { createContext, useCallback, useContext, useMemo, useReducer, useState, 
 import { availabilityOf, type AiAvailability } from '../ai/availability.ts'
 import { initialState, reducer, type AiFailure, type AiStep, type Proposal, type Shown } from '../ai/aiState.ts'
 import { budgetLeft, objectInfo, objectList } from '../ai/objectInfo.ts'
-import { ApiRequestError, api, type SObjectDescribe } from '../apiClient.ts'
-import { errorKind, errorMessage, isShownElsewhere } from '../errors.ts'
+import { api, type SObjectDescribe } from '../apiClient.ts'
+import { errorDetails, errorKind, errorMessage, isShownElsewhere } from '../errors.ts'
 import { t, uiLanguage } from '../i18n/i18n.ts'
 import { fromObjectOf } from '../soql/context.ts'
 import { findByName } from '../soql/namespace.ts'
@@ -159,7 +159,7 @@ export function AiProvider({ username, children }: { username: string; children:
       const failure: AiFailure | undefined =
         !(e instanceof Notice) && isShownElsewhere(errorKind(e))
           ? undefined
-          : { message: errorMessage(e), details: e instanceof ApiRequestError ? e.body?.details : undefined }
+          : { message: errorMessage(e), details: errorDetails(e) }
       if (!failure) handleOrgError(username, e)
       dispatch({ type: 'failed', failure })
     },

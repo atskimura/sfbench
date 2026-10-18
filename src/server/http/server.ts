@@ -275,7 +275,7 @@ export class App {
     method: string,
   ): Promise<void> {
     const client = await this.options.orgs.client(username)
-    if (!client) throw new HttpError(404, 'ORG_NOT_FOUND', `Unknown org: ${username}`)
+    if (!client) throw unknownOrg(username)
     const refresh = url.searchParams.get('refresh') === '1'
     const withUsage = <T extends object>(body: T) => ({ ...body, apiUsage: client.apiUsage })
 
@@ -423,9 +423,7 @@ export class App {
   }
 
   private async sendError(res: ServerResponse, e: unknown): Promise<void> {
-    if (e instanceof HttpError) {
-      sendJson(res, e.status, errorBody(e.code, e.message))
-    } else if (e instanceof OrgAuthError) {
+    if (e instanceof OrgAuthError) {
       sendJson(res, 409, {
         error: {
           code: 'ORG_AUTH_ERROR',
@@ -433,29 +431,10 @@ export class App {
           reloginCommand: await this.reloginCommand(e.username),
         },
       } satisfies ApiError)
-    } else if (e instanceof SalesforceError) {
-      const status = e.status >= 400 && e.status < 500 ? e.status : 502
-      sendJson(res, status, { error: { code: 'SALESFORCE_ERROR', message: e.message, status: e.status, details: e.body } })
-    } else if (e instanceof SalesforceUnreachableError) {
-      sendJson(res, 502, errorBody('SALESFORCE_UNREACHABLE', e.message))
-    } else if (e instanceof SalesforceTimeoutError) {
-      sendJson(res, 504, errorBody('SALESFORCE_TIMEOUT', e.message))
-    } else if (e instanceof InvalidPathError) {
-      sendJson(res, 400, errorBody('BAD_REQUEST', e.message))
-    } else if (e instanceof SfNotFoundError) {
-      sendJson(res, 503, errorBody('SF_CLI_NOT_FOUND', e.message))
-    } else if (e instanceof AiError) {
-      const status = { AI_NOT_CONFIGURED: 400, AI_ERROR: 502, AI_BAD_OUTPUT: 502, AI_TIMEOUT: 504 }[e.code]
-      sendJson(res, status, { error: { code: e.code, message: e.message, details: e.details } } satisfies ApiError)
-    } else if (e instanceof AiSettingsError) {
-      sendJson(res, 400, errorBody('BAD_REQUEST', e.message))
-    } else if (e instanceof SfCliError) {
-      log.warn(`sf error: ${e.message}`)
-      sendJson(res, 502, errorBody('SF_CLI_ERROR', e.message))
-    } else {
-      log.error(`error: ${(e as Error).stack ?? String(e)}`)
-      sendJson(res, 500, errorBody('INTERNAL_ERROR', 'Internal error'))
+      return
     }
+    const { status, body } = errorResponse(e)
+    sendJson(res, status, body)
   }
 
   /**
@@ -511,6 +490,38 @@ function sameSecret(a: string, b: string): boolean {
   const ba = Buffer.from(a)
   const bb = Buffer.from(b)
   return ba.length === bb.length && timingSafeEqual(ba, bb)
+}
+
+/**
+ * The response for an error, apart from an org's login error (which needs the
+ * relogin command). The codes are what the web UI sorts by (docs/web.md "エラーの扱い").
+ */
+export function errorResponse(e: unknown): { status: number; body: ApiError } {
+  if (e instanceof HttpError) return { status: e.status, body: errorBody(e.code, e.message) }
+  if (e instanceof SalesforceError) {
+    const status = e.status >= 400 && e.status < 500 ? e.status : 502
+    return { status, body: { error: { code: 'SALESFORCE_ERROR', message: e.message, status: e.status, details: e.body } } }
+  }
+  if (e instanceof SalesforceUnreachableError) return { status: 502, body: errorBody('SALESFORCE_UNREACHABLE', e.message) }
+  if (e instanceof SalesforceTimeoutError) return { status: 504, body: errorBody('SALESFORCE_TIMEOUT', e.message) }
+  if (e instanceof InvalidPathError) return { status: 400, body: errorBody('BAD_REQUEST', e.message) }
+  if (e instanceof SfNotFoundError) return { status: 503, body: errorBody('SF_CLI_NOT_FOUND', e.message) }
+  if (e instanceof AiError) {
+    const status = { AI_NOT_CONFIGURED: 400, AI_ERROR: 502, AI_BAD_OUTPUT: 502, AI_TIMEOUT: 504 }[e.code]
+    return { status, body: { error: { code: e.code, message: e.message, details: e.details } } }
+  }
+  if (e instanceof AiSettingsError) return { status: 400, body: errorBody('BAD_REQUEST', e.message) }
+  if (e instanceof SfCliError) {
+    log.warn(`sf error: ${e.message}`)
+    return { status: 502, body: errorBody('SF_CLI_ERROR', e.message) }
+  }
+  log.error(`error: ${(e as Error).stack ?? String(e)}`)
+  return { status: 500, body: errorBody('INTERNAL_ERROR', 'Internal error') }
+}
+
+/** An org that is not in the org list: not the 404 of an unknown path, which the UI must not take for a gone org. */
+export function unknownOrg(username: string): Error {
+  return new HttpError(404, 'ORG_NOT_FOUND', `Unknown org: ${username}`)
 }
 
 function errorBody(code: ApiErrorCode, message: string): ApiError {

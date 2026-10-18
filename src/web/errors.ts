@@ -15,7 +15,7 @@ export type ErrorKind =
   | 'orgAuth'
   /** The org is no longer in the list: the list is loaded again and opened. */
   | 'orgNotFound'
-  /** Salesforce answered with an error: the request reached it and was refused. */
+  /** Salesforce refused the request (a 4xx): a fix to the request may help. */
   | 'rejected'
   /** Anything else, shown with its message. */
   | 'other'
@@ -31,8 +31,11 @@ export function errorKind(e: unknown): ErrorKind {
       return 'orgAuth'
     case 'ORG_NOT_FOUND':
       return 'orgNotFound'
-    case 'SALESFORCE_ERROR':
-      return 'rejected'
+    case 'SALESFORCE_ERROR': {
+      // Only a 4xx is Salesforce refusing the request; a 5xx is Salesforce failing.
+      const status = e.body?.status
+      return status !== undefined && status >= 400 && status < 500 ? 'rejected' : 'other'
+    }
     default:
       return 'other'
   }
@@ -54,9 +57,19 @@ export function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
-/** Salesforce's error JSON, shown on demand. */
+/** The raw details the server sent with the error (such as Salesforce's error JSON), shown on demand. */
 export function errorDetails(e: unknown): unknown {
-  return e instanceof ApiRequestError && e.code === 'SALESFORCE_ERROR' ? e.body?.details : undefined
+  return e instanceof ApiRequestError ? e.body?.details : undefined
+}
+
+/** The relogin command sent with an org's login error. */
+export function reloginCommand(e: unknown): string | undefined {
+  return e instanceof ApiRequestError ? e.body?.reloginCommand : undefined
+}
+
+/** The query locator behind a next page expired or was dropped: the same request can never succeed. */
+export function isLocatorGone(e: unknown): boolean {
+  return errorKind(e) === 'rejected' && JSON.stringify(errorDetails(e) ?? '').includes('INVALID_QUERY_LOCATOR')
 }
 
 /**
@@ -65,7 +78,7 @@ export function errorDetails(e: unknown): unknown {
  */
 export function runFailure(e: unknown): { message: string; details?: unknown; reloginCommand?: string; rejected: boolean } | undefined {
   const kind = errorKind(e)
-  if (kind === 'orgAuth') return { message: t.orgAuthError, reloginCommand: (e as ApiRequestError).body?.reloginCommand, rejected: false }
+  if (kind === 'orgAuth') return { message: t.orgAuthError, reloginCommand: reloginCommand(e), rejected: false }
   if (isShownElsewhere(kind)) return undefined
   return { message: errorMessage(e), details: errorDetails(e), rejected: kind === 'rejected' }
 }

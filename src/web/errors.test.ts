@@ -1,7 +1,7 @@
 // docs/web.md "エラーの扱い": where each error is shown.
 import { describe, expect, it } from 'vitest'
 import { ApiRequestError } from './apiClient.ts'
-import { errorKind, errorMessage, runFailure } from './errors.ts'
+import { errorKind, errorMessage, isLocatorGone, runFailure } from './errors.ts'
 import { t } from './i18n/i18n.ts'
 
 const api = (status: number, code: ApiRequestError['code'], extra: object = {}) =>
@@ -22,7 +22,8 @@ describe('errors', () => {
   })
 
   it('offers a fix only for a query Salesforce refused, not for a timeout or a broken connection', () => {
-    expect(runFailure(api(400, 'SALESFORCE_ERROR', { details: [{ errorCode: 'INVALID_FIELD' }] }))).toEqual({
+    expect(runFailure(api(502, 'SALESFORCE_ERROR', { status: 503 }))).toMatchObject({ rejected: false })
+    expect(runFailure(api(400, 'SALESFORCE_ERROR', { status: 400, details: [{ errorCode: 'INVALID_FIELD' }] }))).toEqual({
       message: 'server: SALESFORCE_ERROR',
       details: [{ errorCode: 'INVALID_FIELD' }],
       rejected: true,
@@ -39,6 +40,11 @@ describe('errors', () => {
     })
     expect(runFailure(new ApiRequestError(0, 'NETWORK_ERROR', 'down'))).toBeUndefined()
     expect(runFailure(api(404, 'ORG_NOT_FOUND'))).toBeUndefined()
+  })
+
+  it('tells an expired query locator from other refusals', () => {
+    expect(isLocatorGone(api(400, 'SALESFORCE_ERROR', { status: 400, details: [{ errorCode: 'INVALID_QUERY_LOCATOR' }] }))).toBe(true)
+    expect(isLocatorGone(api(400, 'SALESFORCE_ERROR', { status: 400, details: [{ errorCode: 'INVALID_FIELD' }] }))).toBe(false)
   })
 
   it('shows the message of an error that is not from the API', () => {

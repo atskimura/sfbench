@@ -10,8 +10,8 @@ import {
   type ReactNode,
 } from 'react'
 import type { ApiUsage, LaunchOptions, Org, OrgsResponse, OrgSummary } from '../../shared/api.ts'
-import { api, type ApiRequestError } from '../apiClient.ts'
-import { errorDetails, errorKind, errorMessage, isShownElsewhere } from '../errors.ts'
+import { api } from '../apiClient.ts'
+import { errorDetails, errorKind, errorMessage, isShownElsewhere, reloginCommand } from '../errors.ts'
 import { t } from '../i18n/i18n.ts'
 import { isProductionBySummary } from '../orgs/production.ts'
 import { useApp } from './AppContext.tsx'
@@ -118,9 +118,9 @@ export function OrgProvider({ launch, children }: { launch: LaunchOptions | unde
       if (handleCommonError(e)) return true
       const kind = errorKind(e)
       if (kind === 'orgAuth') {
-        const reloginCommand = (e as ApiRequestError).body?.reloginCommand
-        dispatch({ type: 'status', username, status: { state: 'authError', reloginCommand } })
-        notify({ message: t.orgAuthError, command: reloginCommand })
+        const command = reloginCommand(e)
+        dispatch({ type: 'status', username, status: { state: 'authError', reloginCommand: command } })
+        notify({ message: t.orgAuthError, command })
         return true
       }
       if (kind === 'orgNotFound') {

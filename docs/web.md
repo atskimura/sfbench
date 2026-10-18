@@ -114,12 +114,15 @@ HTTP ステータスを見るのは、`UNAUTHORIZED` の 401（セッション�
 | 410 `UNAUTHORIZED`（起動用の URL が期限切れか使用済み） | 作業画面の代わりに「この URL は使えません」と表示する |
 | `ORG_AUTH_ERROR` | その組織の状態の印を認証エラーにする。再ログインのコマンド（`reloginCommand`）をコピーボタン付きで、クエリの実行中なら結果の位置に、それ以外なら通知に出す。組織の一覧にも同じコマンドを出す |
 | 503 `SF_CLI_NOT_FOUND` | 作業画面の代わりに、sf CLI のインストールを案内する |
-| `SALESFORCE_ERROR`（Salesforce がエラーを返した） | 実行のエラーなら結果の位置に、それ以外（describe、続きのページ）なら通知に出す。`details`（Salesforce が返した JSON）を開いて見られるようにする。実行のエラーにだけ「AI で直す」を出す |
+| `SALESFORCE_ERROR`（Salesforce がエラーを返した） | 実行のエラーなら結果の位置に、それ以外（describe、続きのページ）なら通知に出す。`details`（Salesforce が返した JSON）を開いて見られるようにする。「AI で直す」は、実行のエラーのうち、Salesforce が 4xx で断ったもの（`status` が 400 番台）にだけ出す。5xx は Salesforce の側の失敗で、クエリを直しても通らないからである |
 | 504 `SALESFORCE_TIMEOUT`（Salesforce が時間内に答えなかった） | `SALESFORCE_ERROR` と同じ場所に、「Salesforce の側で処理が終わっている場合がある」と案内する。「AI で直す」は出さない（クエリの書き方の問題ではないため） |
 | 502 `SALESFORCE_UNREACHABLE`（データを変えうる要求の送信の途中で接続が切れた） | 同じ場所に、「Salesforce が処理した場合があるので、送り直していない」と案内する |
 | `fetch` 自体の失敗（サーバーが止まっている） | 401 と同じ帯で案内する |
 | `ORG_NOT_FOUND`（組織がない） | 組織の一覧を取り直し、組織の一覧を開いて選び直してもらう。知らない経路の 404 は `NOT_FOUND` で、組織の一覧は開かない |
 | そのほか（`SF_CLI_ERROR`、`BAD_REQUEST`、`NOT_FOUND`、`INTERNAL_ERROR`、`details` のない `SALESFORCE_ERROR`） | 実行のエラーなら結果の位置に、それ以外なら通知に `message` を出す |
+| API 以外の例外（画面のプログラムの誤り） | 「そのほか」と同じく、起きた流れの場所（結果の位置、組織の一覧の位置、AI の入力欄の下）か通知に、例外の文を出す |
+
+エラーの「詳細」（`details`）は、どこに出すときも `ErrorDetails` の部品で、開いて見られる形にする。
 
 組織が1つもない場合は、組織の一覧に「sf CLI でログインした組織がありません」と出し、`sf org login web -a <alias>` を案内する。
 

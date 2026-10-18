@@ -270,6 +270,7 @@ describe('SOQL workspace', () => {
     mocked.nextPage.mockRejectedValue(
       new ApiRequestError(400, 'SALESFORCE_ERROR', 'invalid query locator', {
         code: 'SALESFORCE_ERROR',
+        status: 400,
         message: 'invalid query locator',
         details: [{ errorCode: 'INVALID_QUERY_LOCATOR', message: 'invalid query locator' }],
       }),
