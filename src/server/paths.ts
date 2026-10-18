@@ -19,6 +19,8 @@ export type Paths = {
   serverLog: string
   settings: string
   historyDir: string
+  /** The REST API screen's history, one file per org (docs/rest.md "実行履歴"). */
+  restHistoryDir: string
   tmpDir: string
 }
 
@@ -37,13 +39,14 @@ export function resolvePaths(dev: boolean): Paths {
     serverLog: join(home, 'server.log'),
     settings: join(home, 'settings.json'),
     historyDir: join(home, 'history'),
+    restHistoryDir: join(home, 'rest-history'),
     tmpDir: join(home, 'tmp'),
   }
 }
 
 /** Creates the state directories, readable only by the user (no effect on Windows). */
 export function ensureDirs(paths: Paths): void {
-  for (const dir of [paths.home, paths.historyDir, paths.tmpDir]) {
+  for (const dir of [paths.home, paths.historyDir, paths.restHistoryDir, paths.tmpDir]) {
     mkdirSync(dir, { recursive: true, mode: 0o700 })
   }
 }

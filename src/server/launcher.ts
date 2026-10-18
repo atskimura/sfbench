@@ -8,6 +8,7 @@ import { getDefaultOrg } from './sf/commands.ts'
 import { SfNotFoundError } from './sf/errors.ts'
 import { acquireLock, compareVersions, readServerInfo, type ServerInfo } from './state.ts'
 import { packageVersion } from './version.ts'
+import type { LaunchOptions } from '../shared/api.ts'
 
 const START_TIMEOUT_MS = 15_000
 const STOP_TIMEOUT_MS = 5_000
@@ -24,6 +25,8 @@ export type OpenOptions = {
   targetOrg?: string
   query?: string
   run: boolean
+  /** Put in the REST API screen, never sent (docs/rest.md "`--rest` の起動時の指定"). */
+  rest?: LaunchOptions['rest']
   json: boolean
   open: boolean
 }
@@ -127,9 +130,14 @@ async function resolveOrg(options: OpenOptions): Promise<string | undefined> {
 
 export async function openSfbench(options: OpenOptions): Promise<void> {
   if (options.run && !options.query) throw new UserError('--run needs --query.')
+  if (options.rest && (options.query || options.run)) throw new UserError('--rest cannot be used with --query or --run.')
   const org = await resolveOrg(options)
   if (options.run && !org) {
     throw new UserError('No org to run the query in. Pass -o <alias>, or set a default org with `sf config set target-org <alias>`.')
+  }
+  // A request that may change data goes only into the org it was meant for.
+  if (options.rest && !org) {
+    throw new UserError('No org for the REST request. Pass -o <alias>, or set a default org with `sf config set target-org <alias>`.')
   }
 
   const paths = resolvePaths(false)
@@ -142,7 +150,7 @@ export async function openSfbench(options: OpenOptions): Promise<void> {
     release()
   }
 
-  const res = await admin(info, 'POST', '/api/launch', { org, query: options.query, run: options.run, noOpen: !options.open })
+  const res = await admin(info, 'POST', '/api/launch', { org, query: options.query, run: options.run, rest: options.rest, noOpen: !options.open })
   if (!res.ok) {
     const body = (await res.json().catch(() => undefined)) as { error?: { message?: string } } | undefined
     throw new UserError(body?.error?.message ?? `sfbench could not open (HTTP ${res.status}).`)

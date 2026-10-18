@@ -1,9 +1,9 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { statSync } from 'node:fs'
-import { MAX_HISTORY, addHistory, AiSettingsError, historyFile, loadHistory, loadSettings, mergeAiSettings, saveSettings, settingsView } from './store.ts'
+import { MAX_HISTORY, addHistory, addRestPending, AiSettingsError, finishRest, historyFile, loadHistory, loadRestHistory, loadSettings, mergeAiSettings, saveSettings, settingsView } from './store.ts'
 
 let dir: string
 beforeEach(() => {
@@ -119,3 +119,45 @@ describe('AI settings', () => {
   })
 })
 
+// docs/rest.md "実行履歴"
+describe('REST history', () => {
+  const request = { method: 'POST' as const, path: '/services/data/v66.0/sobjects/Account', headers: {}, body: '{"Name":"A"}' }
+
+  it('records a request as pending before it is sent, and writes how it ended', () => {
+    const id = addRestPending(dir, 'u@example.com', request, 'boot-1')
+    expect(loadRestHistory(dir, 'u@example.com', 'boot-1')[0]).toMatchObject({ id, method: 'POST', body: '{"Name":"A"}', outcome: { state: 'pending' } })
+    finishRest(dir, 'u@example.com', id, { state: 'done', status: 201, elapsedMs: 300 })
+    expect(loadRestHistory(dir, 'u@example.com', 'boot-1')[0].outcome).toEqual({ state: 'done', status: 201, elapsedMs: 300 })
+  })
+
+  it('keeps the same request sent twice as two records', () => {
+    addRestPending(dir, 'u@example.com', request, 'boot-1')
+    addRestPending(dir, 'u@example.com', request, 'boot-1')
+    expect(loadRestHistory(dir, 'u@example.com', 'boot-1')).toHaveLength(2)
+  })
+
+  it('removes the record of a request Salesforce never processed', () => {
+    const id = addRestPending(dir, 'u@example.com', request, 'boot-1')
+    finishRest(dir, 'u@example.com', id, undefined)
+    expect(loadRestHistory(dir, 'u@example.com', 'boot-1')).toEqual([])
+  })
+
+  it('shows a request left pending by a server that stopped as unknown', () => {
+    addRestPending(dir, 'u@example.com', request, 'boot-1')
+    expect(loadRestHistory(dir, 'u@example.com', 'boot-2')[0].outcome).toEqual({ state: 'unknown', reason: 'stopped' })
+  })
+
+  it('does not keep a long body, and drops damaged records', () => {
+    addRestPending(dir, 'u@example.com', { ...request, body: JSON.stringify({ x: 'y'.repeat(40_000) }) }, 'boot-1')
+    const [entry] = loadRestHistory(dir, 'u@example.com', 'boot-1')
+    expect(entry.body).toBeUndefined()
+    expect(entry.bodyOmitted).toBe(true)
+    writeFileSync(historyFile(dir, 'v@example.com'), JSON.stringify([{ id: 1 }, { ...entry, method: 'TRACE' }, entry]))
+    expect(loadRestHistory(dir, 'v@example.com', 'boot-1')).toHaveLength(1)
+  })
+
+  it('does not add back a record that is gone', () => {
+    finishRest(dir, 'u@example.com', 'missing', { state: 'unknown', reason: 'timeout' })
+    expect(loadRestHistory(dir, 'u@example.com', 'boot-1')).toEqual([])
+  })
+})

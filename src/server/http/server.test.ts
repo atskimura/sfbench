@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { SalesforceError, SalesforceTimeoutError, SalesforceUnreachableError } from '../salesforce.ts'
-import { cacheControl, errorResponse, unknownOrg } from './server.ts'
+import { cacheControl, errorResponse, restOutcomeOf, unknownOrg } from './server.ts'
+import { OrgAuthError, SfCliError } from '../sf/errors.ts'
+import { RestRequestError } from '../rest.ts'
 
 describe('cacheControl', () => {
   it('caches only the hashed files under /assets/', () => {
@@ -22,5 +24,19 @@ describe('errorResponse', () => {
 
   it('answers an unknown org apart from an unknown path', () => {
     expect(errorResponse(unknownOrg('gone@example.com'))).toMatchObject({ status: 404, body: { error: { code: 'ORG_NOT_FOUND' } } })
+  })
+})
+
+// docs/rest.md "置き場所と書き方"
+describe('restOutcomeOf', () => {
+  it('removes the record of a request Salesforce never ran, and marks the rest unknown', () => {
+    expect(restOutcomeOf(new OrgAuthError('u@example.com', 'expired'))).toBeUndefined()
+    expect(restOutcomeOf(new SalesforceTimeoutError())).toEqual({ state: 'unknown', reason: 'timeout' })
+    expect(restOutcomeOf(new SalesforceUnreachableError())).toEqual({ state: 'unknown', reason: 'unreachable' })
+    expect(restOutcomeOf(new SfCliError('sf failed'))).toEqual({ state: 'unknown', reason: 'error' })
+  })
+
+  it('answers a refused REST request with 400', () => {
+    expect(errorResponse(new RestRequestError('no'))).toMatchObject({ status: 400, body: { error: { code: 'BAD_REQUEST' } } })
   })
 })

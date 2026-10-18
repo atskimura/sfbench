@@ -185,9 +185,14 @@ REST API の道具では、4xx の本文（`errorCode` と `message`）そのも
 そのため、REST API の画面の GET も、ネットワークが途中で切れたときに `sf api request rest` で自動では送り直さず、`SALESFORCE_UNREACHABLE` を返す。
 送り直してよいかの判定は、これまでどおり `salesforce.ts` の `mayChangeData` の1か所で行う。
 
-`sf api request rest` の経路が 3xx のリダイレクトを追い、`Authorization` を付けたまま別のオリジンへ送らないかを、4a の実装の最初に確かめる。
-追うなら、`/rest` の要求はこの経路を使わず、`fetch` が使えるまでエラーを返す（`fetch` の経路は `redirect: 'manual'` で追わない）。
-トークンが漏れ、任意の URL を中継することになるからである。
+`sf api request rest` の経路が 3xx のリダイレクトを追い、`Authorization` を付けたまま別のオリジンへ送らないかを、4a の実装の最初に確かめた。
+sf CLI 2.153.5 の `@salesforce/plugin-api` は、`got` に `followRedirect: false` を渡しており、追わない。
+`fetch` の経路も `redirect: 'manual'` で追わない。
+
+`sf api request rest` は、要求のファイルの `body.raw` を `JSON.stringify` して送る。
+そのため、ボディは JSON として解析したものを `raw` に入れる（文字列を入れると、引用符で囲まれた文字列として届く）。
+JSON でないボディ（Bulk API 2.0 の CSV など）はこの経路では送れないので、送る前に 400 で断る。
+ボディのない要求では `raw` を入れない。
 
 画面の接続が切れても、Salesforce への要求は止めない。
 止めると、「途中で止めた」という新しい、結果の分からない状態ができるからである。
@@ -320,6 +325,8 @@ sfbench --rest <パス> [--method <メソッド>] [--body '<json>' | --body-file
 - **GET でもデータを変えうる要求は、パスでしか見分けられない。** Salesforce に新しい API が増えても一覧は足されず、本番の確認に漏れる。送り直しの禁止は、すべての要求に効かせている。
 - **REST API の画面の GET は、ネットワークが切れても `sf api request rest` で送り直さない。** 利用者が Send を押し直す。
 - **`sf api request rest --include` の出力の解析は、JSON の本文を前提にしている。** テキスト、HTML、XML の本文を読み違えないか、記録した出力でテストする。
+- **`sf api request rest` の経路では、JSON でないボディを送れない**（sf CLI が要求のファイルの本文を JSON として扱うため）。`fetch` の経路が使えるときは送れる。
+- **リダイレクトを追わないことは、確かめた sf CLI の版（2.153.5）でしか保証できない。** 将来の版が追うようになっても、sfbench の側では気づけない。
 - **大きな応答は、20 MB までサーバーと画面のメモリに丸ごと載る。**
 - **同じ名前のヘッダーを2つ送れない**（名前から値への対応で持つため）。
 - **実行履歴のファイルには、要求のボディ（レコードの値を含みうる）が残る。** Windows では権限の指定が効かない。1件の送信につき2回、ファイルを書き直す。

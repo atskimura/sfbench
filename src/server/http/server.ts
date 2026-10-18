@@ -1,6 +1,6 @@
 // The local HTTP server: the web UI's static files and the /api endpoints.
 // See docs/design.md ("ローカルサーバー").
-import { randomBytes, timingSafeEqual } from 'node:crypto'
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { extname, join, relative, sep } from 'node:path'
@@ -17,6 +17,9 @@ import {
   type NextPageRequest,
   type OrgsResponse,
   type QueryRequest,
+  type RestHistoryResponse,
+  type RestOutcome,
+  type RestResponse,
   type SessionResponse,
   type SettingsUpdate,
 } from '../../shared/api.ts'
@@ -29,13 +32,16 @@ import {
   SalesforceError,
   SalesforceTimeoutError,
   SalesforceUnreachableError,
+  salesforcePath,
 } from '../salesforce.ts'
+import { checkRestRequest, MAX_REST_RESPONSE_BYTES, restLaunch, restResponseBody, RestRequestError } from '../rest.ts'
+import { NotJsonBodyError } from '../sf/apiRequest.ts'
 import { openOrg, reloginCommand } from '../sf/commands.ts'
 import { OrgAuthError, SfCliError, SfNotFoundError } from '../sf/errors.ts'
 import { AiError } from '../ai/errors.ts'
 import { generate, TEST_REQUEST } from '../ai/generate.ts'
 import { invalidTaskRequest } from '../ai/tasks.ts'
-import { addHistory, AiSettingsError, loadHistory, mergeAiSettings, settingsView, type SettingsStore } from '../store.ts'
+import { addHistory, addRestPending, AiSettingsError, finishRest, loadHistory, loadRestHistory, mergeAiSettings, settingsView, type SettingsStore } from '../store.ts'
 import { isAdminRequestOrigin, isAllowedHost, isSameOriginRequest } from './security.ts'
 
 const MAX_BODY_BYTES = 5 * 1024 * 1024
@@ -125,6 +131,8 @@ export class App {
   private readonly staticFiles: Map<string, Buffer>
   private readonly sessions = new Set<string>()
   private readonly launches = new Map<string, PendingLaunch>()
+  /** This run of the server: a REST request still pending from another run was cut off (docs/rest.md "実行履歴"). */
+  private readonly bootId = randomUUID()
 
   constructor(options: AppOptions) {
     this.options = options
@@ -348,6 +356,16 @@ export class App {
       return
     }
 
+    if (rest === 'rest' && method === 'POST') {
+      await this.sendRest(req, res, client)
+      return
+    }
+
+    if (rest === 'rest/history' && method === 'GET') {
+      sendJson(res, 200, { entries: loadRestHistory(this.options.paths.restHistoryDir, username, this.bootId) } satisfies RestHistoryResponse)
+      return
+    }
+
     if (rest === 'open' && method === 'POST') {
       await openOrg(username, this.options.paths.tmpDir)
       sendJson(res, 200, { ok: true })
@@ -355,6 +373,42 @@ export class App {
     }
 
     throw new HttpError(404, 'NOT_FOUND', 'Not found')
+  }
+
+  /**
+   * Sends a request from the REST API screen (docs/rest.md "サーバーの `/rest`").
+   * It is recorded as pending just before it is sent and updated when it ends,
+   * so that what was sent can be told even if the screen goes away meanwhile.
+   * The screen going away does not stop it.
+   */
+  private async sendRest(req: IncomingMessage, res: ServerResponse, client: OrgClient): Promise<void> {
+    const request = checkRestRequest(await readJsonObject(req))
+    // A path refused here was never sent, so it is checked before it is recorded.
+    const pathname = new URL(salesforcePath(request.path, client.instanceUrl), client.instanceUrl).pathname
+    const dir = this.options.paths.restHistoryDir
+    const record = (write: () => void) => {
+      try {
+        write()
+      } catch (e) {
+        log.warn(`${client.username}: could not write the REST history (${(e as Error).message})`)
+      }
+    }
+    let id: string | undefined
+    record(() => (id = addRestPending(dir, client.username, request, this.bootId)))
+    const started = performance.now()
+    try {
+      // Never sent twice, whatever the method (docs/rest.md "送り方").
+      const raw = await client.requestRaw({ ...request, changesData: true }, { maxBodyBytes: MAX_REST_RESPONSE_BYTES })
+      const elapsedMs = Math.round(performance.now() - started)
+      if (id) record(() => finishRest(dir, client.username, id!, { state: 'done', status: raw.status, elapsedMs }))
+      // No query string, body or header values in the log: they may hold record data.
+      log.info(`rest ${request.method} ${pathname} ${raw.status} ${elapsedMs}ms`)
+      sendJson(res, 200, { ...({ id, status: raw.status, ...restResponseBody(raw), elapsedMs } satisfies RestResponse), apiUsage: client.apiUsage })
+    } catch (e) {
+      if (id) record(() => finishRest(dir, client.username, id!, restOutcomeOf(e)))
+      log.info(`rest ${request.method} ${pathname} ${(e as Error).name} ${Math.round(performance.now() - started)}ms`)
+      throw e
+    }
   }
 
   /**
@@ -387,7 +441,7 @@ export class App {
    * browser opens without waiting for `sf org list`.
    */
   private createLaunch(body: Record<string, unknown>): { code: string; expiresAt: number } {
-    const b = body as { org?: unknown; query?: unknown; run?: unknown; noOpen?: unknown }
+    const b = body as { org?: unknown; query?: unknown; run?: unknown; rest?: unknown; noOpen?: unknown }
     const launch: LaunchOptions = {}
     if (typeof b.org === 'string' && b.org) {
       if (b.org.length > 255) throw new HttpError(400, 'BAD_REQUEST', 'Org name too long')
@@ -395,6 +449,15 @@ export class App {
     }
     if (typeof b.query === 'string' && b.query) launch.query = b.query
     if (b.run === true) launch.run = true
+    if (b.rest !== undefined) {
+      if (!b.rest || typeof b.rest !== 'object') throw new HttpError(400, 'BAD_REQUEST', 'rest must be an object')
+      const r = b.rest as Record<string, unknown>
+      try {
+        launch.rest = restLaunch({ path: r.path, method: r.method, body: r.body })
+      } catch (e) {
+        throw new HttpError(400, 'BAD_REQUEST', (e as Error).message)
+      }
+    }
     this.pruneLaunches()
     const code = randomBytes(24).toString('base64url')
     const expiresAt = Date.now() + (b.noOpen === true ? LAUNCH_CODE_TTL_NO_OPEN_MS : LAUNCH_CODE_TTL_MS)
@@ -504,7 +567,7 @@ export function errorResponse(e: unknown): { status: number; body: ApiError } {
   }
   if (e instanceof SalesforceUnreachableError) return { status: 502, body: errorBody('SALESFORCE_UNREACHABLE', e.message) }
   if (e instanceof SalesforceTimeoutError) return { status: 504, body: errorBody('SALESFORCE_TIMEOUT', e.message) }
-  if (e instanceof InvalidPathError) return { status: 400, body: errorBody('BAD_REQUEST', e.message) }
+  if (e instanceof InvalidPathError || e instanceof RestRequestError || e instanceof NotJsonBodyError) return { status: 400, body: errorBody('BAD_REQUEST', e.message) }
   if (e instanceof SfNotFoundError) return { status: 503, body: errorBody('SF_CLI_NOT_FOUND', e.message) }
   if (e instanceof AiError) {
     const status = { AI_NOT_CONFIGURED: 400, AI_ERROR: 502, AI_BAD_OUTPUT: 502, AI_TIMEOUT: 504 }[e.code]
@@ -517,6 +580,18 @@ export function errorResponse(e: unknown): { status: number; body: ApiError } {
   }
   log.error(`error: ${(e as Error).stack ?? String(e)}`)
   return { status: 500, body: errorBody('INTERNAL_ERROR', 'Internal error') }
+}
+
+/**
+ * How a failed REST request ends in the history: undefined when Salesforce
+ * never processed it (the record is removed), else unknown.
+ */
+export function restOutcomeOf(e: unknown): RestOutcome | undefined {
+  // Not sent, or refused by Salesforce for the session before it ran anything.
+  if (e instanceof OrgAuthError || e instanceof SfNotFoundError || e instanceof NotJsonBodyError) return undefined
+  if (e instanceof SalesforceTimeoutError) return { state: 'unknown', reason: 'timeout' }
+  if (e instanceof SalesforceUnreachableError) return { state: 'unknown', reason: 'unreachable' }
+  return { state: 'unknown', reason: 'error' }
 }
 
 /** An org that is not in the org list: not the 404 of an unknown path, which the UI must not take for a gone org. */
