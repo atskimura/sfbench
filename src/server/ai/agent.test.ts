@@ -75,19 +75,31 @@ describe('runAgent', () => {
     await expect(runAgent(anthropic, request, source, '66.0', never)).rejects.toMatchObject({ code: 'AI_BAD_OUTPUT' })
   })
 
-  it('talks to OpenAI with functions, reading their arguments as JSON', async () => {
+  it('talks to OpenAI on the Responses API, keeping nothing there and sending its reasoning back', async () => {
     const fetch = vi.fn()
-    const toolCall = (id: string, name: string, args: unknown) => ({ id, type: 'function', function: { name, arguments: JSON.stringify(args) } })
-    fetch.mockImplementationOnce(async () => new Response(JSON.stringify({ choices: [{ message: { content: null, tool_calls: [toolCall('c1', 'describeObject', { name: 'Project__c' })] }, finish_reason: 'tool_calls' }] })))
-    fetch.mockImplementationOnce(async () => new Response(JSON.stringify({ choices: [{ message: { content: null, tool_calls: [toolCall('c2', 'submit', answer)] }, finish_reason: 'tool_calls' }] })))
+    const reasoning = { type: 'reasoning', id: 'rs_1', encrypted_content: 'opaque' }
+    const call = (id: string, name: string, args: unknown) => ({ type: 'function_call', call_id: id, name, arguments: JSON.stringify(args) })
+    fetch.mockImplementationOnce(async () => new Response(JSON.stringify({ status: 'completed', output: [reasoning, call('c1', 'describeObject', { name: 'Project__c' })] })))
+    fetch.mockImplementationOnce(async () => new Response(JSON.stringify({ status: 'completed', output: [call('c2', 'submit', answer)] })))
     vi.stubGlobal('fetch', fetch)
     await expect(runAgent(openai, request, source, '66.0', never)).resolves.toMatchObject({ output: answer, toolCalls: 1 })
+    expect((fetch.mock.calls[0] as unknown as [string])[0]).toBe('https://api.openai.com/v1/responses')
     const first = sentBody(fetch, 0)
-    expect(first.tool_choice).toBe('auto')
-    expect(first.tools[2]).toMatchObject({ type: 'function', function: { name: 'submit', strict: true } })
-    const second = sentBody(fetch, 1)
-    expect(second.messages.at(-1)).toMatchObject({ role: 'tool', tool_call_id: 'c1' })
-    expect(second.messages.at(-1).content).toContain('Object Project__c')
+    expect(first).toMatchObject({ tool_choice: 'auto', store: false, include: ['reasoning.encrypted_content'] })
+    expect(first.instructions).toContain('/services/data/v66.0/')
+    expect(first.tools[2]).toMatchObject({ type: 'function', name: 'submit', strict: true })
+    const second = sentBody(fetch, 1).input
+    // The reasoning and the call go back as they came, then the tool's output.
+    expect(second.slice(1, 3)).toEqual([reasoning, call('c1', 'describeObject', { name: 'Project__c' })])
+    expect(second[3]).toMatchObject({ type: 'function_call_output', call_id: 'c1' })
+    expect(second[3].output).toContain('Object Project__c')
+  })
+
+  it('reads an OpenAI refusal and a cut-off output', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ status: 'completed', output: [{ type: 'message', content: [{ type: 'refusal', refusal: 'No.' }] }] }))))
+    await expect(runAgent(openai, request, source, '66.0', never)).rejects.toMatchObject({ code: 'AI_ERROR' })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output: [] }))))
+    await expect(runAgent(openai, request, source, '66.0', never)).rejects.toMatchObject({ code: 'AI_BAD_OUTPUT' })
   })
 
   it('does not send back an empty turn, which the API refuses, and nudges', async () => {

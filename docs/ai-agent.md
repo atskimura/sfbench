@@ -37,7 +37,7 @@ kimura-demo（オブジェクト1,555個）のメタデータで、試作のス�
 6. **1回の依頼で、AI の呼び出しは2〜4回、3〜12秒、送った量は2〜20 KB だった。**
 7. **オブジェクトの一覧をそのまま渡すと大きすぎる**（1,555個）。名前かラベルに語を含むものを探すツールにすると、1回の結果は数 KB に収まった。
 
-OpenAI のツールの呼び出しは、手元にキーがないので確かめていない。
+OpenAI のツールの呼び出しは、最初 Chat Completions で書いたところ、利用者の gpt-6-luna で「推論の指定があるとツールを使えない。Responses API を使う」と断られた。
 
 ## サーバー
 
@@ -88,7 +88,7 @@ OpenAI のツールの呼び出しは、手元にキーがないので確かめ�
 ツールの形と、やり取りの続け方は、提供元ごとのファイルに閉じ込める。
 
 - Anthropic：`tools`（`submit` には `strict: true`）、`tool_choice: { type: 'auto' }`。応答の `tool_use` を実行し、`tool_result` を返す。
-- OpenAI：Chat Completions の `tools`（`function`、`strict: true`）、`tool_choice: 'auto'`。応答の `tool_calls` を実行し、`role: 'tool'` で返す。
+- OpenAI：Responses API（`/v1/responses`）の `tools`（`function`、`strict: true`）、`tool_choice: 'auto'`。応答の `function_call` を実行し、`function_call_output` で返す。Chat Completions を使わないのは、推論するモデル（gpt-6-luna など）が Chat Completions ではツールを受け付けないからである（利用者の「接続を確かめる」で分かった）。OpenAI 側に会話を残さないよう `store: false` にし、前の返事（暗号化された推論を含む）をこちらから送り返して続ける。ツールを使わない SOQL の AI は、Chat Completions のままにする。
 
 ### 接続を試す
 
