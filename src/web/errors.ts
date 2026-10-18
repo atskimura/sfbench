@@ -93,7 +93,7 @@ export function isOutcomeUnknown(e: unknown, changesData: boolean): boolean {
   const kind = errorKind(e)
   // Not sent, or refused before Salesforce ran anything.
   if (kind === 'aborted' || kind === 'orgAuth' || kind === 'orgNotFound' || kind === 'sfNotFound') return false
-  if (e instanceof ApiRequestError && e.code === 'BAD_REQUEST') return false
+  if (e instanceof ApiRequestError && (e.code === 'BAD_REQUEST' || e.code === 'HISTORY_UNAVAILABLE')) return false
   // sfbench refused the session at its door: nothing went to Salesforce.
   if (e instanceof ApiRequestError && e.isSessionRefused) return false
   // A lost connection to sfbench, sf CLI or server errors: sent or not, unknown.

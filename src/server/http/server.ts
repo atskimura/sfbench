@@ -8,7 +8,12 @@ import {
   isValidTimeout,
   MAX_TIMEOUT_SECONDS,
   MIN_TIMEOUT_SECONDS,
+  MAX_APEX_CODE,
   type AiTaskRequest,
+  type ApexHistoryResponse,
+  type ApexOutcome,
+  type ApexRequest,
+  type ApexResponse,
   type AiTestRequest,
   type ApiError,
   type ApiErrorCode,
@@ -36,12 +41,13 @@ import {
 } from '../salesforce.ts'
 import { checkRestRequest, MAX_REST_RESPONSE_BYTES, restLaunch, restResponseBody, RestRequestError } from '../rest.ts'
 import { NotJsonBodyError, type RawResponse } from '../sf/apiRequest.ts'
+import { ApexRunError, runApex, type ApexRun } from '../sf/apexRun.ts'
 import { openOrg, reloginCommand } from '../sf/commands.ts'
-import { OrgAuthError, SfCliError, SfNotFoundError } from '../sf/errors.ts'
+import { OrgAuthError, SfCliError, SfNotFoundError, SfTimeoutError } from '../sf/errors.ts'
 import { AiError } from '../ai/errors.ts'
 import { generate, TEST_REQUEST } from '../ai/generate.ts'
 import { invalidTaskRequest } from '../ai/tasks.ts'
-import { addHistory, addRestPending, AiSettingsError, finishRest, loadHistory, loadRestHistory, mergeAiSettings, settingsView, type SettingsStore } from '../store.ts'
+import { addApexPending, addHistory, addRestPending, finishApex, loadApexHistory, AiSettingsError, finishRest, loadHistory, loadRestHistory, mergeAiSettings, settingsView, type SettingsStore } from '../store.ts'
 import { isAdminRequestOrigin, isAllowedHost, isSameOriginRequest } from './security.ts'
 
 const MAX_BODY_BYTES = 5 * 1024 * 1024
@@ -366,6 +372,16 @@ export class App {
       return
     }
 
+    if (rest === 'apex' && method === 'POST') {
+      await this.runApexRequest(req, res, client)
+      return
+    }
+
+    if (rest === 'apex/history' && method === 'GET') {
+      sendJson(res, 200, { entries: loadApexHistory(this.options.paths.apexHistoryDir, username, this.bootId) } satisfies ApexHistoryResponse)
+      return
+    }
+
     if (rest === 'open' && method === 'POST') {
       await openOrg(username, this.options.paths.tmpDir)
       sendJson(res, 200, { ok: true })
@@ -421,6 +437,57 @@ export class App {
   }
 
   /**
+   * Runs anonymous Apex from the Apex screen (docs/apex.md). It is recorded as
+   * pending just before it runs, and not run at all if that record cannot be
+   * written: Apex may always change data. The screen going away does not stop it.
+   */
+  private async runApexRequest(req: IncomingMessage, res: ServerResponse, client: OrgClient): Promise<void> {
+    const { code } = (await readJsonObject(req)) as Partial<ApexRequest>
+    if (typeof code !== 'string' || !code.trim()) throw new HttpError(400, 'BAD_REQUEST', 'code is required')
+    if (code.length > MAX_APEX_CODE) throw new HttpError(400, 'BAD_REQUEST', `Anonymous Apex can be at most ${MAX_APEX_CODE} characters.`)
+    const dir = this.options.paths.apexHistoryDir
+    let id: string
+    try {
+      id = addApexPending(dir, client.username, code, this.bootId)
+    } catch (e) {
+      log.warn(`${client.username}: could not write the Apex history (${(e as Error).message}); not running`)
+      throw new HttpError(500, 'HISTORY_UNAVAILABLE', 'The Apex history could not be written, so the code was not run.')
+    }
+    const finish = (outcome: ApexOutcome | undefined) => {
+      try {
+        finishApex(dir, client.username, id, outcome)
+      } catch (e) {
+        log.warn(`${client.username}: could not write the Apex history (${(e as Error).message})`)
+      }
+    }
+    const started = performance.now()
+    // The setting's wait for Salesforce, and time for sf itself to start.
+    const timeoutMs = this.options.settings.get().requestTimeoutSeconds * 1000 + SF_START_MS
+    let run: ApexRun
+    try {
+      run = await runApex(client.username, code, this.options.paths.tmpDir, timeoutMs)
+    } catch (e) {
+      finish(apexOutcomeOf(e))
+      // The name only: sf's message can hold an exception's text.
+      log.info(`apex ${e instanceof ApexRunError ? e.sfName : (e as Error).name} ${Math.round(performance.now() - started)}ms`)
+      throw e instanceof SfTimeoutError ? new SalesforceTimeoutError() : e
+    }
+    const elapsedMs = Math.round(performance.now() - started)
+    finish({
+      state: 'done',
+      result: run.result,
+      ...(run.line !== undefined ? { line: run.line } : {}),
+      ...(run.column !== undefined ? { column: run.column } : {}),
+      ...(run.compileProblem !== undefined ? { compileProblem: run.compileProblem } : {}),
+      ...exceptionTypeOf(run.exceptionMessage),
+      elapsedMs,
+    })
+    log.info(`apex ${run.result} ${elapsedMs}ms`)
+    const tooLarge = Buffer.byteLength(run.logs) > MAX_APEX_LOG_BYTES
+    sendJson(res, 200, { id, ...run, logs: tooLarge ? '' : run.logs, ...(tooLarge ? { logsOmitted: 'tooLarge' as const } : {}), elapsedMs } satisfies ApexResponse)
+  }
+
+  /**
    * The namespace header goes on queries only, as in lwc-soql-builder. If the
    * namespace cannot be read (for example, the user cannot query
    * Organization), the query still runs, without the header.
@@ -450,7 +517,7 @@ export class App {
    * browser opens without waiting for `sf org list`.
    */
   private createLaunch(body: Record<string, unknown>): { code: string; expiresAt: number } {
-    const b = body as { org?: unknown; query?: unknown; run?: unknown; rest?: unknown; noOpen?: unknown }
+    const b = body as { org?: unknown; query?: unknown; run?: unknown; rest?: unknown; apex?: unknown; noOpen?: unknown }
     const launch: LaunchOptions = {}
     if (typeof b.org === 'string' && b.org) {
       if (b.org.length > 255) throw new HttpError(400, 'BAD_REQUEST', 'Org name too long')
@@ -466,6 +533,11 @@ export class App {
       } catch (e) {
         throw new HttpError(400, 'BAD_REQUEST', (e as Error).message)
       }
+    }
+    if (b.apex !== undefined) {
+      const code = (b.apex as { code?: unknown } | null)?.code
+      if (typeof code !== 'string' || !code.trim() || code.length > MAX_APEX_CODE) throw new HttpError(400, 'BAD_REQUEST', 'apex.code must be Apex of at most 32000 characters')
+      launch.apex = { code }
     }
     this.pruneLaunches()
     const code = randomBytes(24).toString('base64url')
@@ -583,6 +655,8 @@ export function errorResponse(e: unknown): { status: number; body: ApiError } {
     return { status, body: { error: { code: e.code, message: e.message, details: e.details } } }
   }
   if (e instanceof AiSettingsError) return { status: 400, body: errorBody('BAD_REQUEST', e.message) }
+  // Its message can hold an exception's text: for the screen only, not the log.
+  if (e instanceof ApexRunError) return { status: 502, body: errorBody('SF_CLI_ERROR', e.message) }
   if (e instanceof SfCliError) {
     log.warn(`sf error: ${e.message}`)
     return { status: 502, body: errorBody('SF_CLI_ERROR', e.message) }
@@ -601,6 +675,27 @@ export function restOutcomeOf(e: unknown): RestOutcome | undefined {
   if (e instanceof SalesforceTimeoutError) return { state: 'unknown', reason: 'timeout' }
   if (e instanceof SalesforceUnreachableError) return { state: 'unknown', reason: 'unreachable' }
   return { state: 'unknown', reason: 'error' }
+}
+
+/** Time for sf itself to start, on top of the wait for Salesforce. */
+const SF_START_MS = 15_000
+/** A longer debug log is not passed back (Salesforce's own limit for a debug log). */
+const MAX_APEX_LOG_BYTES = 20 * 1024 * 1024
+
+/**
+ * How a failed Apex run ends in the history: undefined when it did not run
+ * (the record is removed), else unknown (docs/apex.md "実行履歴").
+ */
+export function apexOutcomeOf(e: unknown): ApexOutcome | undefined {
+  if (e instanceof OrgAuthError || e instanceof SfNotFoundError) return undefined
+  if (e instanceof SfTimeoutError) return { state: 'unknown', reason: 'timeout' }
+  return { state: 'unknown', reason: 'error' }
+}
+
+/** Only the type of an exception is kept, never its text, which can hold record data. */
+export function exceptionTypeOf(message: string | undefined): { exceptionType?: string } {
+  const type = message?.split(':', 1)[0].trim()
+  return type && /^[A-Za-z_][\w.]*$/.test(type) ? { exceptionType: type } : {}
 }
 
 /** An org that is not in the org list: not the 404 of an unknown path, which the UI must not take for a gone org. */

@@ -1,0 +1,22 @@
+{
+  "name": "executeCompileFailure",
+  "message": "Compilation failed at Line 1 column 9 with the error:\n\nIllegal assignment from String to Integer",
+  "exitCode": 1,
+  "context": "<removed>",
+  "data": {
+    "success": false,
+    "compiled": false,
+    "compileProblem": "Illegal assignment from String to Integer",
+    "exceptionMessage": "",
+    "exceptionStackTrace": "",
+    "line": "1",
+    "column": "9",
+    "logs": ""
+  },
+  "stack": "<removed>",
+  "cause": "undefined",
+  "warnings": [],
+  "code": "executeCompileFailure",
+  "status": 1,
+  "commandName": "Run"
+}

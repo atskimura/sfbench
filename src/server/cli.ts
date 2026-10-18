@@ -4,6 +4,7 @@ import { parseArgs } from 'node:util'
 import { readFileSync } from 'node:fs'
 import { openSfbench, stopSfbench, UserError, type OpenOptions } from './launcher.ts'
 import { restLaunch } from './rest.ts'
+import { MAX_APEX_CODE } from '../shared/api.ts'
 import { serve } from './serve.ts'
 import { packageVersion } from './version.ts'
 
@@ -22,6 +23,9 @@ Options:
   --method <method>         The --rest request's method: GET (default), POST, PATCH, PUT or DELETE.
   --body <json>             The --rest request's JSON body (POST, PATCH and PUT).
   --body-file <file>        Read the --rest request's JSON body from a file.
+  --apex "<code>"           Open the Apex screen with this anonymous Apex. It is never run:
+                            check it and press Run.
+  --apex-file <file>        Read the --apex code from a file.
   --json                    Print the result as JSON.
   --no-open                 Do not open a browser; print the URL instead.
   -h, --help                Show this help.
@@ -34,6 +38,7 @@ Examples for AI agents:
   npx -y sfbench -o my-org --query "SELECT Id, Name FROM Account LIMIT 10" --run
   npx -y sfbench -o my-org --query "SELECT Id FROM Opportunity WHERE IsWon = true" --run --json
   npx -y sfbench -o my-org --rest /services/data/v62.0/sobjects/Account --method POST --body-file account.json
+  npx -y sfbench -o my-org --apex-file fix-data.apex
 `
 
 async function main(): Promise<void> {
@@ -48,6 +53,8 @@ async function main(): Promise<void> {
       method: { type: 'string' },
       body: { type: 'string' },
       'body-file': { type: 'string' },
+      apex: { type: 'string' },
+      'apex-file': { type: 'string' },
       json: { type: 'boolean', default: false },
       open: { type: 'boolean', default: true },
       dev: { type: 'boolean', default: false },
@@ -81,6 +88,7 @@ async function main(): Promise<void> {
     query: values.query,
     run: values.run,
     rest: restOption(values),
+    apex: apexOption(values),
     json: values.json,
     open: values.open,
   })
@@ -110,6 +118,24 @@ function restOption(values: { rest?: string; method?: string; body?: string; 'bo
   } catch (e) {
     throw new UserError((e as Error).message)
   }
+}
+
+/** The --apex code, checked. */
+function apexOption(values: { apex?: string; 'apex-file'?: string }): OpenOptions['apex'] {
+  if (values.apex !== undefined && values['apex-file'] !== undefined) throw new UserError('Use either --apex or --apex-file.')
+  let code = values.apex
+  if (values['apex-file'] !== undefined) {
+    try {
+      // Without a byte order mark, which Windows editors may put first.
+      code = readFileSync(values['apex-file'], 'utf8').replace(/^\uFEFF/, '')
+    } catch (e) {
+      throw new UserError(`Could not read ${values['apex-file']}: ${(e as Error).message}`)
+    }
+  }
+  if (code === undefined) return undefined
+  if (!code.trim()) throw new UserError('--apex needs some code.')
+  if (code.length > MAX_APEX_CODE) throw new UserError(`Anonymous Apex can be at most ${MAX_APEX_CODE} characters.`)
+  return { code }
 }
 
 main().catch((e: unknown) => {

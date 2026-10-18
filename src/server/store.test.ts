@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { statSync } from 'node:fs'
-import { MAX_HISTORY, addHistory, addRestPending, AiSettingsError, finishRest, historyFile, loadHistory, loadRestHistory, loadSettings, mergeAiSettings, saveSettings, settingsView } from './store.ts'
+import { MAX_HISTORY, addApexPending, addHistory, addRestPending, finishApex, loadApexHistory, AiSettingsError, finishRest, historyFile, loadHistory, loadRestHistory, loadSettings, mergeAiSettings, saveSettings, settingsView } from './store.ts'
 
 let dir: string
 beforeEach(() => {
@@ -159,5 +159,23 @@ describe('REST history', () => {
   it('does not add back a record that is gone', () => {
     finishRest(dir, 'u@example.com', 'missing', { state: 'unknown', reason: 'timeout' })
     expect(loadRestHistory(dir, 'u@example.com', 'boot-1')).toEqual([])
+  })
+})
+
+// docs/apex.md "実行履歴"
+describe('Apex history', () => {
+  it('records the whole code as pending, writes how it ended, and removes a run that never ran', () => {
+    const id = addApexPending(dir, 'u@example.com', "System.debug('a');", 'boot-1')
+    expect(loadApexHistory(dir, 'u@example.com', 'boot-1')[0]).toMatchObject({ id, code: "System.debug('a');", outcome: { state: 'pending' } })
+    finishApex(dir, 'u@example.com', id, { state: 'done', result: 'runtimeError', exceptionType: 'System.MathException', line: 1, elapsedMs: 10 })
+    expect(loadApexHistory(dir, 'u@example.com', 'boot-1')[0].outcome).toMatchObject({ state: 'done', exceptionType: 'System.MathException' })
+    const other = addApexPending(dir, 'u@example.com', 'x', 'boot-1')
+    finishApex(dir, 'u@example.com', other, undefined)
+    expect(loadApexHistory(dir, 'u@example.com', 'boot-1')).toHaveLength(1)
+  })
+
+  it('shows a run left pending by a server that stopped as unknown', () => {
+    addApexPending(dir, 'u@example.com', 'x', 'boot-1')
+    expect(loadApexHistory(dir, 'u@example.com', 'boot-2')[0].outcome).toEqual({ state: 'unknown', reason: 'stopped' })
   })
 })
