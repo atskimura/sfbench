@@ -73,25 +73,28 @@ export function ApexAiProvider({ username, children }: { username: string; child
     // The values when it was pressed: the body reads only these.
     const code = sendCode && hasCode ? getCode() : undefined
     const previous = sendPrevious && last ? previousOf(last) : undefined
+    // The metadata of the version the code runs on (docs/ai-agent.md "ツール").
+    const version = apex.apiVersion ? { apiVersion: apex.apiVersion } : {}
     // Sent once: the record values in it do not go along with the requests after this one.
     if (previous && !session.running) setSendPrevious(false)
     const input = { request: text, language: uiLanguage, timeZone: timeZone(), ...(code !== undefined ? { code } : {}), ...(previous ? { previous } : {}) }
     start(async (signal, progress) => {
       progress('think')
-      return (await api.aiAgent(username, { task: 'generateApex', input }, signal)).output
+      return (await api.aiAgent(username, { task: 'generateApex', input, ...version }, signal)).output
     }, getCode)
-  }, [request, availability, sendCode, hasCode, sendPrevious, last, session.running, getCode, username, start])
+  }, [request, availability, sendCode, hasCode, sendPrevious, last, session.running, apex.apiVersion, getCode, username, start])
 
   const fix = useCallback(
     (failed: { code: string; problem: string; line?: number; column?: number }) => {
       if (availability !== 'ready') return
       const input = { ...failed, language: uiLanguage, timeZone: timeZone() }
+      const version = apex.apiVersion ? { apiVersion: apex.apiVersion } : {}
       start(async (signal, progress) => {
         progress('think')
-        return (await api.aiAgent(username, { task: 'fixApex', input }, signal)).output
+        return (await api.aiAgent(username, { task: 'fixApex', input, ...version }, signal)).output
       }, getCode)
     },
-    [availability, username, start, getCode],
+    [availability, username, start, getCode, apex.apiVersion],
   )
 
   const apply = useCallback(() => {

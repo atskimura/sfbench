@@ -1,7 +1,6 @@
 {
   "name": "sfbench",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "description": "A local workbench for Salesforce: SOQL, Apex and REST API, powered by your sf CLI auth",
   "keywords": [
     "salesforce",
