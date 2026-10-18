@@ -24,10 +24,12 @@ import styles from './RestScreen.module.css'
 
 const timeFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 
+const REST_PANELS = ['restRequest', 'restHistory'] as const
+
 export function RestScreen() {
   return (
     // Remembered apart from the SOQL screen's panels.
-    <PanelsProvider storageKey="sfbench.restPanels">
+    <PanelsProvider storageKey="sfbench.restPanels" names={REST_PANELS}>
       <Layout />
     </PanelsProvider>
   )
@@ -52,17 +54,27 @@ function Layout() {
   )
 }
 
+/** Send: in the request area, and in its closed line. */
+function SendButton() {
+  const rest = useRest()
+  return (
+    <button type="button" className={`${panel.button} ${panel.primary}`} disabled={rest.sending || !rest.path.trim()} onClick={rest.send}>
+      {rest.sending ? t.restSending : t.restSend}
+    </button>
+  )
+}
+
 /** The closed request area: the method, the path and Send. */
 function ClosedRequest() {
   const rest = useRest()
   return (
     <div className={`${panel.panel} ${styles.closedRequest}`}>
       <MethodChip method={rest.method} />
-      <span className={styles.path}>{rest.path}</span>
+      <span className={styles.path} title={rest.path}>
+        {rest.path.trim() || <span className={panel.meta}>{t.restNoPath}</span>}
+      </span>
       <span className={panel.spacer} />
-      <button type="button" className={`${panel.button} ${panel.primary}`} disabled={rest.sending || !rest.path.trim()} onClick={rest.send}>
-        {rest.sending ? t.restSending : t.restSend}
-      </button>
+      <SendButton />
     </div>
   )
 }
@@ -140,7 +152,6 @@ function Notice({ text, onClose }: { text: string; onClose: () => void }) {
 
 function Request() {
   const rest = useRest()
-  const { settings } = useApp()
   const [tab, setTab] = useState<'body' | 'headers'>('body')
   const [hint, setHint] = useState<string>()
   const takesBody = methodTakesBody(rest.method)
@@ -200,9 +211,7 @@ function Request() {
             }
           }}
         />
-        <button type="button" className={`${panel.button} ${panel.primary}`} disabled={rest.sending || !rest.path.trim()} onClick={rest.send}>
-          {rest.sending ? t.restSending : t.restSend}
-        </button>
+        <SendButton />
       </div>
       {hint && (
         <p className={styles.hint} role="status">
@@ -237,9 +246,6 @@ function Request() {
         />
       </div>
       {tab === 'headers' && <Headers />}
-      {rest.sending && (
-        <p className={styles.sendingNote}>{rest.sendingChangesData ? t.restWaiting(settings?.requestTimeoutSeconds ?? 120) : null}</p>
-      )}
     </section>
   )
 }
@@ -297,9 +303,12 @@ function Response() {
 
 function Sending() {
   const rest = useRest()
+  const { settings } = useApp()
   return (
     <div className={styles.sending}>
       <p className={panel.empty}>{t.restSending}</p>
+      {/* In the response, so that it shows with the request area closed too. */}
+      {rest.sendingChangesData && <p className={panel.meta}>{t.restWaiting(settings?.requestTimeoutSeconds ?? 120)}</p>}
       {!rest.sendingChangesData && (
         <>
           <button type="button" className={panel.button} onClick={rest.cancel}>

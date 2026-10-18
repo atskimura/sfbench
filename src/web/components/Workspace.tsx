@@ -19,6 +19,8 @@ import { RecentPanel } from './RecentPanel.tsx'
 import { ResultPanel } from './ResultPanel.tsx'
 import styles from './Workspace.module.css'
 
+const SOQL_PANELS = ['objects', 'editor', 'recent'] as const
+
 export function Workspace() {
   const { selected, seed, loading, orgs } = useOrgs()
   // Nothing to work on before an org is chosen; typing then would be lost
@@ -50,7 +52,7 @@ function OrgWorkspace({ username, seed }: { username: string; seed: Seed | undef
     <>
       <div className={styles.screen} hidden={mode !== 'soql'}>
         <SoqlProvider username={username} seed={seed}>
-          <PanelsProvider storageKey="sfbench.panels">
+          <PanelsProvider storageKey="sfbench.panels" names={SOQL_PANELS}>
             {/* Inside both: Replace writes the editor, and Fix with AI opens the editor area. */}
             <AiProvider username={username}>
               <Layout username={username} initialText={seed?.query} />

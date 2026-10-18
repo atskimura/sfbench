@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 // The REST API screen's flows (docs/rest.md "状態と遷移"), through the whole app.
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { EditorView } from '@codemirror/view'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Org, RestHistoryEntry, RestResponse } from '../shared/api.ts'
@@ -297,6 +298,21 @@ describe('REST API screen', () => {
     await userEvent.click(screen.getByRole('button', { name: t.restSend }))
     expect(await within(response()).findByText('200')).toBeTruthy()
     expect(JSON.parse(localStorage.getItem('sfbench.restPanels') ?? '{}')).toMatchObject({ restRequest: false })
+  })
+
+  it('keeps the body while the request area is closed, and sends it from the closed line', async () => {
+    mocked.rest.mockResolvedValue(answer(201))
+    await openRest()
+    await fill('POST', path)
+    // CodeMirror cannot be typed into on jsdom: write through its view (docs/web.md "テスト").
+    const view = EditorView.findFromDOM(screen.getByRole('textbox', { name: t.restBodyLabel }))!
+    act(() => view.dispatch({ changes: { from: 0, insert: '{"Name":"A"}' } }))
+    await userEvent.click(screen.getByRole('button', { name: t.hideRestRequest }))
+    await userEvent.click(screen.getByRole('button', { name: t.restSend }))
+    await within(response()).findByText('201')
+    expect(mocked.rest.mock.calls[0][1]).toMatchObject({ method: 'POST', body: '{"Name":"A"}' })
+    await userEvent.click(screen.getByRole('button', { name: t.showRestRequest }))
+    expect(screen.getByRole('textbox', { name: t.restBodyLabel }).textContent).toBe('{"Name":"A"}')
   })
 
   it('puts a history entry back into the fields without sending it', async () => {

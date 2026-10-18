@@ -8,31 +8,39 @@ type Open = Record<PanelName, boolean>
 
 const ALL_OPEN: Open = { objects: true, editor: true, recent: true, restRequest: true, restHistory: true }
 
-function read(key: string): Open {
+/** The screen's own panels as saved; the others' are not read. */
+function read(key: string, names: readonly PanelName[]): Open {
+  const open = { ...ALL_OPEN }
   try {
     const saved = JSON.parse(localStorage.getItem(key) ?? '{}') as Partial<Open>
-    return { ...ALL_OPEN, ...saved }
+    for (const name of names) if (typeof saved[name] === 'boolean') open[name] = saved[name]
   } catch {
-    return ALL_OPEN
+    // Every panel starts open.
   }
+  return open
 }
 
 type PanelsValue = { open: Open; setOpen: (name: PanelName, open: boolean) => void }
 const PanelsContext = createContext<PanelsValue | undefined>(undefined)
 
-/** `storageKey` is the screen's: the SOQL screen keeps sfbench.panels, as it always has. */
-export function PanelsProvider({ storageKey, children }: { storageKey: string; children: ReactNode }) {
-  const [open, setOpenState] = useState(() => read(storageKey))
+/**
+ * `storageKey` is the screen's (the SOQL screen keeps sfbench.panels, as it
+ * always has) and `names` its panels: only those are read and saved.
+ */
+export function PanelsProvider({ storageKey, names, children }: { storageKey: string; names: readonly PanelName[]; children: ReactNode }) {
+  const [open, setOpenState] = useState(() => read(storageKey, names))
   const setOpen = useCallback((name: PanelName, value: boolean) => {
     setOpenState((prev) => {
       const next = { ...prev, [name]: value }
       try {
-        localStorage.setItem(storageKey, JSON.stringify(next))
+        localStorage.setItem(storageKey, JSON.stringify(Object.fromEntries(names.map((n) => [n, next[n]]))))
       } catch {
         // Only remembering the layout is lost.
       }
       return next
     })
+    // `names` is a constant array at each screen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey])
   const value = useMemo(() => ({ open, setOpen }), [open, setOpen])
   return <PanelsContext.Provider value={value}>{children}</PanelsContext.Provider>

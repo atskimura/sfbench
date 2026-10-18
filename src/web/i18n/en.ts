@@ -162,6 +162,7 @@ export const en = {
   restMethod: 'Method',
   restPath: 'Path',
   restPathPlaceholder: '/services/data/v62.0/sobjects/Account',
+  restNoPath: 'No path yet',
   restSend: 'Send',
   restSending: 'Sending…',
   restBody: 'Body',

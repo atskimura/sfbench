@@ -160,6 +160,7 @@ export const ja: Messages = {
   restMethod: 'メソッド',
   restPath: 'パス',
   restPathPlaceholder: '/services/data/v62.0/sobjects/Account',
+  restNoPath: 'パスが入っていません',
   restSend: '送信',
   restSending: '送信しています…',
   restBody: 'ボディ',
