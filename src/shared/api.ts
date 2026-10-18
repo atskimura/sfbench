@@ -171,6 +171,29 @@ export type SoqlOutput = { soql: string; explanation: string }
 
 export type AiOutput<T extends AiTask> = T extends 'chooseObjects' ? ChooseObjectsOutput : SoqlOutput
 
+/** A REST API request as the AI writes it or is given it (docs/ai-agent.md "答えの形"). */
+export type AgentRestRequest = { method: RestMethod; path: string; body: string }
+
+/** What every agent task is given besides its own input: how to write the explanation and dates. */
+type AgentContext = { language: UiLanguage; /** IANA time zone of the browser, such as Asia/Tokyo. */ timeZone: string }
+
+/** What the AI is asked to do with tools (docs/ai-agent.md), with what it is given. */
+export type AgentTaskRequest =
+  | { task: 'generateRest'; input: AgentContext & { request: string; current?: AgentRestRequest } }
+  | { task: 'fixRest'; input: AgentContext & { sent: AgentRestRequest; status: number; responseBody: string } }
+  | { task: 'generateApex'; input: AgentContext & { request: string; code?: string } }
+  | { task: 'fixApex'; input: AgentContext & { code: string; problem: string; line?: number; column?: number } }
+
+export type AgentTask = AgentTaskRequest['task']
+
+/** POST /api/orgs/:user/ai/agent */
+export type AgentRequest = AgentTaskRequest & { apiVersion?: string }
+
+export type RestProposalOutput = AgentRestRequest & { explanation: string }
+export type ApexProposalOutput = { code: string; explanation: string }
+
+export type AgentOutput<T extends AgentTask> = T extends 'generateRest' | 'fixRest' ? RestProposalOutput : ApexProposalOutput
+
 /** POST /api/ai/test: tries the settings being edited, without saving them. */
 export type AiTestRequest = { ai: AiSettingsInput }
 export type AiTestResponse = { elapsedMs: number }

@@ -160,7 +160,7 @@ function SendMark({ shown = true }: { shown?: boolean }) {
 /** The card of any screen's proposal: what is proposed, the explanation, and the buttons. */
 export function ProposalFrame({ explanation, onDiscard, actions, children }: { explanation: string; onDiscard: () => void; actions: ReactNode; children: ReactNode }) {
   return (
-    <section className={styles.card} aria-label={t.aiProposal}>
+    <section className={styles.card} aria-label={t.aiProposal} data-ai-proposal>
       {children}
       {/* Plain text only: never rendered as Markdown or HTML (docs/ai.md "プロンプトインジェクション"). */}
       {explanation && <p className={styles.explanation}>{explanation}</p>}

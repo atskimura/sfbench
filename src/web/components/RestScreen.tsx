@@ -18,6 +18,7 @@ import { CopyCommand } from './CopyCommand.tsx'
 import { ErrorDetails } from './ErrorDetails.tsx'
 import { JsonEditor, JsonView } from './JsonCode.tsx'
 import { Notice } from './Notice.tsx'
+import { FixRestWithAi, RestAiBar, RestProposalCard } from './RestAi.tsx'
 import panel from './Panel.module.css'
 import { ReloadButton } from './ReloadButton.tsx'
 import { Divider, Strip } from './Split.tsx'
@@ -162,6 +163,8 @@ function Request() {
 
   return (
     <section className={`${panel.panel} ${styles.request}`} aria-label={t.restRequest}>
+      <RestAiBar />
+      <RestProposalCard />
       {/* Not a form: Enter in the path must not send (a DELETE, say). Send is the button only. */}
       <div className={styles.line}>
         <label className="visually-hidden" htmlFor="rest-method">
@@ -347,6 +350,7 @@ function Result({ result }: { result: RestResult }) {
           {t.elapsed((response.elapsedMs / 1000).toFixed(2))} · {sizeText(response.size)}
         </span>
         {sent}
+        <FixRestWithAi sent={result.request} status={response.status} body={response.body} />
         <span className={panel.spacer} />
         <div className={styles.tabs} role="tablist">
           <button type="button" role="tab" aria-selected={tab === 'body'} className={styles.tab} onClick={() => setTab('body')}>

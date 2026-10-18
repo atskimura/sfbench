@@ -10,6 +10,7 @@ import { ApexProvider } from '../state/ApexContext.tsx'
 import { APEX_DRAFT_KEY, claimEditorText } from '../state/editorStorage.ts'
 import { claimApiVersion } from '../state/versionStorage.ts'
 import { RestProvider } from '../state/RestContext.tsx'
+import { RestAiProvider } from '../state/RestAiContext.tsx'
 import { ApexScreen } from './ApexScreen.tsx'
 import { RestScreen } from './RestScreen.tsx'
 import { Divider, Strip } from './Split.tsx'
@@ -74,7 +75,10 @@ function OrgWorkspace({ username, seed }: { username: string; seed: Seed | undef
       {restOpened && (
         <div className={styles.screen} hidden={mode !== 'rest'}>
           <RestProvider username={username} seed={seed}>
-            <RestScreen />
+            {/* Inside: Replace writes the request fields. */}
+            <RestAiProvider username={username}>
+              <RestScreen />
+            </RestAiProvider>
           </RestProvider>
         </div>
       )}

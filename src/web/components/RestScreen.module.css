@@ -17,6 +17,17 @@
   height: 300px;
 }
 
+/* Room for the AI input, as the SOQL screen. */
+.top:has([data-ai-bar]) {
+  height: 380px;
+}
+
+/* Taller while the AI's proposal shows, so that the body stays usable. */
+.top:has([data-ai-proposal]) {
+  height: auto;
+  min-height: 380px;
+}
+
 .top[hidden] {
   display: none;
 }
@@ -24,6 +35,8 @@
 .history {
   flex: 0 0 260px;
   min-width: 0;
+  /* Its list scrolls inside: its length never makes the row taller. */
+  contain: size;
 }
 
 .closedRequest {
@@ -217,7 +230,7 @@
 
 .tabBody {
   flex: 1;
-  min-height: 0;
+  min-height: 120px;
   display: flex;
   flex-direction: column;
   overflow: auto;
@@ -305,4 +318,13 @@
 .errorMessage {
   margin: 0;
   white-space: pre-wrap;
+}
+
+/* The AI's proposed request: its method and path, above the body's differences. */
+.proposalLine {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  min-width: 0;
 }

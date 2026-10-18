@@ -26,6 +26,7 @@ import {
   type RestOutcome,
   type RestResponse,
   type SessionResponse,
+  type AgentRequest,
   type RecordsResponse,
   type SettingsUpdate,
   type VersionsResponse,
@@ -49,7 +50,10 @@ import { ApexFileError, ApexRunError, runApex, type ApexRun } from '../sf/apexRu
 import { openOrg, reloginCommand } from '../sf/commands.ts'
 import { OrgAuthError, SfCliError, SfNotFoundError, SfTimeoutError } from '../sf/errors.ts'
 import { AiError } from '../ai/errors.ts'
+import { NO_METADATA, runAgent, TEST_AGENT_REQUEST } from '../ai/agent.ts'
+import { invalidAgentRequest } from '../ai/agentTasks.ts'
 import { generate, TEST_REQUEST } from '../ai/generate.ts'
+import type { MetadataSource } from '../ai/tools.ts'
 import { invalidTaskRequest } from '../ai/tasks.ts'
 import { addApexPending, addHistory, addRestPending, finishApex, loadApexHistory, AiSettingsError, finishRest, loadHistory, loadRestHistory, mergeAiSettings, settingsView, type SettingsStore } from '../store.ts'
 import { isAdminRequestOrigin, isAllowedHost, isSameOriginRequest } from './security.ts'
@@ -251,7 +255,17 @@ export class App {
       // The settings being edited, with the saved key when none is typed (same rule as saving).
       const ai = mergeAiSettings(this.options.settings.get().ai, body.ai)
       const started = Date.now()
-      await this.runAi(res, (signal) => generate(ai, TEST_REQUEST, signal).then(() => ({ elapsedMs: Date.now() - started })))
+      await this.runAi(res, async (signal) => {
+        await generate(ai, TEST_REQUEST, signal)
+        // The REST API and Apex AI call tools: a model that cannot is found here, not there.
+        try {
+          await runAgent(ai, TEST_AGENT_REQUEST, NO_METADATA, '66.0', signal)
+        } catch (e) {
+          if (e instanceof AiError) throw new AiError(e.code, `Tool calls (for REST API and Apex): ${e.message}`, e.details)
+          throw e
+        }
+        return { elapsedMs: Date.now() - started }
+      })
       return
     }
 
@@ -383,6 +397,11 @@ export class App {
       return
     }
 
+    if (rest === 'ai/agent' && method === 'POST') {
+      await this.runAgentRequest(req, res, client)
+      return
+    }
+
     if (rest === 'records/update' && method === 'POST') {
       await this.updateRecords(req, res, client)
       return
@@ -460,6 +479,41 @@ export class App {
     // No query string, body or header values in the log: they may hold record data.
     log.info(`rest ${request.method} ${pathname} ${raw.status} ${elapsedMs}ms`)
     sendJson(res, 200, { ...({ id, status: raw.status, ...restResponseBody(raw), elapsedMs } satisfies RestResponse), apiUsage: client.apiUsage })
+  }
+
+  /**
+   * The AI writing a REST API request or Apex, reading this org's metadata
+   * through tools (docs/ai-agent.md "サーバー"). Logs counts only.
+   */
+  private async runAgentRequest(req: IncomingMessage, res: ServerResponse, client: OrgClient): Promise<void> {
+    const body = await readJsonObject(req, { bytes: MAX_AI_INPUT_BYTES, code: 'PAYLOAD_TOO_LARGE', message: 'Too much to send to the AI.' })
+    const invalid = invalidAgentRequest(body)
+    if (invalid) throw new HttpError(400, 'BAD_REQUEST', invalid)
+    const request = body as AgentRequest
+    const requested = versionOf(request.apiVersion)
+    const version = await client.version(requested)
+    const prefix = requested ? `v${requested}:` : ''
+    const orgs = this.options.orgs
+    const describe = async (name: string) => (await client.request({ method: 'GET', path: `/services/data/v${version}/sobjects/${name}/describe/` })).body
+    const source: MetadataSource = {
+      objects: async () =>
+        ((await orgs.cachedDescribe(client, `${prefix}global`, false, async () => (await client.request({ method: 'GET', path: `/services/data/v${version}/sobjects/` })).body)).body as { sobjects: { name: string; label: string }[] }).sobjects,
+      describe: async (name) => {
+        try {
+          return (await orgs.cachedDescribe(client, `${prefix}${name}`, false, () => describe(name))).body as Awaited<ReturnType<MetadataSource['describe']>>
+        } catch (e) {
+          // An object the org does not have is the AI's mistake to correct, not a failure of the request.
+          if (e instanceof SalesforceError && e.status === 404) return undefined
+          throw e
+        }
+      },
+    }
+    const started = performance.now()
+    await this.runAi(res, async (signal) => {
+      const run = await runAgent(this.options.settings.get().ai, request, source, version, signal)
+      log.info(`ai agent ${request.task} ${run.aiCalls} ai ${run.toolCalls} tools ${Math.round(performance.now() - started)}ms`)
+      return { output: run.output }
+    })
   }
 
   /**
