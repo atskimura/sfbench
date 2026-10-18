@@ -104,7 +104,8 @@ claude plugin install sfbench --marketplace atskimura/sfbench
 
 Inside Claude Code, `/plugin install sfbench --marketplace atskimura/sfbench` does the same.
 Your instructions file (`CLAUDE.md`) stays as it is.
-For other agents, put [the skill's file](plugins/sfbench/skills/sfbench/SKILL.md) where the agent reads skills (`~/.agents/skills/sfbench/` for Codex); this is untested outside Claude Code.
+You can also put the skill's file in place yourself: [plugins/sfbench/skills/sfbench/SKILL.md](plugins/sfbench/skills/sfbench/SKILL.md) in English, or [plugins/sfbench/ja/sfbench/SKILL.md](plugins/sfbench/ja/sfbench/SKILL.md) in Japanese.
+Copy the `sfbench` folder to where the agent reads skills (`~/.claude/skills/` for Claude Code, `~/.agents/skills/` for Codex; untested with Codex).
 
 With the skill, ask Claude Code to "list the won opportunities in sfbench", and it writes the SOQL and starts sfbench like this:
 

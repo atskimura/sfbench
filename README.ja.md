@@ -104,7 +104,9 @@ claude plugin install sfbench --marketplace atskimura/sfbench
 
 Claude Code の中では `/plugin install sfbench --marketplace atskimura/sfbench` でも入れられます。
 指示ファイル（`CLAUDE.md`）を書き換える必要はありません。
-ほかのエージェントでは、[スキルのファイル](plugins/sfbench/skills/sfbench/SKILL.md) を、そのエージェントがスキルを読む場所（Codex なら `~/.agents/skills/sfbench/`）に置いてください（Claude Code 以外では試していません）。
+スキルのファイルを自分で置くこともできます。
+日本語版は [plugins/sfbench/ja/sfbench/SKILL.md](plugins/sfbench/ja/sfbench/SKILL.md)、英語版は [plugins/sfbench/skills/sfbench/SKILL.md](plugins/sfbench/skills/sfbench/SKILL.md) です。
+`sfbench` フォルダごと、エージェントがスキルを読む場所（Claude Code なら `~/.claude/skills/`、Codex なら `~/.agents/skills/`）に置きます（Codex では試していません）。
 
 スキルを入れた Claude Code に「sfbench で成約済みの商談を一覧して」と頼むと、エージェントは SOQL を組み立てて次のように起動します。
 
