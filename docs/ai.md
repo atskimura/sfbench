@@ -13,9 +13,9 @@
 - 設定画面の AI の欄と、接続の確認（Test connection）
 - 最近のクエリに、AI に頼んだ文を残す
 
-REST API のリクエストを組ませる機能は、区切り4（REST API の画面）のあとで作る。匿名 Apex を組ませる機能は、区切り5の画面と一緒に作る。
+REST API のリクエストと匿名 Apex を組ませる機能は、区切り7で作る（[ai-agent.md](ai-agent.md)）。
 この文書のサーバーの仕組み（設定、提供元ごとの呼び出し、出力の形の検査）は、そのときもそのまま使う。
-画面の仕組み（`AiContext`、提案カード）は SOQL 専用に作ってあるので、共通の部分（AI が使えるか、要望、1つの `useTask`、提案と失敗の reducer、Cancel と破棄）と、画面ごとの部分（本体の関数、送る情報の札、反映のしかた）に分けてから使う。分け方は区切り4の設計で決める。
+画面の仕組みは、区切り7で、どの画面でも使う部分（`useAiSession`：AI が使えるか、要望、1つの `useTask`、提案と失敗の reducer、Cancel と破棄。`AiInput`、`ProposalFrame`、`DiffText`）と、画面ごとの部分（本体の関数、送る情報の札、反映のしかた。SOQL は `AiContext`）に分けた。
 ただし REST API と Apex では、提案カードに「反映して実行」を置かない。
 データを変えうる操作なので、AI の出力を利用者が読んでから実行するようにするためである。
 
@@ -272,13 +272,14 @@ AI の状態は作業画面（組織の `key` で作り直す木）の中に置�
 
 | 状態 | 持つ場所 | 書く出来事 |
 | --- | --- | --- |
-| 生成中かどうか、段階 | `AiContext` の `useTask<AiStep>` の `running` と `progress`。Generate と Fix がこの1つを共有する | `useTask` だけ |
-| 提案（SOQL、説明、Tooling API の指定、要望）とエラー（文と `details`） | `AiContext` の reducer（`src/web/ai/aiState.ts`） | 成功、失敗、Cancel、Discard、Replace |
+| 生成中かどうか、段階 | `useAiSession` の `useTask<AiStep>` の `running` と `progress`。Generate と Fix がこの1つを共有する | `useTask` だけ |
+| 提案（SOQL、説明、Tooling API の指定、要望）とエラー（文と `details`） | `useAiSession` の reducer（`src/web/ai/aiState.ts`） | 成功、失敗、Cancel、Discard、Replace |
 | 要望の印（置き換えた SOQL、Tooling API の指定、要望） | `SoqlContext` の状態 | Replace、Replace & Run、最近のクエリの読み込み |
 | 失敗した実行（SOQL、Tooling API の指定、付けた要望） | `SoqlContext` の結果（`SALESFORCE_ERROR` のときだけ） | クエリの実行 |
 | エディタの落ち着いた本文（入力が止まって300 ms 後） | `SoqlContext` | エディタ |
-| 提案が届いた時点のエディタの本文 | `AiContext` の reducer（提案と一緒に） | 成功 |
-| 入力中の要望、エディタの内容の札の状態 | `AiContext` | 利用者の入力 |
+| 提案が届いた時点のエディタの本文 | `useAiSession` の reducer（提案と一緒に） | 成功 |
+| 入力中の要望 | `useAiSession` | 利用者の入力 |
+| エディタの内容の札の状態 | `AiContext` | 利用者の入力 |
 
 AI の状態を `SoqlContext` に入れないのは、段階が変わるたびにエディタや左の一覧まで描き直さないためである。
 逆向きには分かれておらず、`AiContext` はエディタの解析のたびに描き直される。
