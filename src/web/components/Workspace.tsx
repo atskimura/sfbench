@@ -6,7 +6,9 @@ import { useState } from 'react'
 import { t } from '../i18n/i18n.ts'
 import { AiProvider } from '../state/AiContext.tsx'
 import { useApp } from '../state/AppContext.tsx'
+import { ApexProvider } from '../state/ApexContext.tsx'
 import { RestProvider } from '../state/RestContext.tsx'
+import { ApexScreen } from './ApexScreen.tsx'
 import { RestScreen } from './RestScreen.tsx'
 import { Divider, Strip } from './Split.tsx'
 import { useOrgs, type Seed } from '../state/OrgContext.tsx'
@@ -38,16 +40,18 @@ export function Workspace() {
 }
 
 /**
- * Both screens stay drawn once opened, and the one not chosen is hidden, never
+ * The screens stay drawn once opened, and the one not chosen is hidden, never
  * unmounted: a request running in it (a REST request that may change data, a
  * query) goes on, and its result shows when the screen is chosen again
  * (docs/rest.md "作業画面の作り"). Do not draw the screens conditionally.
  */
 function OrgWorkspace({ username, seed }: { username: string; seed: Seed | undefined }) {
   const { mode } = useApp()
-  // The REST API screen is made when it is first chosen, then kept.
+  // The REST API and Apex screens are made when first chosen, then kept.
   const [restOpened, setRestOpened] = useState(mode === 'rest')
   if (mode === 'rest' && !restOpened) setRestOpened(true)
+  const [apexOpened, setApexOpened] = useState(mode === 'apex')
+  if (mode === 'apex' && !apexOpened) setApexOpened(true)
   return (
     <>
       <div className={styles.screen} hidden={mode !== 'soql'}>
@@ -65,6 +69,13 @@ function OrgWorkspace({ username, seed }: { username: string; seed: Seed | undef
           <RestProvider username={username} seed={seed}>
             <RestScreen />
           </RestProvider>
+        </div>
+      )}
+      {apexOpened && (
+        <div className={styles.screen} hidden={mode !== 'apex'}>
+          <ApexProvider username={username} seed={seed}>
+            <ApexScreen />
+          </ApexProvider>
         </div>
       )}
     </>

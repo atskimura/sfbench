@@ -1,0 +1,179 @@
+/* The Apex screen (docs/screens.md "Apex の画面"), laid out as the REST API screen. */
+.screen {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  height: calc(100vh - var(--header-height) - 2 * var(--space-2));
+}
+
+/* The code with the history at its right. */
+.top {
+  flex: none;
+  display: flex;
+  gap: var(--space-2);
+  /* The same as the other screens' top areas. */
+  height: 300px;
+}
+
+.top[hidden] {
+  display: none;
+}
+
+.code {
+  flex: 1;
+  min-width: 0;
+}
+
+.hint {
+  margin: 0;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-small);
+  color: var(--color-muted);
+}
+
+.history {
+  flex: 0 0 260px;
+  min-width: 0;
+}
+
+.closedCode {
+  flex: none;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+
+.firstLine,
+.itemCode {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+.itemCode {
+  font-size: var(--font-size-meta);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-bottom: 1px solid var(--color-line);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.item:hover {
+  background: var(--color-panel-muted);
+}
+
+.successMark {
+  color: var(--color-method-get);
+  font-weight: 600;
+}
+
+.failureMark {
+  color: var(--color-method-delete);
+  font-weight: 600;
+}
+
+.unknownMark {
+  color: var(--color-notice-ink);
+  font-weight: 600;
+}
+
+.result {
+  flex: 1;
+  min-height: 240px;
+}
+
+.running {
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.resultBox {
+  padding: var(--space-3);
+}
+
+.unknown {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-notice-line);
+  border-radius: var(--radius);
+  background: var(--color-notice-bg);
+  color: var(--color-notice-ink);
+  line-height: 1.5;
+}
+
+.error,
+.problem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-danger-line);
+  border-radius: var(--radius);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.problem {
+  flex: none;
+  margin: var(--space-2) var(--space-3) 0;
+}
+
+.errorMessage {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.stackTrace {
+  margin: var(--space-1) 0 0;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+}
+
+.log {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.logBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.search {
+  width: 220px;
+  height: var(--control-height);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-small);
+  cursor: pointer;
+}

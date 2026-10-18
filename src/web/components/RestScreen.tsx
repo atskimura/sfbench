@@ -14,9 +14,11 @@ import { useRest } from '../state/RestContext.tsx'
 import { usePanels, PanelsProvider } from '../state/PanelsContext.tsx'
 import { CollapseButton } from './CollapseButton.tsx'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
+import { CopyButton } from './CopyButton.tsx'
 import { CopyCommand } from './CopyCommand.tsx'
 import { ErrorDetails } from './ErrorDetails.tsx'
 import { JsonEditor, JsonView } from './JsonCode.tsx'
+import { Notice } from './Notice.tsx'
 import panel from './Panel.module.css'
 import { ReloadButton } from './ReloadButton.tsx'
 import { Divider, Strip } from './Split.tsx'
@@ -136,17 +138,6 @@ function Notices() {
       {rest.launchNotice && <Notice text={t.restLaunchNotice} onClose={rest.closeNotice} />}
       {rest.restLeftOutFor !== undefined && !leftOutClosed && <Notice text={t.restLeftOut(rest.restLeftOutFor)} onClose={() => setLeftOutClosed(true)} />}
     </>
-  )
-}
-
-function Notice({ text, onClose }: { text: string; onClose: () => void }) {
-  return (
-    <div className={styles.notice} role="status">
-      <span>{text}</span>
-      <button type="button" className={styles.noticeClose} aria-label={t.dismiss} onClick={onClose}>
-        ×
-      </button>
-    </div>
   )
 }
 
@@ -396,30 +387,6 @@ function Body({ body, omitted }: { body: string; omitted: 'binary' | 'tooLarge' 
       {shown.cut && <p className={styles.hint}>{t.restBodyCut}</p>}
       <JsonView text={shown.text} isJson={shown.json} label={t.restResponse} />
     </>
-  )
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-  useEffect(() => {
-    if (!copied) return
-    const timer = setTimeout(() => setCopied(false), 1500)
-    return () => clearTimeout(timer)
-  }, [copied])
-  return (
-    <button
-      type="button"
-      className={panel.button}
-      onClick={() => {
-        // As CopyCommand: a refused clipboard shows nothing and throws nothing.
-        navigator.clipboard?.writeText(text).then(
-          () => setCopied(true),
-          () => setCopied(false),
-        )
-      }}
-    >
-      {copied ? t.restCopied : t.restCopy}
-    </button>
   )
 }
 

@@ -4,7 +4,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react'
 import type { RestHistoryEntry, RestMethod } from '../../shared/api.ts'
 import { api } from '../apiClient.ts'
-import { isOutcomeUnknown, runFailure } from '../errors.ts'
+import { runFailed } from '../execution.ts'
 import { t } from '../i18n/i18n.ts'
 import { restMayChangeData } from '../rest/changes.ts'
 import { needsConfirm } from '../rest/confirm.ts'
@@ -154,7 +154,8 @@ export function RestProvider({ username, seed, children }: { username: string; s
         return
       }
       const e = outcome.error
-      if (isOutcomeUnknown(e, changesData)) {
+      const failed = runFailed(e, changesData)
+      if (failed.kind === 'unknown') {
         // A lost session still shows its band; the result says the outcome is unknown.
         handleCommonError(e)
         // Asked about before it is sent again even before the history is loaded
@@ -163,14 +164,13 @@ export function RestProvider({ username, seed, children }: { username: string; s
         dispatch({ type: 'result', result: { state: 'unknown', request, message: t.restUnknown } })
         return
       }
-      const failure = runFailure(e)
-      if (!failure) {
+      if (failed.kind === 'elsewhere') {
         handleOrgError(username, e)
         dispatch({ type: 'result', result: { state: 'idle' } })
         return
       }
-      if (failure.orgAuth) markAuthError(username, failure.reloginCommand)
-      dispatch({ type: 'result', result: { state: 'error', request, message: failure.message, details: failure.details, reloginCommand: failure.reloginCommand } })
+      if (failed.orgAuth) markAuthError(username, failed.reloginCommand)
+      dispatch({ type: 'result', result: { state: 'error', request, message: failed.message, details: failed.details, reloginCommand: failed.reloginCommand } })
     },
     [startSend, username, refreshHistory, reportApiUsage, handleCommonError, handleOrgError, markAuthError],
   )

@@ -35,6 +35,9 @@
   --color-syntax-string: #8a4b00;
   --color-syntax-literal: #0a7468;
   --color-selection: #cfe3f6;
+  /* Search matches in the Apex debug log; the current one is stronger. */
+  --color-search-match: #fbe7a6;
+  --color-search-current: #f2b84b;
   /* REST API methods and response statuses (docs/rest.md "画面"). */
   --color-method-get-bg: #e2f0ed;
   --color-method-get: #0a5f55;
@@ -118,6 +121,8 @@
     --color-syntax-string: #e3b25a;
     --color-syntax-literal: #5cc4ae;
     --color-selection: #2b4560;
+    --color-search-match: #5a4a1a;
+    --color-search-current: #9a6a12;
     --color-method-get-bg: #1d3530;
     --color-method-get: #7fd8c6;
     --color-method-post-bg: #1d2b40;

@@ -23,9 +23,9 @@ export function Header() {
         <span>{t.appName}</span>
       </div>
       <nav className={styles.modes} aria-label={t.modes}>
-        {(['soql', 'rest'] as const).map((m) => (
+        {(['soql', 'rest', 'apex'] as const).map((m) => (
           <button key={m} type="button" className={styles.mode} aria-current={mode === m ? 'page' : undefined} onClick={() => setMode(m)}>
-            {m === 'soql' ? t.modeSoql : t.modeRest}
+            {m === 'soql' ? t.modeSoql : m === 'rest' ? t.modeRest : t.modeApex}
           </button>
         ))}
       </nav>
