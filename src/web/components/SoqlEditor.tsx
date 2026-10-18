@@ -15,7 +15,7 @@ import { cursorInfo } from '../soql/context.ts'
 import { describeGlobal, describeSObject } from '../state/describeCache.ts'
 import { claimEditorText, saveEditorText } from '../state/editorStorage.ts'
 import { useSoql } from '../state/SoqlContext.tsx'
-import styles from './SoqlEditor.module.css'
+import styles from './CodeEditor.module.css'
 
 const SOQL = SQLDialect.define({
   keywords:

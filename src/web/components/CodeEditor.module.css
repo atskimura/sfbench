@@ -1,3 +1,4 @@
+/* A CodeMirror editor filling its box: the SOQL editor and the REST API body and response. */
 .editor {
   flex: 1;
   min-height: 0;

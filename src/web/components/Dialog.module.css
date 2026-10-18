@@ -67,3 +67,8 @@
   opacity: 0.5;
   cursor: default;
 }
+
+/* A message of several lines (one per reason to confirm). */
+.message {
+  white-space: pre-line;
+}

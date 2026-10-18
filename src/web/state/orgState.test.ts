@@ -69,3 +69,19 @@ describe('org list', () => {
     expect(failed.orgs).toBe(orgs)
   })
 })
+
+// docs/rest.md "`--rest` の起動時の指定"
+describe('launch REST request', () => {
+  const rest = { method: 'DELETE' as const, path: '/services/data/v66.0/sobjects/Account/001' }
+  const launchedRest = (launchOrg: string | undefined) => reducer(initialState({ org: launchOrg, rest }), { type: 'loaded', orgs, connectionCheck: 'done' })
+
+  it('goes into the org the launch named', () => {
+    expect(reducer(launchedRest('one'), select('one@example.com')).seed).toEqual({ query: undefined, run: false, rest })
+  })
+
+  it('is left out of another org, which is told why', () => {
+    const seed = reducer(launchedRest('one'), select('two@example.com')).seed
+    expect(seed?.rest).toBeUndefined()
+    expect(seed?.restLeftOutFor).toBe('one')
+  })
+})

@@ -13,6 +13,9 @@ import type {
   OrgSummary,
   QueryRequest,
   QueryResponse,
+  RestHistoryResponse,
+  RestRequest,
+  RestResponse,
   SessionResponse,
   Settings,
   SettingsUpdate,
@@ -54,9 +57,14 @@ export class ApiRequestError extends Error {
     this.body = body
   }
 
+  /** sfbench refused the session at its door (the server restarted): nothing went further. */
+  get isSessionRefused(): boolean {
+    return this.status === 401 && this.code === 'UNAUTHORIZED'
+  }
+
   /** The session is no longer valid (the server restarted or stopped). */
   get isSessionLost(): boolean {
-    return (this.status === 401 && this.code === 'UNAUTHORIZED') || this.code === 'NETWORK_ERROR'
+    return this.isSessionRefused || this.code === 'NETWORK_ERROR'
   }
 }
 
@@ -151,6 +159,10 @@ export const api = {
   aiGenerate: <T extends AiTask>(req: AiTaskRequest & { task: T }, signal?: AbortSignal) =>
     request<{ output: AiOutput<T> }>('POST', '/api/ai/generate', req, signal),
   aiTest: (body: AiTestRequest, signal?: AbortSignal) => request<AiTestResponse>('POST', '/api/ai/test', body, signal),
+  /** Sends a REST API request; Salesforce's answer comes back whatever its status (docs/rest.md). */
+  rest: (username: string, body: RestRequest, signal?: AbortSignal) =>
+    request<WithApiUsage<RestResponse>>('POST', `${org(username)}/rest`, body, signal),
+  restHistory: (username: string, signal?: AbortSignal) => request<RestHistoryResponse>('GET', `${org(username)}/rest/history`, undefined, signal),
 }
 
 export type { ApiUsage }

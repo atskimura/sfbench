@@ -271,7 +271,7 @@ export function SoqlProvider({ username, seed, children }: { username: string; s
     // cleanup and the effect again, and the cleanup clears the first timer
     // before it fires, so the launch query runs once (docs/web.md "起動時のクエリ").
     // The editor starts with the same query (docs/web.md "起動時のクエリ").
-    const timer = seed?.run ? setTimeout(() => void runSoql(seed.query), 0) : undefined
+    const timer = seed?.run ? setTimeout(() => void runSoql(seed.query ?? ''), 0) : undefined
     // The run's task stops the running query when the workspace goes away.
     return () => clearTimeout(timer)
     // Once per workspace, which is remade for each org.

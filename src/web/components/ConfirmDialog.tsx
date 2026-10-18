@@ -33,7 +33,7 @@ export function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCance
           {title}
         </h2>
       </div>
-      <p id={messageId} className={styles.section}>
+      <p id={messageId} className={`${styles.section} ${styles.message}`}>
         {message}
       </p>
       <div className={styles.actions}>

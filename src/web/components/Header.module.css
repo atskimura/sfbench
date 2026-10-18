@@ -22,6 +22,35 @@
   flex: 1;
 }
 
+/* The screens: SOQL and REST API (docs/screens.md "共通のヘッダー"). */
+.modes {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+  margin-left: var(--space-3);
+}
+
+.mode {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--color-header-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.mode:hover {
+  color: var(--color-header-ink);
+}
+
+.mode[aria-current='page'] {
+  color: var(--color-header-ink);
+  border-bottom-color: var(--color-ok);
+}
+
 .usage {
   font-family: var(--font-mono);
   font-size: var(--font-size-small);
