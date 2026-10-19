@@ -23,7 +23,8 @@
   flex: none;
 }
 
-.filter > input {
+.filter > input:not(:placeholder-shown) {
+  /* Room for the match count, which shows only while filtering, so the placeholder is not cut off. */
   padding-right: 96px;
 }
 
