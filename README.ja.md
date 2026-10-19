@@ -8,7 +8,7 @@ sfbench は、Salesforce の SOQL、REST API、匿名 Apex を手元のブラウ
 ![sfbench の SOQL の画面。AI がクエリを提案している](help/images/ja/soql-ai.webp)
 
 sfbench は [lwc-soql-builder](https://github.com/lwc-soql-builder/lwc-soql-builder) の後継です。
-lwc-soql-builder は、Salesforce が OAuth のユーザーエージェントフローを使えなくしたため、ログインできなくなりました。
+lwc-soql-builder は、ログインに使っている OAuth のユーザーエージェントフローを Salesforce がセキュリティ強化のために廃止するので、遅くとも2027年2月20日には使えなくなります。
 
 ## 特徴
 

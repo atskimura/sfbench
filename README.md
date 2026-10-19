@@ -8,7 +8,7 @@ It uses the auth you already have in the sf CLI, so there is no connected app to
 ![The SOQL screen of sfbench, with a query proposed by the AI](help/images/en/soql-ai.webp)
 
 sfbench is the successor to [lwc-soql-builder](https://github.com/lwc-soql-builder/lwc-soql-builder).
-lwc-soql-builder can no longer log in, because Salesforce has blocked the OAuth user-agent flow it relied on.
+lwc-soql-builder will stop working by February 20, 2027 at the latest, when Salesforce retires the OAuth user-agent flow it relies on as part of its security hardening.
 
 ## Features
 
